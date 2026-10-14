@@ -2,7 +2,7 @@
 
 快速、带 AI 辅助的文本与二进制文件查看器。用 C++20 和 Qt 6 编写，以查看为主、编辑为辅。
 
-> 当前进度：已完成 **M2**（文本视图、十六进制视图、搜索、语法高亮）。下一步是 AI 面板，计划见 [DESIGN.md](DESIGN.md)。
+> 当前进度：已完成 **M3a**（AI 助手）。M1 和 M2 完成了文本视图、十六进制视图、搜索和语法高亮。下一步是让 AI 读取大文件、标注二进制结构，计划见 [DESIGN.md](DESIGN.md)。
 
 ## 功能
 
@@ -34,6 +34,20 @@
 - 文件变化时自动重新加载。
 - 「跟随文件末尾」（`Ctrl+Shift+F`）的效果和 `tail -f` 一样。
 
+**AI 助手**（`Ctrl+Shift+A`）
+- 选中文本或字节，可以一键解释、翻译、总结；也可以直接提问和追问，回答以流式显示。
+- 「这是什么文件」只把在本机计算的摘要（类型、熵、字符串、开头字节）发出去，不发送文件本身。
+- 发送前可以预览完整的请求内容，面板会写明将附带什么。
+- 默认使用 DeepSeek，也支持其他 OpenAI 兼容服务（通义、Kimi、本地的 Ollama 等）。
+
+设置 API key 有两种方式：
+- 在菜单「AI → AI 设置」里填写。key 只保存在本机的 `~/.config/AIEdit/api-key`，只有你能读取。
+- 用环境变量，此时 key 不会写入文件：
+
+```bash
+AIEDIT_API_KEY=你的key ./build/src/aiedit
+```
+
 **其他**：多标签页、拖放打开文件、缩放、中文界面。
 
 | 操作 | 按键 |
@@ -44,11 +58,12 @@
 | 重新加载 / 跟随文件末尾 | `F5` / `Ctrl+Shift+F` |
 | 十六进制视图里切换十六进制栏和字符栏 | `Tab` |
 | 缩放 | `Ctrl++`、`Ctrl+-`、`Ctrl+0`，或 `Ctrl+滚轮` |
+| AI 助手 / 解释选区 | `Ctrl+Shift+A` / `Ctrl+Shift+E` |
 
 ## 构建
 
 依赖：
-- 必需：CMake 3.21 或更高、支持 C++20 的编译器、Qt 6.5 或更高（Core、Gui、Widgets、Concurrent、Test）。
+- 必需：CMake 3.21 或更高、支持 C++20 的编译器、Qt 6.5 或更高（Core、Gui、Widgets、Concurrent、Network、Test）。
 - 可选：
   - KSyntaxHighlighting：语法高亮。
   - uchardet：更准确的编码识别。

@@ -21,6 +21,279 @@
     </message>
 </context>
 <context>
+    <name>aiedit::ui::AiPanel</name>
+    <message>
+        <source>Explain</source>
+        <translation>解释</translation>
+    </message>
+    <message>
+        <source>Explain the selected text or bytes</source>
+        <translation>解释选中的文本或字节</translation>
+    </message>
+    <message>
+        <source>Translate</source>
+        <translation>翻译</translation>
+    </message>
+    <message>
+        <source>Translate the selected text</source>
+        <translation>翻译选中的文本</translation>
+    </message>
+    <message>
+        <source>Summarize</source>
+        <translation>总结</translation>
+    </message>
+    <message>
+        <source>Summarize the selected text</source>
+        <translation>总结选中的文本</translation>
+    </message>
+    <message>
+        <source>What Is This File?</source>
+        <translation>这是什么文件？</translation>
+    </message>
+    <message>
+        <source>Identify the file from a summary computed on this machine; the file itself is not sent</source>
+        <translation>根据在本机计算的摘要识别文件类型；不会发送文件本身</translation>
+    </message>
+    <message>
+        <source>New Chat</source>
+        <translation>新对话</translation>
+    </message>
+    <message>
+        <source>Start a new conversation</source>
+        <translation>开始新的对话</translation>
+    </message>
+    <message>
+        <source>Attach selection</source>
+        <translation>附带选区</translation>
+    </message>
+    <message>
+        <source>Preview</source>
+        <translation>预览</translation>
+    </message>
+    <message>
+        <source>Show exactly what will be sent</source>
+        <translation>查看将要发送的完整内容</translation>
+    </message>
+    <message>
+        <source>Ask about the file… (Ctrl+Enter sends)</source>
+        <translation>问点关于这个文件的问题…（Ctrl+Enter 发送）</translation>
+    </message>
+    <message>
+        <source>Send</source>
+        <translation>发送</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>停止</translation>
+    </message>
+    <message>
+        <source>Nothing is attached.</source>
+        <translation>不附带任何内容。</translation>
+    </message>
+    <message>
+        <source>Will attach %1.</source>
+        <translation>将附带：%1。</translation>
+    </message>
+    <message>
+        <source>Nothing selected: only your question is sent.</source>
+        <translation>没有选区：只发送你的问题。</translation>
+    </message>
+    <message>
+        <source>the beginning of %1 of %2</source>
+        <translation>%2 的%1（仅开头部分）</translation>
+    </message>
+    <message>
+        <source>%1 of %2</source>
+        <translation>%2 的%1</translation>
+    </message>
+    <message>
+        <source>Select some text or bytes first.</source>
+        <translation>请先选中一些文本或字节。</translation>
+    </message>
+    <message>
+        <source>Explain this.</source>
+        <translation>解释一下这段内容。</translation>
+    </message>
+    <message>
+        <source>Explain these bytes: what they are and how they are structured.</source>
+        <translation>解释这些字节：它们是什么，结构是怎样的。</translation>
+    </message>
+    <message>
+        <source>Translate this into %1. If it is already in %1, translate it into English.</source>
+        <translation>把这段内容翻译成%1。如果它已经是%1，就翻译成英文。</translation>
+    </message>
+    <message>
+        <source>Decode any text in these bytes and translate it into %1.</source>
+        <translation>解码这些字节中的文本，并翻译成%1。</translation>
+    </message>
+    <message>
+        <source>Summarize this: the main points, and anything unusual.</source>
+        <translation>总结这段内容：要点，以及任何不寻常的地方。</translation>
+    </message>
+    <message>
+        <source>Summarize what these bytes contain.</source>
+        <translation>总结这些字节包含的内容。</translation>
+    </message>
+    <message>
+        <source>Open a file first.</source>
+        <translation>请先打开一个文件。</translation>
+    </message>
+    <message>
+        <source>a summary of %1 computed on this machine</source>
+        <translation>在本机计算的 %1 摘要</translation>
+    </message>
+    <message>
+        <source>What kind of file is this? Name the format and what it is used for, and point out anything notable.</source>
+        <translation>这是什么文件？请说出它的格式和用途，并指出值得注意的地方。</translation>
+    </message>
+    <message>
+        <source>Set up the AI service first.</source>
+        <translation>请先设置 AI 服务。</translation>
+    </message>
+    <message>
+        <source>Asking %1…</source>
+        <translation>正在请求 %1…</translation>
+    </message>
+    <message>
+        <source>Stopped.</source>
+        <translation>已停止。</translation>
+    </message>
+    <message>
+        <source>The answer was cut off at the length limit.</source>
+        <translation>回答达到长度上限，被截断了。</translation>
+    </message>
+    <message>
+        <source>The answer ended early (%1).</source>
+        <translation>回答提前结束（%1）。</translation>
+    </message>
+    <message>
+        <source>The request failed.</source>
+        <translation>请求失败。</translation>
+    </message>
+    <message>
+        <source>Select text or bytes and choose **Explain**, **Translate** or **Summarize**, ask **What Is This File?**, or type a question below.</source>
+        <translation>选中文本或字节后点 **解释**、**翻译** 或 **总结**；也可以点 **这是什么文件？**，或在下面直接提问。</translation>
+    </message>
+    <message>
+        <source>The AI service is not set up yet: [open the AI settings](aiedit:settings).</source>
+        <translation>还没有设置 AI 服务：[打开 AI 设置](aiedit:settings)。</translation>
+    </message>
+    <message>
+        <source>You</source>
+        <translation>你</translation>
+    </message>
+    <message>
+        <source>Attached: %1</source>
+        <translation>附带：%1</translation>
+    </message>
+    <message>
+        <source>AI</source>
+        <translation>AI</translation>
+    </message>
+    <message>
+        <source>Thinking:</source>
+        <translation>思考：</translation>
+    </message>
+    <message>
+        <source>(your question)</source>
+        <translation>（你的问题）</translation>
+    </message>
+    <message>
+        <source>What Will Be Sent</source>
+        <translation>将要发送的内容</translation>
+    </message>
+    <message>
+        <source>A POST request to %1 with the body below. The API key travels in a header and is not shown.</source>
+        <translation>向 %1 发送 POST 请求，请求体如下。API key 放在请求头里，这里不显示。</translation>
+    </message>
+</context>
+<context>
+    <name>aiedit::ui::AiSettingsDialog</name>
+    <message>
+        <source>AI Settings</source>
+        <translation>AI 设置</translation>
+    </message>
+    <message>
+        <source>Other (OpenAI-compatible)</source>
+        <translation>其他（OpenAI 兼容接口）</translation>
+    </message>
+    <message>
+        <source>Show</source>
+        <translation>显示</translation>
+    </message>
+    <message>
+        <source>(from the environment)</source>
+        <translation>（来自环境变量）</translation>
+    </message>
+    <message>
+        <source>The key comes from the %1 environment variable and is not saved.</source>
+        <translation>当前使用环境变量 %1 中的 key，不会保存到文件。</translation>
+    </message>
+    <message>
+        <source>Saved only on this computer, in %1, readable by you alone. The %2 environment variable can be used instead.</source>
+        <translation>只保存在本机的 %1 中，只有你能读取。也可以改用环境变量 %2。</translation>
+    </message>
+    <message>
+        <source>Deep thinking (slower; for hard questions)</source>
+        <translation>深度思考（更慢，适合复杂问题）</translation>
+    </message>
+    <message>
+        <source>Service:</source>
+        <translation>服务：</translation>
+    </message>
+    <message>
+        <source>Address:</source>
+        <translation>地址：</translation>
+    </message>
+    <message>
+        <source>Model:</source>
+        <translation>模型：</translation>
+    </message>
+    <message>
+        <source>API key:</source>
+        <translation>API key：</translation>
+    </message>
+</context>
+<context>
+    <name>aiedit::ui::ChatClient</name>
+    <message>
+        <source>Network error: %1</source>
+        <translation>网络错误：%1</translation>
+    </message>
+    <message>
+        <source>The API key was rejected.</source>
+        <translation>API key 无效。</translation>
+    </message>
+    <message>
+        <source>The account balance is insufficient.</source>
+        <translation>账户余额不足。</translation>
+    </message>
+    <message>
+        <source>Too many requests; try again in a moment.</source>
+        <translation>请求过于频繁，请稍后再试。</translation>
+    </message>
+    <message>
+        <source>The service did not accept the request; check the address and model name.</source>
+        <translation>服务拒绝了请求，请检查地址和模型名称。</translation>
+    </message>
+    <message>
+        <source>The service has a problem; try again in a moment.</source>
+        <translation>服务暂时出现问题，请稍后再试。</translation>
+    </message>
+    <message>
+        <source>The request failed.</source>
+        <translation>请求失败。</translation>
+    </message>
+    <message>
+        <source>%1 (HTTP %2)</source>
+        <translation>%1（HTTP %2）</translation>
+    </message>
+    <message>
+        <source>%1 (HTTP %2: %3)</source>
+        <translation>%1（HTTP %2：%3）</translation>
+    </message>
+</context>
+<context>
     <name>aiedit::ui::DataInspector</name>
     <message>
         <source>Little-endian</source>
@@ -104,6 +377,18 @@
     <message>
         <source>The file was deleted or moved; showing the last version</source>
         <translation>文件已被删除或移动，当前显示的是最后一个版本</translation>
+    </message>
+    <message>
+        <source>line %1 (%2 bytes)</source>
+        <translation>第 %1 行（%2 字节）</translation>
+    </message>
+    <message>
+        <source>lines %1–%2 (%3 bytes)</source>
+        <translation>第 %1–%2 行（%3 字节）</translation>
+    </message>
+    <message>
+        <source>bytes 0x%1–0x%2 (%3 bytes)</source>
+        <translation>字节 0x%1–0x%2（%3 字节）</translation>
     </message>
 </context>
 <context>
@@ -225,6 +510,10 @@
         <translation>数据检查器</translation>
     </message>
     <message>
+        <source>AI Assistant</source>
+        <translation>AI 助手</translation>
+    </message>
+    <message>
         <source>Text encoding. Click to show the file in another encoding.</source>
         <translation>文本编码。点击可换用其他编码显示文件。</translation>
     </message>
@@ -333,6 +622,26 @@
         <translation>每行 %1 字节</translation>
     </message>
     <message>
+        <source>&amp;Explain Selection</source>
+        <translation>解释选区(&amp;E)</translation>
+    </message>
+    <message>
+        <source>&amp;Translate Selection</source>
+        <translation>翻译选区(&amp;T)</translation>
+    </message>
+    <message>
+        <source>&amp;Summarize Selection</source>
+        <translation>总结选区(&amp;S)</translation>
+    </message>
+    <message>
+        <source>What Is This &amp;File?</source>
+        <translation>这是什么文件(&amp;F)？</translation>
+    </message>
+    <message>
+        <source>AI Setti&amp;ngs…</source>
+        <translation>AI 设置(&amp;N)…</translation>
+    </message>
+    <message>
         <source>&amp;About AIEdit</source>
         <translation>关于 AIEdit(&amp;A)</translation>
     </message>
@@ -355,6 +664,10 @@
     <message>
         <source>Hex &amp;Layout</source>
         <translation>十六进制布局(&amp;L)</translation>
+    </message>
+    <message>
+        <source>&amp;AI</source>
+        <translation>&amp;AI</translation>
     </message>
     <message>
         <source>&amp;Help</source>

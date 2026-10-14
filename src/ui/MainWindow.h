@@ -22,6 +22,7 @@ struct TextCodec;
 
 namespace aiedit::ui {
 
+class AiPanel;
 class DataInspector;
 
 class MainWindow : public QMainWindow
@@ -69,6 +70,8 @@ private:
     void resetZoom();
     void applyViewSettings(DocumentView* doc) const;
     void showAbout();
+    void showAiSettings();
+    void runAiAction(void (AiPanel::*action)());
 
     void documentStateChanged(DocumentView* doc);
     void updateFileStatus();
@@ -83,6 +86,8 @@ private:
     QTabWidget* m_tabs = nullptr;
     QDockWidget* m_inspectorDock = nullptr;
     DataInspector* m_inspector = nullptr;
+    QDockWidget* m_aiDock = nullptr;
+    AiPanel* m_aiPanel = nullptr;
 
     QLabel* m_typeLabel = nullptr;
     QLabel* m_sizeLabel = nullptr;
@@ -119,6 +124,11 @@ private:
     QAction* m_zoomOutAction = nullptr;
     QAction* m_resetZoomAction = nullptr;
     QActionGroup* m_bytesPerRowGroup = nullptr;
+    QAction* m_aiExplainAction = nullptr;
+    QAction* m_aiTranslateAction = nullptr;
+    QAction* m_aiSummarizeAction = nullptr;
+    QAction* m_aiIdentifyAction = nullptr;
+    QAction* m_aiSettingsAction = nullptr;
     QAction* m_aboutAction = nullptr;
     QAction* m_aboutQtAction = nullptr;
 

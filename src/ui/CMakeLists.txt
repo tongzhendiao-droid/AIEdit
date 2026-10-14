@@ -1,4 +1,8 @@
 qt_add_library(aiedit_ui STATIC
+    AiPanel.cpp AiPanel.h
+    AiSettings.cpp AiSettings.h
+    AiSettingsDialog.cpp AiSettingsDialog.h
+    ChatClient.cpp ChatClient.h
     DataInspector.cpp DataInspector.h
     DocumentView.cpp DocumentView.h
     FindBar.cpp FindBar.h
@@ -13,7 +17,7 @@ qt_add_library(aiedit_ui STATIC
     TextView.cpp TextView.h
 )
 target_link_libraries(aiedit_ui
-    PUBLIC aiedit_core Qt6::Widgets Qt6::Concurrent
+    PUBLIC aiedit_core Qt6::Widgets Qt6::Concurrent Qt6::Network
     PRIVATE aiedit_warnings)
 
 if(KF6SyntaxHighlighting_FOUND)

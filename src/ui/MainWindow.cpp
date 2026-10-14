@@ -4,6 +4,8 @@
 #include "core/FileType.h"
 #include "core/Offset.h"
 #include "core/TextCodec.h"
+#include "ui/AiPanel.h"
+#include "ui/AiSettingsDialog.h"
 #include "ui/DataInspector.h"
 #include "ui/HexView.h"
 #include "ui/Paths.h"
@@ -180,6 +182,20 @@ void MainWindow::createWidgets()
     m_inspectorDock->setWidget(m_inspector);
     addDockWidget(Qt::RightDockWidgetArea, m_inspectorDock);
 
+    m_aiPanel = new AiPanel;
+    m_aiPanel->setContextProvider([this]() -> std::optional<AiContext> {
+        if (const DocumentView* doc = currentDocument())
+            return doc->aiContext();
+        return std::nullopt;
+    });
+    connect(m_aiPanel, &AiPanel::settingsRequested, this, &MainWindow::showAiSettings);
+    m_aiDock = new QDockWidget(tr("AI Assistant"), this);
+    m_aiDock->setObjectName(QStringLiteral("aiDock"));
+    m_aiDock->setWidget(m_aiPanel);
+    addDockWidget(Qt::RightDockWidgetArea, m_aiDock);
+    tabifyDockWidget(m_inspectorDock, m_aiDock);
+    m_aiDock->raise();
+
     m_typeLabel = new QLabel;
     m_sizeLabel = new QLabel;
     m_codecButton = new QToolButton;
@@ -335,6 +351,19 @@ void MainWindow::createActions()
     connect(m_bytesPerRowGroup, &QActionGroup::triggered, this,
             [this](QAction* action) { setBytesPerRow(action->data().toInt()); });
 
+    auto aiAction = [this](const QString& text, void (AiPanel::*action)(), const QKeySequence& shortcut = {}) {
+        auto* a = new QAction(text, this);
+        a->setShortcut(shortcut);
+        connect(a, &QAction::triggered, this, [this, action] { runAiAction(action); });
+        return a;
+    };
+    m_aiExplainAction = aiAction(tr("&Explain Selection"), &AiPanel::explainSelection, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E));
+    m_aiTranslateAction = aiAction(tr("&Translate Selection"), &AiPanel::translateSelection);
+    m_aiSummarizeAction = aiAction(tr("&Summarize Selection"), &AiPanel::summarizeSelection);
+    m_aiIdentifyAction = aiAction(tr("What Is This &File?"), &AiPanel::identifyFile);
+    m_aiSettingsAction = new QAction(tr("AI Setti&ngs…"), this);
+    connect(m_aiSettingsAction, &QAction::triggered, this, &MainWindow::showAiSettings);
+
     m_aboutAction = new QAction(tr("&About AIEdit"), this);
     m_aboutAction->setMenuRole(QAction::AboutRole);
     connect(m_aboutAction, &QAction::triggered, this, &MainWindow::showAbout);
@@ -382,6 +411,18 @@ void MainWindow::createMenus()
     view->addSeparator();
     view->addAction(m_nextTabAction);
     view->addAction(m_previousTabAction);
+
+    QMenu* ai = menuBar()->addMenu(tr("&AI"));
+    QAction* showAi = m_aiDock->toggleViewAction();
+    showAi->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_A));
+    ai->addAction(showAi);
+    ai->addSeparator();
+    ai->addAction(m_aiExplainAction);
+    ai->addAction(m_aiTranslateAction);
+    ai->addAction(m_aiSummarizeAction);
+    ai->addAction(m_aiIdentifyAction);
+    ai->addSeparator();
+    ai->addAction(m_aiSettingsAction);
 
     QMenu* help = menuBar()->addMenu(tr("&Help"));
     help->addAction(m_aboutAction);
@@ -591,6 +632,7 @@ void MainWindow::documentStateChanged(DocumentView* doc)
     }
     updateCursorStatus();
     updateTextStatus();
+    m_aiPanel->refreshContext();
 }
 
 void MainWindow::updateActions()
@@ -598,7 +640,8 @@ void MainWindow::updateActions()
     const bool hasDocument = currentDocument() != nullptr;
     for (QAction* action : {m_closeAction, m_reloadAction, m_followAction, m_copyAction, m_copyHexAction, m_copyTextAction, m_copyCArrayAction,
                             m_copyOffsetAction, m_selectAllAction, m_goToAction, m_findAction, m_findNextAction,
-                            m_findPreviousAction}) {
+                            m_findPreviousAction, m_aiExplainAction, m_aiTranslateAction, m_aiSummarizeAction,
+                            m_aiIdentifyAction}) {
         action->setEnabled(hasDocument);
     }
     m_viewModeGroup->setEnabled(hasDocument);
@@ -707,6 +750,22 @@ void MainWindow::goTo()
         doc->hexView()->goTo(*offset);
         doc->hexView()->setFocus();
     }
+}
+
+void MainWindow::runAiAction(void (AiPanel::*action)())
+{
+    m_aiDock->show();
+    m_aiDock->raise();
+    (m_aiPanel->*action)();
+}
+
+void MainWindow::showAiSettings()
+{
+    AiSettingsDialog dialog(AiSettings::load(), this);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    dialog.settings().save();
+    m_aiPanel->settingsChanged();
 }
 
 void MainWindow::showAbout()

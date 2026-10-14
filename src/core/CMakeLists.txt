@@ -1,10 +1,12 @@
 # Pure C++ core: no Qt dependency, so it can be unit-tested in isolation and reused by a CLI later.
 add_library(aiedit_core STATIC
     FileSource.cpp FileSource.h
+    FileSummary.cpp FileSummary.h
     FileType.cpp FileType.h
     LineIndex.cpp LineIndex.h
     Offset.cpp Offset.h
     Search.cpp Search.h
+    Sse.cpp Sse.h
     TextCodec.cpp TextCodec.h
 )
 target_include_directories(aiedit_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)

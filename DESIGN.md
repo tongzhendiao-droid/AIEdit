@@ -13,7 +13,7 @@
 | 许可证 | GPL-3.0-or-later（可以复用 GPL 项目的代码，比如 klogg、Notepad++） |
 | 技术栈 | C++20 + Qt 6 Widgets，CMake 构建 |
 | 平台 | Linux（主力）和 Windows，代码保持 macOS 可移植 |
-| AI | 先接 Claude，Provider 抽象层留出 OpenAI 兼容接口和本地模型的位置 |
+| AI | 先接 DeepSeek（OpenAI 兼容的 `/chat/completions` 接口，通义、Kimi、Ollama 等兼容服务也能用）；Claude 作为下一个 Provider |
 | Markdown 视图 | 延后，先做 Hex、Text 和 AI |
 | 界面语言 | 源码里的字符串用英文并包上 `tr()`，中文通过 `translations/*.ts` 提供 |
 | 可选依赖 | KSyntaxHighlighting（语法高亮）和 uchardet（编码检测）。没装也能构建，只是少了对应功能 |
@@ -38,6 +38,8 @@ src/
     LineIndex    行索引：每 256 行一个检查点，支持后台构建、边建边读
     Search       字节搜索（Boyer-Moore-Horspool，支持 ?? 通配，分块可取消）
     Offset       偏移和行号表达式解析
+    Sse          SSE 流的增量解析（AI 流式输出）
+    FileSummary  十六进制 dump、熵、字符串提取、文件摘要（「这是什么文件」）
   ui/     Qt Widgets
     HexView      十六进制视图
     TextDocument 某种编码下的文本：解码器 + 后台建索引
@@ -48,6 +50,10 @@ src/
     SyntaxHighlighting  KSyntaxHighlighting 的封装（库不存在时自动降级）
     RowScrollBar 64 位行号到 QScrollBar 的映射
     DocumentView 一个打开的文件：Text/Hex 视图、同步、查找栏、监视文件变化
+    AiSettings   AI 服务设置；key 单独存放在仅本人可读的文件里，或从环境变量读取
+    ChatClient   流式请求 /chat/completions，解析 SSE，把错误整理成可读的信息
+    AiPanel      AI 助手面板：快捷操作、对话、附带内容和发送预览
+    AiSettingsDialog
     MainWindow, DataInspector
 tests/    Qt Test；GUI 测试以 offscreen 方式运行
 translations/  界面翻译（.ts）
@@ -69,7 +75,7 @@ translations/  界面翻译（.ts）
 - **查找**（M2）：Ctrl+F，可选文本、正则、十六进制三种模式；F3 / Shift+F3 查找下一个、上一个，到头自动绕回。
 - **默认只读**，需要修改时再进入编辑（M4）。
 
-## AI 功能（M3）
+## AI 功能（M3a 已完成，M3b 进行中）
 
 按价值排序：
 
@@ -80,10 +86,20 @@ translations/  界面翻译（.ts）
 5. **处理长文档**：总结、翻译、问答。
 6. **修复乱码**：本地列出常见的错误编码组合，由 AI 判断哪个结果通顺。
 
+已实现（M3a）：右侧的「AI 助手」面板。
+- **快捷操作**：解释、翻译、总结、这是什么文件。
+- **流式回答**：用 Markdown 渲染，支持表格和代码块。
+- **追问**：带上最近 8 轮对话。
+- **附带内容**：选区最多附带 32 KiB 文本，或 4 KiB 字节的十六进制 dump；面板会写明附带了什么，超出部分会注明只附带开头。
+- **「这是什么文件」**：只发送本机算出的摘要（类型、熵、字符串、开头 256 字节），不发送文件本身。
+- **发送预览**：显示将要发送的完整 JSON。API key 只放在请求头里，不会出现在预览中。
+- **API key 的保存**：key 保存在 `~/.config/AIEdit/api-key`，文件一创建就是 0600 权限；也可以改用环境变量 `AIEDIT_API_KEY` 或 `DEEPSEEK_API_KEY`，此时不会写入文件。
+
 接入方式：
 
-- 抽象 `LlmProvider` 接口（流式对话 + 工具调用）。第一个实现接 Claude 的 Messages API。Anthropic 没有官方 C++ SDK，所以直接用 Qt Network 发 HTTP 请求并解析 SSE。
-- 默认模型 Claude Opus 5.5（`claude-opus-5-5`），按任务设置 `output_config.effort`：解释、翻译这类快速任务用 `low`，推断结构用 `high`。
+- 现在只有一个 OpenAI 兼容的客户端（`ChatClient`）：用 Qt Network 发 HTTP 请求，再用 core 的 `SseParser` 解析流。DeepSeek 默认开启思考模式，所以快捷操作会显式发送 `thinking: disabled` 来加快速度；设置里可以打开「深度思考」。
+- 下一步抽象出 `LlmProvider` 接口，再接 Claude 的 Messages API。Anthropic 没有官方 C++ SDK，同样直接走 HTTP + SSE。
+- 默认模型 `deepseek-flash`（便宜、快），可选 `deepseek-v4-pro`。
 - 小文件直接放进上下文。大文件既不截断也不整篇上传，而是提供本地工具让模型按需读取：`file_info()`、`read_bytes(offset, len)`、`read_lines(from, n)`、`search(pattern)`。这些工具可以直接复用现有的 core（LineIndex、Search）。
 - 用结构化输出返回字段标注 `{offset, length, name, type, note}`。
 - Prompt caching：系统提示、工具定义和文件摘要放在请求前面且保持不变。
@@ -111,7 +127,8 @@ translations/  界面翻译（.ts）
 |---|---|---|
 | M1 | 项目框架、mmap、类型识别、HexView、数据检查器、多标签页、中文界面 | ✅ 完成 |
 | M2 | 文本视图（大文件、长行）、语法高亮、编码识别和切换、搜索（文本、正则、hex）、Text 与 Hex 联动、自动重新加载和跟随模式 | ✅ 完成 |
-| M3 | AI 面板：Provider 抽象 + Claude、流式输出、选中就问、本地工具、发送预览 | 下一步 |
+| M3a | AI 面板：DeepSeek / OpenAI 兼容接口、流式输出、解释/翻译/总结选区、这是什么文件、发送预览、key 安全保存 | ✅ 完成 |
+| M3b | 让 AI 用本地工具按需读取大文件（`read_bytes`、`search`……）、用结构化输出标注字段并显示在 Hex 视图上、Claude Provider | 下一步 |
 | M4 | 编辑和安全保存（piece table）、`.ksy` 模板 + AI 生成模板、文件对比 | |
 | 以后 | Markdown 视图、JSON/CSV 视图、本地模型、插件、字符栏按编码显示 | |
 

@@ -1,6 +1,8 @@
 #include "ui/DocumentView.h"
 
 #include "core/FileSource.h"
+#include "core/FileSummary.h"
+#include "ui/AiPanel.h"
 #include "ui/FindBar.h"
 #include "ui/HexView.h"
 #include "ui/Paths.h"
@@ -11,6 +13,7 @@
 #include <QApplication>
 #include <QEvent>
 #include <QFileInfo>
+#include <QLocale>
 #include <QScopedValueRollback>
 #include <QSplitter>
 #include <QTimer>
@@ -24,6 +27,52 @@ namespace {
 
 // Writers append in bursts; reload once things have been quiet this long.
 constexpr int kReloadDelayMs = 250;
+// How much of a selection goes to the AI: text as it is, bytes as a hex dump (about 4x larger).
+constexpr std::uint64_t kMaxContextTextBytes = 32 * 1024;
+constexpr std::uint64_t kMaxContextHexBytes = 4 * 1024;
+constexpr std::size_t kMaxSummaryStrings = 40;
+constexpr qsizetype kMaxSummaryStringLength = 120;
+
+// Descriptions for the model, so they stay in English.
+QString describeForAi(const core::FileTypeInfo& type, const core::TextCodec& codec, std::uint64_t size)
+{
+    QString kind;
+    switch (type.kind) {
+    case core::ContentKind::Empty:
+        kind = QStringLiteral("empty");
+        break;
+    case core::ContentKind::Binary:
+        kind = type.format.empty() ? QStringLiteral("binary")
+                                   : QStringLiteral("binary, %1").arg(QString::fromUtf8(type.format.data(),
+                                                                                       static_cast<qsizetype>(type.format.size())));
+        break;
+    case core::ContentKind::Text:
+        kind = QStringLiteral("text, decoded as %1").arg(QString::fromLatin1(codec.name.data(),
+                                                                             static_cast<qsizetype>(codec.name.size())));
+        break;
+    }
+    return QStringLiteral("%1, %2 bytes").arg(kind).arg(size);
+}
+
+QString summaryForAi(const core::FileSummary& summary, const QString& name, const QString& description)
+{
+    QString text = QStringLiteral("File: %1 (%2)\n").arg(name, description);
+    text += QStringLiteral("Entropy of the first 64 KiB: %1 bits per byte\n").arg(summary.headEntropy, 0, 'f', 2);
+    if (!summary.blockEntropy.empty()) {
+        QStringList values;
+        for (const double value : summary.blockEntropy)
+            values << QString::number(value, 'f', 1);
+        text += QStringLiteral("Entropy of evenly spaced 4 KiB blocks across the file: %1\n")
+                    .arg(values.join(QLatin1Char(' ')));
+    }
+    if (!summary.strings.empty()) {
+        text += QStringLiteral("Printable strings in the first 64 KiB:\n");
+        for (std::size_t i = 0; i < std::min(summary.strings.size(), kMaxSummaryStrings); ++i)
+            text += QStringLiteral("  %1\n").arg(QString::fromLatin1(summary.strings[i]).left(kMaxSummaryStringLength));
+    }
+    text += QStringLiteral("First bytes:\n```hexdump\n%1```").arg(QString::fromLatin1(summary.headDump));
+    return text;
+}
 
 } // namespace
 
@@ -274,6 +323,56 @@ void DocumentView::moveToEnd()
         m_textView->setCursorOffset(size);
     else
         m_hexView->goTo(size == 0 ? 0 : size - 1);
+}
+
+AiContext DocumentView::aiContext() const
+{
+    AiContext context;
+    context.fileName = QFileInfo(filePath()).fileName();
+    context.fileDescription = describeForAi(m_fileType, m_textDocument->codec(), m_source->size());
+    const auto bytes = m_source->bytes();
+    const QLocale locale;
+
+    if (isTextActive() && m_textView->hasSelection()) {
+        const std::uint64_t start = m_textView->selectionStart();
+        const std::uint64_t end = m_textView->selectionEnd();
+        std::uint64_t limit = end;
+        if (end - start > kMaxContextTextBytes) {
+            limit = m_textDocument->snapToCharStart(start + kMaxContextTextBytes);
+            context.truncated = true;
+        }
+        context.selectionContent = m_textDocument->decoder().decodePlain(bytes.subspan(start, limit - start));
+        const core::LineIndex& index = m_textDocument->index();
+        const std::uint64_t firstLine = index.row(index.rowIndexAt(start)).line + 1;
+        const std::uint64_t lastLine = index.row(index.rowIndexAt(end - 1)).line + 1;
+        const QString size = locale.toString(static_cast<qulonglong>(end - start));
+        context.selectionLabel =
+            firstLine == lastLine
+                ? tr("line %1 (%2 bytes)").arg(locale.toString(static_cast<qulonglong>(firstLine)), size)
+                : tr("lines %1–%2 (%3 bytes)")
+                      .arg(locale.toString(static_cast<qulonglong>(firstLine)),
+                           locale.toString(static_cast<qulonglong>(lastLine)), size);
+        context.selectionFence = m_textView->syntax().toLower();
+    } else if (!isTextActive() && m_hexView->selectionLength() > 1) {
+        const std::uint64_t start = m_hexView->selectionStart();
+        const std::uint64_t length = m_hexView->selectionLength();
+        const std::uint64_t shown = std::min(length, kMaxContextHexBytes);
+        context.truncated = shown < length;
+        context.selectionContent =
+            QString::fromLatin1(core::hexDump(bytes.subspan(start, static_cast<std::size_t>(shown)), start));
+        context.selectionLabel = tr("bytes 0x%1–0x%2 (%3 bytes)")
+                                     .arg(QString::number(start, 16).toUpper(),
+                                          QString::number(start + length - 1, 16).toUpper(),
+                                          locale.toString(static_cast<qulonglong>(length)));
+        context.selectionFence = QStringLiteral("hexdump");
+        context.selectionIsBinary = true;
+    }
+
+    // Built only when asked for: it reads the start of the file and samples the rest.
+    context.fileSummary = [source = m_source, name = context.fileName, description = context.fileDescription] {
+        return summaryForAi(core::summarizeFile(source->bytes()), name, description);
+    };
+    return context;
 }
 
 QString DocumentView::syntax() const

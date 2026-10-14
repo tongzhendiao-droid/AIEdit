@@ -16,7 +16,7 @@ endif()
 
 option(AIEDIT_BUILD_TESTS "Build the unit tests" ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Concurrent)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
 qt_standard_project_setup()
 
 # Optional: better charset detection, and syntax highlighting (the engine Kate uses).

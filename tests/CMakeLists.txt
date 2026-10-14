@@ -1,4 +1,4 @@
-find_package(Qt6 REQUIRED COMPONENTS Test)
+find_package(Qt6 REQUIRED COMPONENTS Test Network)
 
 # aiedit_add_test(<name> <libraries...>) builds <name>.cpp as a Qt Test executable.
 function(aiedit_add_test name)
@@ -13,9 +13,11 @@ aiedit_add_test(tst_filesource aiedit_core)
 aiedit_add_test(tst_offset aiedit_core)
 aiedit_add_test(tst_lineindex aiedit_core)
 aiedit_add_test(tst_search aiedit_core)
+aiedit_add_test(tst_aicore aiedit_core)
 aiedit_add_test(tst_hexview aiedit_ui)
 # The translation test loads the .qm files built for the application.
 target_compile_definitions(tst_hexview PRIVATE AIEDIT_QM_DIR="${CMAKE_BINARY_DIR}/src/i18n")
 add_dependencies(tst_hexview aiedit)
 aiedit_add_test(tst_textview aiedit_ui)
 aiedit_add_test(tst_searchjob aiedit_ui)
+aiedit_add_test(tst_chatclient aiedit_ui)

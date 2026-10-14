@@ -20,6 +20,7 @@ class FileSource;
 
 namespace aiedit::ui {
 
+struct AiContext;
 class FindBar;
 class HexView;
 class TextDocument;
@@ -61,6 +62,9 @@ public:
     // Syntax highlighting definition name; empty for plain text.
     QString syntax() const;
     void setSyntax(const QString& name);
+
+    // What the AI assistant may attach: the selection (text, or a hex dump) and a file summary.
+    AiContext aiContext() const;
 
     // Follow mode (like tail -f): after every reload, jump to the end of the file.
     bool isFollowing() const { return m_following; }
