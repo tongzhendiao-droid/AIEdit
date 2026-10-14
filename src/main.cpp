@@ -9,9 +9,9 @@
 int main(int argc, char* argv[])
 {
     QApplication app(argc, argv);
-    QApplication::setOrganizationName(QStringLiteral("cppEdit"));
-    QApplication::setApplicationName(QStringLiteral("cppEdit"));
-    QApplication::setApplicationVersion(QStringLiteral(CPPEDIT_VERSION));
+    QApplication::setOrganizationName(QStringLiteral("AIEdit"));
+    QApplication::setApplicationName(QStringLiteral("AIEdit"));
+    QApplication::setApplicationVersion(QStringLiteral(AIEDIT_VERSION));
 
     // Qt's own strings (standard buttons, file dialogs), then ours. Both are optional.
     QTranslator qtTranslator;
@@ -19,7 +19,7 @@ int main(int argc, char* argv[])
                           QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
         QApplication::installTranslator(&qtTranslator);
     QTranslator appTranslator;
-    if (appTranslator.load(QLocale(), QStringLiteral("cppedit"), QStringLiteral("_"), QStringLiteral(":/i18n")))
+    if (appTranslator.load(QLocale(), QStringLiteral("aiedit"), QStringLiteral("_"), QStringLiteral(":/i18n")))
         QApplication::installTranslator(&appTranslator);
 
     QCommandLineParser parser;
@@ -30,7 +30,7 @@ int main(int argc, char* argv[])
                                  QStringLiteral("[files...]"));
     parser.process(app);
 
-    cppedit::ui::MainWindow window;
+    aiedit::ui::MainWindow window;
     window.show();
     for (const QString& path : parser.positionalArguments())
         window.openFile(path);

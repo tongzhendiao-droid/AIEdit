@@ -11,7 +11,7 @@
 #include <QToolButton>
 #include <QtConcurrent/QtConcurrentRun>
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 FindBar::FindBar(QWidget* parent) : QWidget(parent)
 {
@@ -185,4 +185,4 @@ bool FindBar::eventFilter(QObject* watched, QEvent* event)
     return QWidget::eventFilter(watched, event);
 }
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

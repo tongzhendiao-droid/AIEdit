@@ -1,4 +1,4 @@
-# cppEdit
+# AIEdit
 
 快速、带 AI 辅助的文本与二进制文件查看器。用 C++20 和 Qt 6 编写，以查看为主、编辑为辅。
 
@@ -69,7 +69,7 @@ cmake --build build -j
 ```
 
 ```bash
-./build/src/cppedit 文件1 文件2
+./build/src/aiedit 文件1 文件2
 ```
 
 **Windows**：安装 Qt 6（MSVC 版本）和 CMake 后，用相同的 CMake 命令构建。Windows 版目前还没有验证过，已知的问题见 DESIGN.md 末尾。
@@ -80,7 +80,7 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-GUI 测试以 offscreen 方式运行，不会弹出窗口。如果设置了 `CPPEDIT_SCREENSHOT_DIR`，测试会把截图保存到这个目录。
+GUI 测试以 offscreen 方式运行，不会弹出窗口。如果设置了 `AIEDIT_SCREENSHOT_DIR`，测试会把截图保存到这个目录。
 
 ## 翻译
 

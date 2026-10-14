@@ -17,7 +17,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 namespace {
 
@@ -763,4 +763,4 @@ void HexView::copyToClipboard(const QString& text, const QString& message)
                            : message);
 }
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

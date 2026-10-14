@@ -8,11 +8,11 @@
 class QComboBox;
 class QTreeWidget;
 
-namespace cppedit::core {
+namespace aiedit::core {
 class FileSource;
 }
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 // Shows the bytes at one offset decoded as integers, floats, a timestamp and UTF-8.
 class DataInspector : public QWidget
@@ -41,4 +41,4 @@ private:
     std::uint64_t m_offset = 0;
 };
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

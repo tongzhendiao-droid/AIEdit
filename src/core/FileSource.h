@@ -7,7 +7,7 @@
 #include <system_error>
 #include <vector>
 
-namespace cppedit::core {
+namespace aiedit::core {
 
 // Errors specific to FileSource; OS errors are reported through std::system_category().
 enum class FileError
@@ -53,9 +53,9 @@ private:
     std::vector<std::uint8_t> m_owned; // contents, if read into memory
 };
 
-} // namespace cppedit::core
+} // namespace aiedit::core
 
 template <>
-struct std::is_error_code_enum<cppedit::core::FileError> : std::true_type
+struct std::is_error_code_enum<aiedit::core::FileError> : std::true_type
 {
 };

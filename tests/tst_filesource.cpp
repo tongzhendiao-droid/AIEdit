@@ -9,7 +9,7 @@
 #include <sys/stat.h>
 #endif
 
-using namespace cppedit::core;
+using namespace aiedit::core;
 
 namespace {
 

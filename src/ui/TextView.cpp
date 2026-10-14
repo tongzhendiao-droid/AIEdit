@@ -17,7 +17,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 namespace {
 
@@ -883,4 +883,4 @@ void TextView::focusOutEvent(QFocusEvent* event)
     viewport()->update();
 }
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

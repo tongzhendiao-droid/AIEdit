@@ -12,11 +12,11 @@
 template <typename T>
 class QPromise;
 
-namespace cppedit::core {
+namespace aiedit::core {
 class FileSource;
 }
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 enum class SearchMode
 {
@@ -79,4 +79,4 @@ SearchOutcome search(const SearchRequest& request, const SearchContext& context,
 // QtConcurrent::run entry point: progress in permille, cancellation through the future.
 void runSearch(QPromise<SearchOutcome>& promise, const SearchRequest& request, const SearchContext& context);
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

@@ -4,11 +4,11 @@
 #include <array>
 #include <initializer_list>
 
-#ifdef CPPEDIT_HAVE_UCHARDET
+#ifdef AIEDIT_HAVE_UCHARDET
 #include <uchardet.h>
 #endif
 
-namespace cppedit::core {
+namespace aiedit::core {
 
 namespace {
 
@@ -100,7 +100,7 @@ bool fitsMultiByteScheme(std::span<const std::uint8_t> sample, CharScheme scheme
 // hundred bytes of text to say anything.
 const TextCodec* detectCharset(std::span<const std::uint8_t> sample)
 {
-#ifdef CPPEDIT_HAVE_UCHARDET
+#ifdef AIEDIT_HAVE_UCHARDET
     const uchardet_t detector = uchardet_new();
     uchardet_handle_data(detector, reinterpret_cast<const char*>(sample.data()), sample.size());
     uchardet_data_end(detector);
@@ -319,4 +319,4 @@ const TextCodec& defaultCodec(const FileTypeInfo& type, std::span<const std::uin
     return *findCodec("windows-1252");
 }
 
-} // namespace cppedit::core
+} // namespace aiedit::core

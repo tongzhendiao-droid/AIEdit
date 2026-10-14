@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 namespace {
 
@@ -146,4 +146,4 @@ QString TextDecoder::decodePlain(std::span<const std::uint8_t> bytes) const
     return decoder.decode(view);
 }
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

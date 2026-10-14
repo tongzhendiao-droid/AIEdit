@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstring>
 
-namespace cppedit::core {
+namespace aiedit::core {
 
 namespace {
 
@@ -350,4 +350,4 @@ std::uint64_t snapToCharStart(const LineIndex& index, std::uint64_t offset)
     }
 }
 
-} // namespace cppedit::core
+} // namespace aiedit::core

@@ -4,7 +4,7 @@
 
 class QScrollBar;
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 // Drives a QScrollBar from a 64-bit "top row". QScrollBar counts in int, so larger ranges are
 // mapped proportionally onto kScaledMaximum steps; the exact row is kept here, not in the bar.
@@ -39,4 +39,4 @@ private:
     bool m_movingBar = false; // the bar is being moved by us, not the user
 };
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

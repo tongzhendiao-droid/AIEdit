@@ -9,7 +9,7 @@
 #include <thread>
 #include <vector>
 
-using namespace cppedit::core;
+using namespace aiedit::core;
 
 Q_DECLARE_METATYPE(CharScheme)
 
@@ -144,7 +144,7 @@ void TestLineIndex::defaultCodecs()
 
 void TestLineIndex::charsetDetection()
 {
-#ifndef CPPEDIT_HAVE_UCHARDET
+#ifndef AIEDIT_HAVE_UCHARDET
     QSKIP("Built without uchardet");
 #else
     // Longer samples, where uchardet knows better than byte structure and locale.

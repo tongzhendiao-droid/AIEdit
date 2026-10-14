@@ -18,7 +18,7 @@
 
 #include <algorithm>
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 namespace {
 
@@ -371,4 +371,4 @@ void DocumentView::syncFromHex()
     emit stateChanged();
 }
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

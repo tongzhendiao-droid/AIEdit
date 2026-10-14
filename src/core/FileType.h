@@ -5,7 +5,7 @@
 #include <span>
 #include <string_view>
 
-namespace cppedit::core {
+namespace aiedit::core {
 
 enum class ContentKind
 {
@@ -45,4 +45,4 @@ FileTypeInfo detectFileType(std::span<const std::uint8_t> data);
 // With allowTruncatedTail, a multi-byte sequence cut off by the end of the buffer is accepted.
 bool isValidUtf8(std::span<const std::uint8_t> data, bool allowTruncatedTail = false);
 
-} // namespace cppedit::core
+} // namespace aiedit::core

@@ -14,11 +14,11 @@
 
 class QSplitter;
 
-namespace cppedit::core {
+namespace aiedit::core {
 class FileSource;
 }
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 class FindBar;
 class HexView;
@@ -118,4 +118,4 @@ private:
     QTimer m_reloadTimer; // coalesces bursts of change notifications
 };
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

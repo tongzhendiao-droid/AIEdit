@@ -15,7 +15,7 @@
 
 #include <fstream>
 
-using namespace cppedit;
+using namespace aiedit;
 using ui::TextView;
 
 namespace {
@@ -413,7 +413,7 @@ void TestTextView::renderHighlightedCode()
         "// A tiny example\n"
         "int main(int argc, char* argv[])\n"
         "{\n"
-        "    const char* text = \"你好，cppEdit\";  /* 中文注释 */\n"
+        "    const char* text = \"你好，AIEdit\";  /* 中文注释 */\n"
         "    for (int i = 0; i < 3; ++i)\n"
         "        std::cout << text << i << '\\n';\n"
         "    return argc > 1 ? 0x1F : 42;\n"
@@ -431,14 +431,14 @@ void TestTextView::renderHighlightedCode()
     QCoreApplication::processEvents();
     const QPixmap shot = window.grab();
     QVERIFY(!shot.isNull());
-    if (const QByteArray dir = qgetenv("CPPEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
+    if (const QByteArray dir = qgetenv("AIEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
         QVERIFY(shot.save(QString::fromLocal8Bit(dir) + QStringLiteral("/highlight.png")));
 }
 
 void TestTextView::renderScreenshot()
 {
-    // Set CPPEDIT_SCREENSHOT_DIR to look at the rendering; otherwise this only checks that it paints.
-    std::string content = "// cppEdit 文本视图\n";
+    // Set AIEDIT_SCREENSHOT_DIR to look at the rendering; otherwise this only checks that it paints.
+    std::string content = "// AIEdit 文本视图\n";
     content += "int main() {\n\tconst char* greeting = \"你好，世界 👋\";\n\treturn 0;\n}\n";
     content += "2026-10-14 09:30:01 \x1B[31mERROR\x1B[0m connection reset by peer\n";
     content += "混合内容：English, 中文, 日本語, 한국어, emoji 🎉\n";
@@ -462,7 +462,7 @@ void TestTextView::renderScreenshot()
 
     const QPixmap shot = window.grab();
     QVERIFY(!shot.isNull());
-    if (const QByteArray dir = qgetenv("CPPEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
+    if (const QByteArray dir = qgetenv("AIEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
         QVERIFY(shot.save(QString::fromLocal8Bit(dir) + QStringLiteral("/textview.png")));
 }
 

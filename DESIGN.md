@@ -1,4 +1,4 @@
-# cppEdit 设计文档
+# AIEdit 设计文档
 
 ## 定位
 

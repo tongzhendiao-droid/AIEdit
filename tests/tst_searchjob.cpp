@@ -13,7 +13,7 @@
 
 #include <fstream>
 
-using namespace cppedit;
+using namespace aiedit;
 using ui::SearchMode;
 using ui::SearchOutcome;
 using ui::SearchRequest;

@@ -8,7 +8,7 @@
 #include <string_view>
 #include <vector>
 
-namespace cppedit::core {
+namespace aiedit::core {
 
 // A byte sequence to find; positions marked in `wildcard` match any byte.
 struct BytePattern
@@ -36,4 +36,4 @@ struct SearchControl
 std::optional<std::uint64_t> findPattern(std::span<const std::uint8_t> data, const BytePattern& pattern,
                                          std::uint64_t from, bool forward, const SearchControl& control = {});
 
-} // namespace cppedit::core
+} // namespace aiedit::core

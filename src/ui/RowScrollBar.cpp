@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 void RowScrollBar::setRange(std::uint64_t maxTopRow, int pageRows)
 {
@@ -72,4 +72,4 @@ std::uint64_t RowScrollBar::rowForValue(int value) const
         std::llround(static_cast<double>(value) / kScaledMaximum * static_cast<double>(m_maxTopRow)));
 }
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

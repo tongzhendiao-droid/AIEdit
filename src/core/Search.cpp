@@ -4,7 +4,7 @@
 #include <cstring>
 #include <functional>
 
-namespace cppedit::core {
+namespace aiedit::core {
 
 namespace {
 
@@ -179,4 +179,4 @@ std::optional<std::uint64_t> findPattern(std::span<const std::uint8_t> data, con
     return std::nullopt;
 }
 
-} // namespace cppedit::core
+} // namespace aiedit::core

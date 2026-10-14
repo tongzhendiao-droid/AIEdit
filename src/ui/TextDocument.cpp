@@ -5,7 +5,7 @@
 
 #include <algorithm>
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 namespace {
 
@@ -95,4 +95,4 @@ std::uint64_t TextDocument::snapToCharStart(std::uint64_t offset) const
     return core::snapToCharStart(*m_index, offset);
 }
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

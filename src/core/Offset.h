@@ -4,7 +4,7 @@
 #include <optional>
 #include <string_view>
 
-namespace cppedit::core {
+namespace aiedit::core {
 
 // Parses a "go to offset" expression.
 //   0x1F, 1Fh, 1f  -> hexadecimal (a 0x prefix, an h suffix or any of a-f)
@@ -18,4 +18,4 @@ std::optional<std::uint64_t> parseOffset(std::string_view text, std::uint64_t cu
 // malformed input or overflow.
 std::optional<std::uint64_t> parseLine(std::string_view text, std::uint64_t currentLine);
 
-} // namespace cppedit::core
+} // namespace aiedit::core

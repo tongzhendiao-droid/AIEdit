@@ -1,4 +1,4 @@
-qt_add_library(cppedit_ui STATIC
+qt_add_library(aiedit_ui STATIC
     DataInspector.cpp DataInspector.h
     DocumentView.cpp DocumentView.h
     FindBar.cpp FindBar.h
@@ -12,11 +12,11 @@ qt_add_library(cppedit_ui STATIC
     TextDocument.cpp TextDocument.h
     TextView.cpp TextView.h
 )
-target_link_libraries(cppedit_ui
-    PUBLIC cppedit_core Qt6::Widgets Qt6::Concurrent
-    PRIVATE cppedit_warnings)
+target_link_libraries(aiedit_ui
+    PUBLIC aiedit_core Qt6::Widgets Qt6::Concurrent
+    PRIVATE aiedit_warnings)
 
 if(KF6SyntaxHighlighting_FOUND)
-    target_link_libraries(cppedit_ui PUBLIC KF6::SyntaxHighlighting)
-    target_compile_definitions(cppedit_ui PUBLIC CPPEDIT_HAVE_KSYNTAXHIGHLIGHTING)
+    target_link_libraries(aiedit_ui PUBLIC KF6::SyntaxHighlighting)
+    target_compile_definitions(aiedit_ui PUBLIC AIEDIT_HAVE_KSYNTAXHIGHLIGHTING)
 endif()

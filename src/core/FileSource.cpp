@@ -19,16 +19,16 @@
 #include <unistd.h>
 #endif
 
-static_assert(sizeof(void*) == 8, "cppEdit maps whole files and requires a 64-bit address space");
+static_assert(sizeof(void*) == 8, "AIEdit maps whole files and requires a 64-bit address space");
 
-namespace cppedit::core {
+namespace aiedit::core {
 
 namespace {
 
 class FileErrorCategory final : public std::error_category
 {
 public:
-    const char* name() const noexcept override { return "cppedit.file"; }
+    const char* name() const noexcept override { return "aiedit.file"; }
 
     std::string message(int ev) const override
     {
@@ -264,4 +264,4 @@ FileSource::~FileSource()
 
 #endif
 
-} // namespace cppedit::core
+} // namespace aiedit::core

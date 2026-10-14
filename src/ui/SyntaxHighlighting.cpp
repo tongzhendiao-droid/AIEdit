@@ -2,7 +2,7 @@
 
 #include <QPalette>
 
-#ifdef CPPEDIT_HAVE_KSYNTAXHIGHLIGHTING
+#ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
 #include <KSyntaxHighlighting/AbstractHighlighter>
 #include <KSyntaxHighlighting/Definition>
 #include <KSyntaxHighlighting/Format>
@@ -14,9 +14,9 @@
 #include <algorithm>
 #include <tuple>
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
-#ifdef CPPEDIT_HAVE_KSYNTAXHIGHLIGHTING
+#ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
 
 namespace {
 
@@ -86,7 +86,7 @@ struct SyntaxHighlighter::Impl
 
 bool isSyntaxHighlightingAvailable()
 {
-#ifdef CPPEDIT_HAVE_KSYNTAXHIGHLIGHTING
+#ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
     return true;
 #else
     return false;
@@ -96,7 +96,7 @@ bool isSyntaxHighlightingAvailable()
 QList<SyntaxInfo> availableSyntaxes()
 {
     QList<SyntaxInfo> result;
-#ifdef CPPEDIT_HAVE_KSYNTAXHIGHLIGHTING
+#ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
     for (const KSyntaxHighlighting::Definition& definition : repository().definitions()) {
         if (!definition.isHidden())
             result.append({definition.name(), definition.translatedName(), definition.translatedSection()});
@@ -110,7 +110,7 @@ QList<SyntaxInfo> availableSyntaxes()
 
 QString syntaxForFileName(const QString& fileName)
 {
-#ifdef CPPEDIT_HAVE_KSYNTAXHIGHLIGHTING
+#ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
     const KSyntaxHighlighting::Definition definition = repository().definitionForFileName(fileName);
     return definition.isValid() ? definition.name() : QString();
 #else
@@ -121,7 +121,7 @@ QString syntaxForFileName(const QString& fileName)
 
 QString translatedSyntaxName(const QString& name)
 {
-#ifdef CPPEDIT_HAVE_KSYNTAXHIGHLIGHTING
+#ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
     const KSyntaxHighlighting::Definition definition = repository().definitionForName(name);
     return definition.isValid() ? definition.translatedName() : name;
 #else
@@ -136,7 +136,7 @@ SyntaxState& SyntaxState::operator=(const SyntaxState&) = default;
 
 SyntaxHighlighter::SyntaxHighlighter(const QString& syntaxName, const QPalette& palette)
 {
-#ifdef CPPEDIT_HAVE_KSYNTAXHIGHLIGHTING
+#ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
     if (syntaxName.isEmpty())
         return;
     const KSyntaxHighlighting::Definition definition = repository().definitionForName(syntaxName);
@@ -160,7 +160,7 @@ bool SyntaxHighlighter::isActive() const
 
 QString SyntaxHighlighter::syntaxName() const
 {
-#ifdef CPPEDIT_HAVE_KSYNTAXHIGHLIGHTING
+#ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
     return m_impl ? m_impl->collector.definition().name() : QString();
 #else
     return {};
@@ -169,7 +169,7 @@ QString SyntaxHighlighter::syntaxName() const
 
 QList<QTextLayout::FormatRange> SyntaxHighlighter::highlightLine(const QString& text, SyntaxState& state)
 {
-#ifdef CPPEDIT_HAVE_KSYNTAXHIGHLIGHTING
+#ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
     if (!m_impl)
         return {};
     const KSyntaxHighlighting::State previous = state.m_impl ? state.m_impl->state : KSyntaxHighlighting::State();
@@ -184,4 +184,4 @@ QList<QTextLayout::FormatRange> SyntaxHighlighter::highlightLine(const QString& 
 #endif
 }
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

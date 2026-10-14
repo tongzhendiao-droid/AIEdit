@@ -14,7 +14,7 @@
 
 #include <fstream>
 
-using namespace cppedit;
+using namespace aiedit;
 using ui::HexView;
 
 namespace {
@@ -271,8 +271,8 @@ void TestHexView::mainWindowOpensAndDeduplicates()
 
 void TestHexView::renderScreenshot()
 {
-    // Set CPPEDIT_SCREENSHOT_DIR to look at the rendering; otherwise this only checks that it paints.
-    std::string content = "#!/bin/sh\necho \"hello, cppEdit\"\n";
+    // Set AIEDIT_SCREENSHOT_DIR to look at the rendering; otherwise this only checks that it paints.
+    std::string content = "#!/bin/sh\necho \"hello, AIEdit\"\n";
     content += std::string("\x00\x00\x00\x00\x7F" "ELF\x02\x01\x01\x00\xFF\xFE\x80\x1B\x01\x02\t\r", 22);
     content += "UTF-8: 你好，世界\n";
     content += countingBytes(200);
@@ -289,7 +289,7 @@ void TestHexView::renderScreenshot()
 
     const QPixmap shot = window.grab();
     QVERIFY(!shot.isNull());
-    if (const QByteArray dir = qgetenv("CPPEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
+    if (const QByteArray dir = qgetenv("AIEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
         QVERIFY(shot.save(QString::fromLocal8Bit(dir) + QStringLiteral("/hexview.png")));
 }
 
@@ -297,19 +297,19 @@ void TestHexView::chineseTranslation()
 {
     // Catches .ts contexts that do not match the runtime class names (e.g. a missing namespace).
     QTranslator translator;
-    if (!translator.load(QStringLiteral(CPPEDIT_QM_DIR "/cppedit_zh_CN.qm")))
+    if (!translator.load(QStringLiteral(AIEDIT_QM_DIR "/aiedit_zh_CN.qm")))
         QSKIP("Translations were not built (lrelease missing)");
     QCoreApplication::installTranslator(&translator);
 
     ui::MainWindow window;
     window.resize(1100, 520);
     QCOMPARE(window.menuBar()->actions().first()->text(), QStringLiteral("文件(&F)"));
-    QVERIFY(window.openFile(ui::toQString(writeFile(m_dir, "zh.txt", "你好，cppEdit\n"))));
+    QVERIFY(window.openFile(ui::toQString(writeFile(m_dir, "zh.txt", "你好，AIEdit\n"))));
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
     window.currentDocument()->hexView()->setFocus();
     QCoreApplication::processEvents();
-    if (const QByteArray dir = qgetenv("CPPEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
+    if (const QByteArray dir = qgetenv("AIEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
         QVERIFY(window.grab().save(QString::fromLocal8Bit(dir) + QStringLiteral("/hexview_zh.png")));
 
     QCoreApplication::removeTranslator(&translator);

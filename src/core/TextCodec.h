@@ -7,7 +7,7 @@
 #include <span>
 #include <string_view>
 
-namespace cppedit::core {
+namespace aiedit::core {
 
 // How an encoding lays characters out in bytes: enough to find line breaks and character
 // boundaries without decoding. Decoding itself is left to the UI layer (Qt/ICU).
@@ -32,7 +32,7 @@ struct TextCodec
     CharScheme scheme;
 };
 
-// Every codec cppEdit offers, Unicode first.
+// Every codec AIEdit offers, Unicode first.
 std::span<const TextCodec> knownCodecs();
 // Case-insensitive lookup; nullptr if unknown.
 const TextCodec* findCodec(std::string_view name);
@@ -54,4 +54,4 @@ std::size_t bomLength(std::span<const std::uint8_t> data, CharScheme scheme);
 const TextCodec& defaultCodec(const FileTypeInfo& type, std::span<const std::uint8_t> data,
                               std::string_view preferredLegacy = "GB18030");
 
-} // namespace cppedit::core
+} // namespace aiedit::core

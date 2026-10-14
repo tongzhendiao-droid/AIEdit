@@ -8,9 +8,9 @@
 
 class QPalette;
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
-// Syntax highlighting through KSyntaxHighlighting (Kate's engine) when cppEdit is built with it;
+// Syntax highlighting through KSyntaxHighlighting (Kate's engine) when AIEdit is built with it;
 // otherwise everything here reports "no highlighting". Callers need no #ifdefs.
 
 struct SyntaxInfo
@@ -63,4 +63,4 @@ private:
     std::unique_ptr<Impl> m_impl;
 };
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

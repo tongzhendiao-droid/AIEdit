@@ -2,8 +2,8 @@
 
 #include <QTest>
 
-using cppedit::core::parseLine;
-using cppedit::core::parseOffset;
+using aiedit::core::parseLine;
+using aiedit::core::parseOffset;
 
 class TestOffset : public QObject
 {

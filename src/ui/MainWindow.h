@@ -15,12 +15,12 @@ class QStackedWidget;
 class QTabWidget;
 class QToolButton;
 
-namespace cppedit::core {
+namespace aiedit::core {
 struct FileTypeInfo;
 struct TextCodec;
 }
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 class DataInspector;
 
@@ -129,4 +129,4 @@ private:
     QString m_lastGoTo;
 };
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

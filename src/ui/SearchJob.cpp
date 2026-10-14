@@ -16,7 +16,7 @@
 #include <thread>
 #include <utility>
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 namespace {
 
@@ -276,4 +276,4 @@ void runSearch(QPromise<SearchOutcome>& promise, const SearchRequest& request, c
     promise.addResult(search(request, context, hooks));
 }
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

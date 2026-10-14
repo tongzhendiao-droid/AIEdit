@@ -12,11 +12,11 @@
 #include <memory>
 #include <optional>
 
-namespace cppedit::core {
+namespace aiedit::core {
 class FileSource;
 }
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 // Read-only hex view with three columns: offset | hex bytes | characters.
 //
@@ -181,4 +181,4 @@ private:
     std::array<QString, 256> m_charText;
 };
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

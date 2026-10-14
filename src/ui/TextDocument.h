@@ -10,11 +10,11 @@
 #include <memory>
 #include <thread>
 
-namespace cppedit::core {
+namespace aiedit::core {
 class FileSource;
 }
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 // A file seen as text in one codec: the decoder plus a line index that is built on a
 // background thread. Small files are indexed synchronously so they appear complete at once.
@@ -72,4 +72,4 @@ private:
     std::uint64_t m_reportedRows = 0;
 };
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <limits>
 
-namespace cppedit::core {
+namespace aiedit::core {
 
 namespace {
 
@@ -100,4 +100,4 @@ std::optional<std::uint64_t> parseLine(std::string_view text, std::uint64_t curr
     return std::max<std::uint64_t>(1, *value);
 }
 
-} // namespace cppedit::core
+} // namespace aiedit::core

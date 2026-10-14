@@ -11,7 +11,7 @@ class QLabel;
 class QLineEdit;
 class QToolButton;
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 // The search bar under a document: query, mode and options, plus the background search.
 // The document view decides where to search from and what to do with a match.
@@ -61,4 +61,4 @@ private:
     QFutureWatcher<SearchOutcome> m_watcher;
 };
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

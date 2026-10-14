@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-using namespace cppedit::core;
+using namespace aiedit::core;
 
 Q_DECLARE_METATYPE(ContentKind)
 Q_DECLARE_METATYPE(Encoding)

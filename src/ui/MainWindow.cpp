@@ -39,7 +39,7 @@
 
 #include <algorithm>
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 namespace {
 
@@ -335,7 +335,7 @@ void MainWindow::createActions()
     connect(m_bytesPerRowGroup, &QActionGroup::triggered, this,
             [this](QAction* action) { setBytesPerRow(action->data().toInt()); });
 
-    m_aboutAction = new QAction(tr("&About cppEdit"), this);
+    m_aboutAction = new QAction(tr("&About AIEdit"), this);
     m_aboutAction->setMenuRole(QAction::AboutRole);
     connect(m_aboutAction, &QAction::triggered, this, &MainWindow::showAbout);
     m_aboutQtAction = new QAction(tr("About &Qt"), this);
@@ -570,7 +570,7 @@ void MainWindow::currentTabChanged()
 {
     DocumentView* doc = currentDocument();
     m_inspector->setSource(doc ? doc->source() : nullptr);
-    setWindowTitle(doc ? tr("%1 — cppEdit").arg(QFileInfo(doc->filePath()).fileName()) : QStringLiteral("cppEdit"));
+    setWindowTitle(doc ? tr("%1 — AIEdit").arg(QFileInfo(doc->filePath()).fileName()) : QStringLiteral("AIEdit"));
     updateFileStatus();
     documentStateChanged(doc);
     updateActions();
@@ -711,8 +711,8 @@ void MainWindow::goTo()
 
 void MainWindow::showAbout()
 {
-    QMessageBox::about(this, tr("About cppEdit"),
-                       tr("<h3>cppEdit %1</h3>"
+    QMessageBox::about(this, tr("About AIEdit"),
+                       tr("<h3>AIEdit %1</h3>"
                           "<p>A fast, AI-assisted viewer for text and binary files.</p>"
                           "<p>Licensed under the GNU General Public License, version 3 or later.</p>")
                            .arg(QCoreApplication::applicationVersion()));
@@ -833,4 +833,4 @@ void MainWindow::updateCursorStatus()
     }
 }
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

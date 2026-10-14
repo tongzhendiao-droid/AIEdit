@@ -21,7 +21,7 @@
     </message>
 </context>
 <context>
-    <name>cppedit::ui::DataInspector</name>
+    <name>aiedit::ui::DataInspector</name>
     <message>
         <source>Little-endian</source>
         <translation>小端序</translation>
@@ -96,7 +96,7 @@
     </message>
 </context>
 <context>
-    <name>cppedit::ui::DocumentView</name>
+    <name>aiedit::ui::DocumentView</name>
     <message>
         <source>Cannot reload: %1</source>
         <translation>无法重新加载：%1</translation>
@@ -107,7 +107,7 @@
     </message>
 </context>
 <context>
-    <name>cppedit::ui::FindBar</name>
+    <name>aiedit::ui::FindBar</name>
     <message>
         <source>Text</source>
         <translation>文本</translation>
@@ -170,7 +170,7 @@
     </message>
 </context>
 <context>
-    <name>cppedit::ui::HexView</name>
+    <name>aiedit::ui::HexView</name>
     <message>
         <source>Copy as Hex</source>
         <translation>复制为十六进制</translation>
@@ -207,7 +207,7 @@
     </message>
 </context>
 <context>
-    <name>cppedit::ui::MainWindow</name>
+    <name>aiedit::ui::MainWindow</name>
     <message>
         <source>non-UTF-8 (GBK, Latin-1, …)</source>
         <translation>非 UTF-8（GBK、Latin-1 等）</translation>
@@ -333,8 +333,8 @@
         <translation>每行 %1 字节</translation>
     </message>
     <message>
-        <source>&amp;About cppEdit</source>
-        <translation>关于 cppEdit(&amp;A)</translation>
+        <source>&amp;About AIEdit</source>
+        <translation>关于 AIEdit(&amp;A)</translation>
     </message>
     <message>
         <source>About &amp;Qt</source>
@@ -419,8 +419,8 @@
         <translation>打开文件</translation>
     </message>
     <message>
-        <source>%1 — cppEdit</source>
-        <translation>%1 — cppEdit</translation>
+        <source>%1 — AIEdit</source>
+        <translation>%1 — AIEdit</translation>
     </message>
     <message>
         <source>Font size: %1 pt</source>
@@ -455,12 +455,12 @@
         <translation>%1 超出文件末尾，已移到最后一个字节</translation>
     </message>
     <message>
-        <source>About cppEdit</source>
-        <translation>关于 cppEdit</translation>
+        <source>About AIEdit</source>
+        <translation>关于 AIEdit</translation>
     </message>
     <message>
-        <source>&lt;h3&gt;cppEdit %1&lt;/h3&gt;&lt;p&gt;A fast, AI-assisted viewer for text and binary files.&lt;/p&gt;&lt;p&gt;Licensed under the GNU General Public License, version 3 or later.&lt;/p&gt;</source>
-        <translation>&lt;h3&gt;cppEdit %1&lt;/h3&gt;&lt;p&gt;快速、带 AI 辅助的文本与二进制文件查看器。&lt;/p&gt;&lt;p&gt;基于 GNU 通用公共许可证第 3 版或更高版本发布。&lt;/p&gt;</translation>
+        <source>&lt;h3&gt;AIEdit %1&lt;/h3&gt;&lt;p&gt;A fast, AI-assisted viewer for text and binary files.&lt;/p&gt;&lt;p&gt;Licensed under the GNU General Public License, version 3 or later.&lt;/p&gt;</source>
+        <translation>&lt;h3&gt;AIEdit %1&lt;/h3&gt;&lt;p&gt;快速、带 AI 辅助的文本与二进制文件查看器。&lt;/p&gt;&lt;p&gt;基于 GNU 通用公共许可证第 3 版或更高版本发布。&lt;/p&gt;</translation>
     </message>
     <message>
         <source>Empty file</source>
@@ -524,7 +524,7 @@
     </message>
 </context>
 <context>
-    <name>cppedit::ui::TextView</name>
+    <name>aiedit::ui::TextView</name>
     <message>
         <source>The selection is too large to copy (limit: %1)</source>
         <translation>选区太大，无法复制（上限：%1）</translation>

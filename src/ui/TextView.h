@@ -16,7 +16,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 class TextDocument;
 
@@ -182,4 +182,4 @@ private:
     Colors m_colors;
 };
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

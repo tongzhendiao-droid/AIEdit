@@ -4,7 +4,7 @@
 
 #include <string>
 
-using namespace cppedit::core;
+using namespace aiedit::core;
 
 namespace {
 

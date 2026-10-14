@@ -11,7 +11,7 @@
 #include <span>
 #include <vector>
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 // Decoded text that remembers where every UTF-16 code unit came from.
 struct DecodedText
@@ -55,4 +55,4 @@ private:
     mutable QHash<quint32, char32_t> m_cache; // legacy multi-byte characters, keyed by their bytes
 };
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

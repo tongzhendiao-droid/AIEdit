@@ -9,7 +9,7 @@
 #include <span>
 #include <vector>
 
-namespace cppedit::core {
+namespace aiedit::core {
 
 // Which code unit ends a line. Lf also covers CRLF: the CR is then left out of the row's text.
 enum class LineBreak
@@ -135,4 +135,4 @@ private:
 // returned unchanged for them.
 std::uint64_t snapToCharStart(const LineIndex& index, std::uint64_t offset);
 
-} // namespace cppedit::core
+} // namespace aiedit::core
