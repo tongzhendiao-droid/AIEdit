@@ -1,7 +1,10 @@
 #pragma once
 
+#include "ui/DocumentView.h"
+
 #include <QMainWindow>
 
+#include <string_view>
 #include <system_error>
 
 class QAction;
@@ -10,16 +13,16 @@ class QDockWidget;
 class QLabel;
 class QStackedWidget;
 class QTabWidget;
+class QToolButton;
 
 namespace cppedit::core {
 struct FileTypeInfo;
+struct TextCodec;
 }
 
 namespace cppedit::ui {
 
 class DataInspector;
-class DocumentView;
-class HexView;
 
 class MainWindow : public QMainWindow
 {
@@ -38,6 +41,9 @@ public:
     DocumentView* currentDocument() const;
     DataInspector* dataInspector() const { return m_inspector; }
 
+    // The legacy encoding to try first for non-UTF-8 text, from the user's locale.
+    static std::string_view preferredLegacyCodec();
+
 protected:
     void closeEvent(QCloseEvent* event) override;
     void dragEnterEvent(QDragEnterEvent* event) override;
@@ -47,23 +53,28 @@ private:
     void createWidgets();
     void createActions();
     void createMenus();
+    void createCodecMenu();
+    void populateSyntaxMenu();
     void readSettings();
     void writeSettings() const;
 
     void showOpenDialog();
     void closeTab(int index);
     void currentTabChanged();
-    void goToOffset();
+    void goTo();
+    void setViewMode(DocumentView::ViewMode mode);
+    void setCodec(const core::TextCodec& codec);
     void setBytesPerRow(int bytesPerRow);
     void zoomBy(int steps);
     void resetZoom();
-    void applyViewSettings(HexView* view) const;
+    void applyViewSettings(DocumentView* doc) const;
     void showAbout();
 
+    void documentStateChanged(DocumentView* doc);
     void updateFileStatus();
     void updateCursorStatus();
+    void updateTextStatus();
     void updateActions();
-    HexView* currentHexView() const;
     QString describeFileType(const core::FileTypeInfo& type) const;
     QString describeError(const std::error_code& ec) const;
 
@@ -75,11 +86,17 @@ private:
 
     QLabel* m_typeLabel = nullptr;
     QLabel* m_sizeLabel = nullptr;
-    QLabel* m_cursorLabel = nullptr;
+    QToolButton* m_codecButton = nullptr;
+    QToolButton* m_syntaxButton = nullptr;
+    QLabel* m_lineEndingLabel = nullptr;
+    QLabel* m_linesLabel = nullptr;
+    QLabel* m_positionLabel = nullptr;
     QLabel* m_selectionLabel = nullptr;
 
     QAction* m_openAction = nullptr;
     QAction* m_closeAction = nullptr;
+    QAction* m_reloadAction = nullptr;
+    QAction* m_followAction = nullptr;
     QAction* m_quitAction = nullptr;
     QAction* m_copyAction = nullptr;
     QAction* m_copyHexAction = nullptr;
@@ -88,8 +105,16 @@ private:
     QAction* m_copyOffsetAction = nullptr;
     QAction* m_selectAllAction = nullptr;
     QAction* m_goToAction = nullptr;
+    QAction* m_findAction = nullptr;
+    QAction* m_findNextAction = nullptr;
+    QAction* m_findPreviousAction = nullptr;
     QAction* m_nextTabAction = nullptr;
     QAction* m_previousTabAction = nullptr;
+    QActionGroup* m_viewModeGroup = nullptr;
+    QAction* m_textModeAction = nullptr;
+    QAction* m_hexModeAction = nullptr;
+    QAction* m_splitModeAction = nullptr;
+    QActionGroup* m_codecGroup = nullptr;
     QAction* m_zoomInAction = nullptr;
     QAction* m_zoomOutAction = nullptr;
     QAction* m_resetZoomAction = nullptr;

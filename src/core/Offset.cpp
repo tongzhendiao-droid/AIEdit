@@ -79,4 +79,25 @@ std::optional<std::uint64_t> parseOffset(std::string_view text, std::uint64_t cu
     return value;
 }
 
+std::optional<std::uint64_t> parseLine(std::string_view text, std::uint64_t currentLine)
+{
+    text = trim(text);
+    int sign = 0;
+    if (!text.empty() && (text.front() == '+' || text.front() == '-')) {
+        sign = text.front() == '+' ? 1 : -1;
+        text = trim(text.substr(1));
+    }
+    const auto value = parseNumber(text, 10);
+    if (!value)
+        return std::nullopt;
+    if (sign > 0) {
+        if (*value > std::numeric_limits<std::uint64_t>::max() - currentLine)
+            return std::nullopt;
+        return currentLine + *value;
+    }
+    if (sign < 0)
+        return *value >= currentLine ? 1 : currentLine - *value;
+    return std::max<std::uint64_t>(1, *value);
+}
+
 } // namespace cppedit::core

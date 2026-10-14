@@ -11,7 +11,6 @@
 #include <QLocale>
 #include <QMenu>
 #include <QPainter>
-#include <QScopedValueRollback>
 #include <QScrollBar>
 #include <QWheelEvent>
 
@@ -22,8 +21,6 @@ namespace cppedit::ui {
 
 namespace {
 
-// Scroll bar resolution once the row count no longer fits in an int.
-constexpr int kScrollBarMax = 1 << 30;
 // The hex pane leaves an extra blank column after every group of this many bytes.
 constexpr int kGroupSize = 8;
 constexpr int kAutoScrollIntervalMs = 40;
@@ -38,7 +35,7 @@ QColor mix(const QColor& a, const QColor& b, float t)
 
 } // namespace
 
-HexView::HexView(QWidget* parent) : QAbstractScrollArea(parent)
+HexView::HexView(QWidget* parent) : QAbstractScrollArea(parent), m_rows(verticalScrollBar())
 {
     for (int b = 0; b < 256; ++b) {
         m_hexText[b] = QStringLiteral("%1").arg(b, 2, 16, QLatin1Char('0')).toUpper();
@@ -63,11 +60,20 @@ std::uint64_t HexView::size() const
 void HexView::setSource(std::shared_ptr<const core::FileSource> source)
 {
     m_source = std::move(source);
-    m_topRow = 0;
+    m_rows.setTopRow(0);
     updateMetrics(); // the offset column width depends on the file size
     updateScrollBars();
     m_cursor = m_anchor = 1; // force the signals below
     setCursorAndAnchor(0, 0);
+}
+
+void HexView::replaceSource(std::shared_ptr<const core::FileSource> source)
+{
+    m_source = std::move(source);
+    updateMetrics();
+    updateScrollBars(); // clamps the top row
+    const std::uint64_t last = size() == 0 ? 0 : size() - 1;
+    setCursorAndAnchor(std::min(m_cursor, last), std::min(m_anchor, last));
 }
 
 void HexView::setBytesPerRow(int bytesPerRow)
@@ -109,7 +115,7 @@ void HexView::goTo(std::uint64_t offset)
 {
     const std::uint64_t row = std::min(offset, size() == 0 ? 0 : size() - 1) / m_bytesPerRow;
     const auto visible = static_cast<std::uint64_t>(visibleRows());
-    if (row < m_topRow || row >= m_topRow + visible)
+    if (row < m_rows.topRow() || row >= m_rows.topRow() + visible)
         setTopRow(row > visible / 2 ? row - visible / 2 : 0);
     moveCursor(offset, false);
 }
@@ -137,6 +143,13 @@ int HexView::visibleRows() const
     return std::max(1, (viewport()->height() - m_headerHeight) / m_lineHeight);
 }
 
+QSize HexView::sizeHint() const
+{
+    const int width = static_cast<int>(std::ceil(contentWidth())) + verticalScrollBar()->sizeHint().width() +
+                      2 * frameWidth();
+    return {width, QAbstractScrollArea::sizeHint().height()};
+}
+
 std::uint64_t HexView::rowCount() const
 {
     const std::uint64_t n = size();
@@ -150,44 +163,9 @@ std::uint64_t HexView::maxTopRow() const
     return rows > visible ? rows - visible : 0;
 }
 
-int HexView::scrollValueForRow(std::uint64_t row) const
-{
-    if (!m_scrollBarScaled)
-        return static_cast<int>(row);
-    const std::uint64_t maxTop = maxTopRow();
-    return maxTop == 0 ? 0
-                       : static_cast<int>(std::llround(static_cast<double>(row) / static_cast<double>(maxTop) *
-                                                       kScrollBarMax));
-}
-
-std::uint64_t HexView::rowForScrollValue(int value) const
-{
-    value = std::max(0, value);
-    if (!m_scrollBarScaled)
-        return static_cast<std::uint64_t>(value);
-    return static_cast<std::uint64_t>(
-        std::llround(static_cast<double>(value) / kScrollBarMax * static_cast<double>(maxTopRow())));
-}
-
 void HexView::updateScrollBars()
 {
-    const QScopedValueRollback guard(m_updatingScrollBars, true);
-
-    const std::uint64_t maxTop = maxTopRow();
-    m_topRow = std::min(m_topRow, maxTop);
-    m_scrollBarScaled = maxTop > static_cast<std::uint64_t>(kScrollBarMax);
-
-    QScrollBar* vertical = verticalScrollBar();
-    if (m_scrollBarScaled) {
-        const double pageFraction = static_cast<double>(visibleRows()) / static_cast<double>(maxTop);
-        vertical->setRange(0, kScrollBarMax);
-        vertical->setPageStep(std::max(1, static_cast<int>(pageFraction * kScrollBarMax)));
-    } else {
-        vertical->setRange(0, static_cast<int>(maxTop));
-        vertical->setPageStep(visibleRows());
-    }
-    vertical->setSingleStep(1);
-    vertical->setValue(scrollValueForRow(m_topRow));
+    m_rows.setRange(maxTopRow(), visibleRows());
 
     QScrollBar* horizontal = horizontalScrollBar();
     const int width = viewport()->width();
@@ -198,20 +176,14 @@ void HexView::updateScrollBars()
 
 void HexView::setTopRow(std::uint64_t row)
 {
-    row = std::min(row, maxTopRow());
-    if (row == m_topRow)
-        return;
-    m_topRow = row;
-    // In scaled mode the scroll value is lossy, so it must not feed back into m_topRow.
-    const QScopedValueRollback guard(m_updatingScrollBars, true);
-    verticalScrollBar()->setValue(scrollValueForRow(row));
-    viewport()->update();
+    if (m_rows.setTopRow(row))
+        viewport()->update();
 }
 
 void HexView::scrollContentsBy(int /*dx*/, int dy)
 {
-    if (dy != 0 && !m_updatingScrollBars)
-        m_topRow = std::min(rowForScrollValue(verticalScrollBar()->value()), maxTopRow());
+    if (dy != 0)
+        m_rows.syncFromBar();
     viewport()->update();
 }
 
@@ -220,9 +192,9 @@ void HexView::ensureCursorVisible()
     const auto bytesPerRow = static_cast<std::uint64_t>(m_bytesPerRow);
     const std::uint64_t row = m_cursor / bytesPerRow;
     const auto visible = static_cast<std::uint64_t>(visibleRows());
-    if (row < m_topRow)
+    if (row < m_rows.topRow())
         setTopRow(row);
-    else if (row >= m_topRow + visible)
+    else if (row >= m_rows.topRow() + visible)
         setTopRow(row - visible + 1);
 
     const int column = static_cast<int>(m_cursor % bytesPerRow);
@@ -388,7 +360,7 @@ void HexView::paintEvent(QPaintEvent* event)
     };
 
     for (int r = 0; r < rowsToPaint; ++r) {
-        const std::uint64_t row = m_topRow + static_cast<std::uint64_t>(r);
+        const std::uint64_t row = m_rows.topRow() + static_cast<std::uint64_t>(r);
         if (row >= rows)
             break;
         const int top = m_headerHeight + r * m_lineHeight;
@@ -516,11 +488,11 @@ void HexView::keyPressEvent(QKeyEvent* event)
         break;
     case Qt::Key_PageUp:
         target = m_cursor >= page ? m_cursor - page : m_cursor % bpr;
-        setTopRow(m_topRow > pageRows ? m_topRow - pageRows : 0);
+        setTopRow(m_rows.topRow() > pageRows ? m_rows.topRow() - pageRows : 0);
         break;
     case Qt::Key_PageDown:
         target = last - m_cursor >= page ? m_cursor + page : last;
-        setTopRow(m_topRow + pageRows);
+        setTopRow(m_rows.topRow() + pageRows);
         break;
     case Qt::Key_Home:
         target = ctrl ? 0 : rowStart;
@@ -553,9 +525,9 @@ HexView::HitResult HexView::hitTest(const QPoint& pos, std::optional<Pane> pane)
     std::uint64_t row = 0;
     if (rowDelta < 0) {
         const auto up = static_cast<std::uint64_t>(-rowDelta);
-        row = m_topRow > up ? m_topRow - up : 0;
+        row = m_rows.topRow() > up ? m_rows.topRow() - up : 0;
     } else {
-        row = m_topRow + static_cast<std::uint64_t>(rowDelta);
+        row = m_rows.topRow() + static_cast<std::uint64_t>(rowDelta);
     }
 
     const std::uint64_t rows = rowCount();
@@ -629,9 +601,9 @@ void HexView::timerEvent(QTimerEvent* event)
     const int y = m_lastDragPos.y();
     if (y < m_headerHeight) {
         const auto rows = static_cast<std::uint64_t>(1 + (m_headerHeight - y) / m_lineHeight);
-        setTopRow(m_topRow > rows ? m_topRow - rows : 0);
+        setTopRow(m_rows.topRow() > rows ? m_rows.topRow() - rows : 0);
     } else if (y >= viewport()->height()) {
-        setTopRow(m_topRow + static_cast<std::uint64_t>(1 + (y - viewport()->height()) / m_lineHeight));
+        setTopRow(m_rows.topRow() + static_cast<std::uint64_t>(1 + (y - viewport()->height()) / m_lineHeight));
     }
     dragTo(m_lastDragPos);
 }
@@ -665,9 +637,9 @@ void HexView::wheelEvent(QWheelEvent* event)
     if (steps != 0) {
         const auto rows = static_cast<std::uint64_t>(std::abs(steps) * QApplication::wheelScrollLines());
         if (steps > 0)
-            setTopRow(m_topRow > rows ? m_topRow - rows : 0);
+            setTopRow(m_rows.topRow() > rows ? m_rows.topRow() - rows : 0);
         else
-            setTopRow(m_topRow + rows);
+            setTopRow(m_rows.topRow() + rows);
     }
     event->accept();
 }

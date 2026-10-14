@@ -5,6 +5,8 @@
 #include <QColor>
 #include <QString>
 
+#include "ui/RowScrollBar.h"
+
 #include <array>
 #include <cstdint>
 #include <memory>
@@ -44,6 +46,8 @@ public:
     ~HexView() override;
 
     void setSource(std::shared_ptr<const core::FileSource> source);
+    // Like setSource(), but keeps the cursor, selection and scroll position where they still fit.
+    void replaceSource(std::shared_ptr<const core::FileSource> source);
     const std::shared_ptr<const core::FileSource>& source() const { return m_source; }
     std::uint64_t size() const;
 
@@ -64,8 +68,10 @@ public:
     // Selects [start, start + length) and puts the cursor on its last byte.
     void select(std::uint64_t start, std::uint64_t length);
 
-    std::uint64_t topRow() const { return m_topRow; }
+    std::uint64_t topRow() const { return m_rows.topRow(); }
     int visibleRows() const;
+    // Wide enough for every column, so a split view can give the hex view exactly that.
+    QSize sizeHint() const override;
 
     // Text for the selection in different formats; empty if the selection exceeds kMaxCopyBytes.
     QString selectionAsHex() const;
@@ -130,8 +136,6 @@ private:
     void updateScrollBars();
     std::uint64_t rowCount() const;
     std::uint64_t maxTopRow() const;
-    int scrollValueForRow(std::uint64_t row) const;
-    std::uint64_t rowForScrollValue(int value) const;
     void setTopRow(std::uint64_t row);
     void ensureCursorVisible();
     void moveCursor(std::uint64_t offset, bool extendSelection);
@@ -155,9 +159,7 @@ private:
     std::uint64_t m_anchor = 0;
     Pane m_activePane = Pane::Hex;
 
-    std::uint64_t m_topRow = 0;
-    bool m_scrollBarScaled = false;
-    bool m_updatingScrollBars = false;
+    RowScrollBar m_rows;
     int m_wheelRemainder = 0;
     int m_zoomRemainder = 0;
 

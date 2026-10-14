@@ -2,6 +2,25 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN">
 <context>
+    <name>SearchJob</name>
+    <message>
+        <source>Enter something to search for.</source>
+        <translation>请输入要查找的内容。</translation>
+    </message>
+    <message>
+        <source>Not a valid hex pattern. Use pairs of hex digits, and ?? for any byte.</source>
+        <translation>十六进制格式无效。请用两位十六进制数表示一个字节，?? 表示任意字节。</translation>
+    </message>
+    <message>
+        <source>The text cannot be written in %1.</source>
+        <translation>该文本无法用 %1 编码表示。</translation>
+    </message>
+    <message>
+        <source>Invalid regular expression: %1</source>
+        <translation>正则表达式无效：%1</translation>
+    </message>
+</context>
+<context>
     <name>cppedit::ui::DataInspector</name>
     <message>
         <source>Little-endian</source>
@@ -77,6 +96,80 @@
     </message>
 </context>
 <context>
+    <name>cppedit::ui::DocumentView</name>
+    <message>
+        <source>Cannot reload: %1</source>
+        <translation>无法重新加载：%1</translation>
+    </message>
+    <message>
+        <source>The file was deleted or moved; showing the last version</source>
+        <translation>文件已被删除或移动，当前显示的是最后一个版本</translation>
+    </message>
+</context>
+<context>
+    <name>cppedit::ui::FindBar</name>
+    <message>
+        <source>Text</source>
+        <translation>文本</translation>
+    </message>
+    <message>
+        <source>Regex</source>
+        <translation>正则</translation>
+    </message>
+    <message>
+        <source>Hex</source>
+        <translation>十六进制</translation>
+    </message>
+    <message>
+        <source>Match case</source>
+        <translation>区分大小写</translation>
+    </message>
+    <message>
+        <source>Find previous (Shift+Enter, Shift+F3)</source>
+        <translation>查找上一个（Shift+Enter，Shift+F3）</translation>
+    </message>
+    <message>
+        <source>Find next (Enter, F3)</source>
+        <translation>查找下一个（Enter，F3）</translation>
+    </message>
+    <message>
+        <source>Close (Esc)</source>
+        <translation>关闭（Esc）</translation>
+    </message>
+    <message>
+        <source>Find:</source>
+        <translation>查找：</translation>
+    </message>
+    <message>
+        <source>Searching… %1%</source>
+        <translation>正在查找… %1%</translation>
+    </message>
+    <message>
+        <source>Searching…</source>
+        <translation>正在查找…</translation>
+    </message>
+    <message>
+        <source>Wrapped around</source>
+        <translation>已绕回另一端继续查找</translation>
+    </message>
+    <message>
+        <source>Not found</source>
+        <translation>未找到</translation>
+    </message>
+    <message>
+        <source>Hex bytes, e.g. 4D 5A ?? 00</source>
+        <translation>十六进制字节，如 4D 5A ?? 00</translation>
+    </message>
+    <message>
+        <source>Regular expression</source>
+        <translation>正则表达式</translation>
+    </message>
+    <message>
+        <source>Text to find</source>
+        <translation>要查找的文本</translation>
+    </message>
+</context>
+<context>
     <name>cppedit::ui::HexView</name>
     <message>
         <source>Copy as Hex</source>
@@ -120,6 +213,10 @@
         <translation>非 UTF-8（GBK、Latin-1 等）</translation>
     </message>
     <message>
+        <source>Mixed line endings</source>
+        <translation>混合换行符</translation>
+    </message>
+    <message>
         <source>Drop a file here, or press %1 to open one.</source>
         <translation>把文件拖到这里，或按 %1 打开文件。</translation>
     </message>
@@ -128,12 +225,32 @@
         <translation>数据检查器</translation>
     </message>
     <message>
+        <source>Text encoding. Click to show the file in another encoding.</source>
+        <translation>文本编码。点击可换用其他编码显示文件。</translation>
+    </message>
+    <message>
+        <source>Syntax highlighting. Click to choose a language.</source>
+        <translation>语法高亮。点击可选择语言。</translation>
+    </message>
+    <message>
         <source>&amp;Open…</source>
         <translation>打开(&amp;O)…</translation>
     </message>
     <message>
         <source>&amp;Close Tab</source>
         <translation>关闭标签页(&amp;C)</translation>
+    </message>
+    <message>
+        <source>&amp;Reload</source>
+        <translation>重新加载(&amp;R)</translation>
+    </message>
+    <message>
+        <source>&amp;Follow End of File</source>
+        <translation>跟随文件末尾(&amp;F)</translation>
+    </message>
+    <message>
+        <source>Keep showing the end of the file as it grows, like tail -f</source>
+        <translation>像 tail -f 那样，文件增长时始终显示末尾</translation>
     </message>
     <message>
         <source>&amp;Quit</source>
@@ -164,8 +281,32 @@
         <translation>全选(&amp;A)</translation>
     </message>
     <message>
-        <source>&amp;Go to Offset…</source>
-        <translation>转到偏移(&amp;G)…</translation>
+        <source>&amp;Go To…</source>
+        <translation>转到(&amp;G)…</translation>
+    </message>
+    <message>
+        <source>&amp;Find…</source>
+        <translation>查找(&amp;F)…</translation>
+    </message>
+    <message>
+        <source>Find &amp;Next</source>
+        <translation>查找下一个(&amp;N)</translation>
+    </message>
+    <message>
+        <source>Find Pre&amp;vious</source>
+        <translation>查找上一个(&amp;V)</translation>
+    </message>
+    <message>
+        <source>&amp;Text View</source>
+        <translation>文本视图(&amp;T)</translation>
+    </message>
+    <message>
+        <source>&amp;Hex View</source>
+        <translation>十六进制视图(&amp;H)</translation>
+    </message>
+    <message>
+        <source>&amp;Side by Side</source>
+        <translation>并排显示(&amp;S)</translation>
     </message>
     <message>
         <source>&amp;Next Tab</source>
@@ -212,8 +353,56 @@
         <translation>视图(&amp;V)</translation>
     </message>
     <message>
+        <source>Hex &amp;Layout</source>
+        <translation>十六进制布局(&amp;L)</translation>
+    </message>
+    <message>
         <source>&amp;Help</source>
         <translation>帮助(&amp;H)</translation>
+    </message>
+    <message>
+        <source>Unicode</source>
+        <translation>Unicode</translation>
+    </message>
+    <message>
+        <source>Chinese</source>
+        <translation>中文</translation>
+    </message>
+    <message>
+        <source>Japanese</source>
+        <translation>日文</translation>
+    </message>
+    <message>
+        <source>Korean</source>
+        <translation>韩文</translation>
+    </message>
+    <message>
+        <source>Western European</source>
+        <translation>西欧</translation>
+    </message>
+    <message>
+        <source>Central European</source>
+        <translation>中欧</translation>
+    </message>
+    <message>
+        <source>Cyrillic</source>
+        <translation>西里尔文</translation>
+    </message>
+    <message>
+        <source>Greek</source>
+        <translation>希腊文</translation>
+    </message>
+    <message>
+        <source>Turkish</source>
+        <translation>土耳其文</translation>
+    </message>
+    <message>
+        <source>Arabic</source>
+        <translation>阿拉伯文</translation>
+    </message>
+    <message>
+        <source>Plain Text</source>
+        <translation>纯文本</translation>
     </message>
     <message>
         <source>Cannot Open File</source>
@@ -238,12 +427,24 @@
         <translation>字号：%1 pt</translation>
     </message>
     <message>
-        <source>Go to Offset</source>
-        <translation>转到偏移</translation>
+        <source>Line number (+/- prefix: relative), or a byte offset such as 0x1F or 1Fh:</source>
+        <translation>行号（前缀 +/- 表示相对位置），或字节偏移，如 0x1F、1Fh：</translation>
     </message>
     <message>
         <source>Offset (0x1F or 1Fh: hex, 31: decimal, +/- prefix: relative):</source>
         <translation>偏移（0x1F 或 1Fh 为十六进制，31 为十进制，前缀 +/- 表示相对位置）：</translation>
+    </message>
+    <message>
+        <source>Go To</source>
+        <translation>转到</translation>
+    </message>
+    <message>
+        <source>Not a valid line number: %1</source>
+        <translation>无效的行号：%1</translation>
+    </message>
+    <message>
+        <source>Line %1 does not exist (yet)</source>
+        <translation>第 %1 行不存在（或尚未索引到）</translation>
     </message>
     <message>
         <source>Not a valid offset: %1</source>
@@ -298,12 +499,49 @@
         <translation>%1（%2 字节）</translation>
     </message>
     <message>
+        <source>Lines: %1</source>
+        <translation>行数：%1</translation>
+    </message>
+    <message>
+        <source>Indexing… %1%</source>
+        <translation>正在索引… %1%</translation>
+    </message>
+    <message>
+        <source>Ln %1, Col %2 · %3</source>
+        <translation>第 %1 行，第 %2 列 · %3</translation>
+    </message>
+    <message>
+        <source>Ln %1 · %2</source>
+        <translation>第 %1 行 · %2</translation>
+    </message>
+    <message>
         <source>Offset: %1 (%2)</source>
         <translation>偏移：%1（%2）</translation>
     </message>
     <message>
         <source>Selected: %1 bytes (%2) from %3</source>
         <translation>已选 %1 字节（%2），起点 %3</translation>
+    </message>
+</context>
+<context>
+    <name>cppedit::ui::TextView</name>
+    <message>
+        <source>The selection is too large to copy (limit: %1)</source>
+        <translation>选区太大，无法复制（上限：%1）</translation>
+    </message>
+    <message numerus="yes">
+        <source>Copied %n byte(s)</source>
+        <translation>
+            <numerusform>已复制 %n 字节</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>复制</translation>
+    </message>
+    <message>
+        <source>Select All</source>
+        <translation>全选</translation>
     </message>
 </context>
 <context>

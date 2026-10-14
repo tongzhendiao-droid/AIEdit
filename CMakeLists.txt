@@ -16,8 +16,13 @@ endif()
 
 option(CPPEDIT_BUILD_TESTS "Build the unit tests" ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Concurrent)
 qt_standard_project_setup()
+
+# Optional: better charset detection, and syntax highlighting (the engine Kate uses).
+find_package(uchardet CONFIG QUIET)
+find_package(KF6SyntaxHighlighting 6.0 CONFIG QUIET)
+message(STATUS "uchardet: ${uchardet_FOUND}, KF6SyntaxHighlighting: ${KF6SyntaxHighlighting_FOUND}")
 
 # Shared warning flags, linked privately into every target we own.
 add_library(cppedit_warnings INTERFACE)

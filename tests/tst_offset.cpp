@@ -2,6 +2,7 @@
 
 #include <QTest>
 
+using cppedit::core::parseLine;
 using cppedit::core::parseOffset;
 
 class TestOffset : public QObject
@@ -11,6 +12,8 @@ class TestOffset : public QObject
 private slots:
     void parse_data();
     void parse();
+    void lines_data();
+    void lines();
 };
 
 void TestOffset::parse_data()
@@ -45,6 +48,35 @@ void TestOffset::parse()
     QFETCH(quint64, expected);
 
     const auto result = parseOffset(text.toStdString(), current);
+    QCOMPARE(result.has_value(), ok);
+    if (ok)
+        QCOMPARE(*result, expected);
+}
+
+void TestOffset::lines_data()
+{
+    QTest::addColumn<QString>("text");
+    QTest::addColumn<quint64>("current");
+    QTest::addColumn<bool>("ok");
+    QTest::addColumn<quint64>("expected");
+
+    QTest::newRow("absolute") << "120" << 5ull << true << 120ull;
+    QTest::newRow("zero clamps to 1") << "0" << 5ull << true << 1ull;
+    QTest::newRow("forward") << "+10" << 5ull << true << 15ull;
+    QTest::newRow("back") << "- 3" << 5ull << true << 2ull;
+    QTest::newRow("back clamps") << "-50" << 5ull << true << 1ull;
+    QTest::newRow("hex is not a line") << "0x10" << 5ull << false << 0ull;
+    QTest::newRow("empty") << "  " << 5ull << false << 0ull;
+}
+
+void TestOffset::lines()
+{
+    QFETCH(QString, text);
+    QFETCH(quint64, current);
+    QFETCH(bool, ok);
+    QFETCH(quint64, expected);
+
+    const auto result = parseLine(text.toStdString(), current);
     QCOMPARE(result.has_value(), ok);
     if (ok)
         QCOMPARE(*result, expected);
