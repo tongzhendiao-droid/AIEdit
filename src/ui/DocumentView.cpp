@@ -14,6 +14,7 @@
 #include <QEvent>
 #include <QFileInfo>
 #include <QLocale>
+#include <QPointer>
 #include <QScopedValueRollback>
 #include <QSplitter>
 #include <QTimer>
@@ -325,7 +326,7 @@ void DocumentView::moveToEnd()
         m_hexView->goTo(size == 0 ? 0 : size - 1);
 }
 
-AiContext DocumentView::aiContext() const
+AiContext DocumentView::aiContext()
 {
     AiContext context;
     context.fileName = QFileInfo(filePath()).fileName();
@@ -368,11 +369,34 @@ AiContext DocumentView::aiContext() const
         context.selectionIsBinary = true;
     }
 
+    ToolTarget target;
+    target.fileName = context.fileName;
+    target.source = m_source;
+    target.index = m_textDocument->sharedIndex();
+    target.codec = m_textDocument->codec();
+    target.type = m_fileType;
+    // The tools may finish after this view is gone (tab closed): only mark a view that is still there.
+    target.markFields = [view = QPointer<DocumentView>(this)](const QList<FieldMark>& marks) {
+        if (view)
+            view->showFieldMarks(marks);
+    };
+    context.toolTarget = target;
+
     // Built only when asked for: it reads the start of the file and samples the rest.
     context.fileSummary = [source = m_source, name = context.fileName, description = context.fileDescription] {
         return summaryForAi(core::summarizeFile(source->bytes()), name, description);
     };
     return context;
+}
+
+void DocumentView::showFieldMarks(const QList<FieldMark>& marks)
+{
+    m_hexView->setFieldMarks(marks);
+    if (marks.isEmpty())
+        return;
+    if (m_viewMode == ViewMode::Text)
+        setViewMode(ViewMode::Split);
+    m_hexView->goTo(m_hexView->fieldMarks().first().offset);
 }
 
 QString DocumentView::syntax() const

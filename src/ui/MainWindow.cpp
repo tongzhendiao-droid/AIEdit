@@ -184,7 +184,7 @@ void MainWindow::createWidgets()
 
     m_aiPanel = new AiPanel;
     m_aiPanel->setContextProvider([this]() -> std::optional<AiContext> {
-        if (const DocumentView* doc = currentDocument())
+        if (DocumentView* doc = currentDocument())
             return doc->aiContext();
         return std::nullopt;
     });
@@ -828,10 +828,13 @@ void MainWindow::updateFileStatus()
 void MainWindow::updateTextStatus()
 {
     const DocumentView* doc = currentDocument();
+    // Lines, line endings and syntax mean nothing for a binary file in the hex view; the codec
+    // stays, since choosing one is how such a file is read as text.
+    const bool textual = doc && (doc->fileType().kind != core::ContentKind::Binary || doc->isTextActive());
     m_codecButton->setVisible(doc != nullptr);
-    m_syntaxButton->setVisible(doc != nullptr && isSyntaxHighlightingAvailable());
-    m_lineEndingLabel->setVisible(doc != nullptr);
-    m_linesLabel->setVisible(doc != nullptr);
+    m_syntaxButton->setVisible(textual && isSyntaxHighlightingAvailable());
+    m_lineEndingLabel->setVisible(textual);
+    m_linesLabel->setVisible(textual);
     if (!doc)
         return;
 

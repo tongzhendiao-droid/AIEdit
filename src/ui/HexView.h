@@ -3,8 +3,10 @@
 #include <QAbstractScrollArea>
 #include <QBasicTimer>
 #include <QColor>
+#include <QList>
 #include <QString>
 
+#include "ui/FieldMark.h"
 #include "ui/RowScrollBar.h"
 
 #include <array>
@@ -73,6 +75,11 @@ public:
     // Wide enough for every column, so a split view can give the hex view exactly that.
     QSize sizeHint() const override;
 
+    // Coloured ranges with names, e.g. fields the AI assistant worked out. Hovering shows them.
+    void setFieldMarks(QList<FieldMark> marks);
+    const QList<FieldMark>& fieldMarks() const { return m_marks; }
+    void clearFieldMarks();
+
     // Text for the selection in different formats; empty if the selection exceeds kMaxCopyBytes.
     QString selectionAsHex() const;
     QString selectionAsText() const; // UTF-8 when valid, else printable ASCII with '.' for the rest
@@ -95,6 +102,7 @@ signals:
 
 protected:
     bool event(QEvent* event) override;
+    bool viewportEvent(QEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void changeEvent(QEvent* event) override;
@@ -129,6 +137,7 @@ private:
         QColor selectionText;
         QColor inactiveSelection;
         QColor separator;
+        QList<QColor> marks; // field mark tints, used in turn
     };
 
     void updateMetrics();
@@ -145,6 +154,7 @@ private:
     void dragTo(const QPoint& pos);
     void copyToClipboard(const QString& text, const QString& message);
     QString formatOffset(std::uint64_t offset) const;
+    const FieldMark* markAt(std::uint64_t offset) const;
 
     qreal hexCellX(int column) const;
     qreal textCellX(int column) const;
@@ -177,6 +187,7 @@ private:
     qreal m_textStart = 0;
 
     Colors m_colors;
+    QList<FieldMark> m_marks; // sorted by offset
     std::array<QString, 256> m_hexText;
     std::array<QString, 256> m_charText;
 };

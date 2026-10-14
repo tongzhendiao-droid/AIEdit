@@ -60,6 +60,7 @@ private slots:
     void mainWindowOpensAndDeduplicates();
     void renderScreenshot();
     void chineseTranslation();
+    void fieldMarks();
 
 private:
     QTemporaryDir m_dir;
@@ -313,6 +314,33 @@ void TestHexView::chineseTranslation()
         QVERIFY(window.grab().save(QString::fromLocal8Bit(dir) + QStringLiteral("/hexview_zh.png")));
 
     QCoreApplication::removeTranslator(&translator);
+}
+
+void TestHexView::fieldMarks()
+{
+    std::string header("MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00\xFF\xFF\x00\x00\xB8\x00", 18);
+    header += std::string(46, '\0') + countingBytes(64);
+    ui::MainWindow window;
+    window.resize(1100, 420);
+    QVERIFY(window.openFile(ui::toQString(writeFile(m_dir, "marked.exe", header))));
+    ui::DocumentView* doc = window.currentDocument();
+    doc->showFieldMarks({{0, 2, QStringLiteral("e_magic"), QStringLiteral("MZ — DOS signature")},
+                         {2, 2, QStringLiteral("e_cblp"), QStringLiteral("144 — bytes on last page")},
+                         {4, 2, QStringLiteral("e_cp"), QStringLiteral("3 — pages in file")},
+                         {6, 2, QStringLiteral("e_crlc"), QString()},
+                         {8, 2, QStringLiteral("e_cparhdr"), QString()},
+                         {0x3C, 4, QStringLiteral("e_lfanew"), QStringLiteral("offset of the PE header")}});
+    HexView* view = doc->hexView();
+    QCOMPARE(view->fieldMarks().size(), 6);
+    QCOMPARE(view->fieldMarks().last().name, QStringLiteral("e_lfanew"));
+    view->select(0x10, 4);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QCoreApplication::processEvents();
+    if (const QByteArray dir = qgetenv("AIEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
+        QVERIFY(window.grab().save(QString::fromLocal8Bit(dir) + QStringLiteral("/fieldmarks.png")));
+    view->clearFieldMarks();
+    QVERIFY(view->fieldMarks().isEmpty());
 }
 
 QTEST_MAIN(TestHexView)

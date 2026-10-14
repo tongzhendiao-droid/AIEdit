@@ -1,4 +1,6 @@
+#include "core/FileSource.h"
 #include "ui/AiPanel.h"
+#include "ui/Paths.h"
 #include "ui/MainWindow.h"
 #include "ui/AiSettings.h"
 #include "ui/ChatClient.h"
@@ -11,9 +13,12 @@
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTcpServer>
+#include <QTemporaryDir>
 #include <QTcpSocket>
 #include <QTest>
 #include <QTimer>
+
+#include <fstream>
 
 using namespace aiedit::ui;
 
@@ -54,7 +59,9 @@ public:
     int status = 200;
     QByteArray contentType = "text/event-stream";
     QList<QByteArray> chunks;
+    QList<QList<QByteArray>> queue; // responses for successive requests, before falling back to `chunks`
     int chunkDelayMs = 5;
+    QList<QByteArray> bodies;       // every request body received
 
     QByteArray requestLine;
     QMap<QByteArray, QByteArray> headers; // lower-case names
@@ -94,12 +101,13 @@ private:
         requestLine = lines.first().trimmed();
         headers = parsed;
         body = buffer.mid(headerEnd + 4, length);
+        bodies << body;
         ++requests;
         m_buffers.remove(socket);
 
         socket->write("HTTP/1.1 " + QByteArray::number(status) + " Status\r\nContent-Type: " + contentType +
                       "\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n");
-        new ChunkWriter(socket, chunks, chunkDelayMs);
+        new ChunkWriter(socket, queue.isEmpty() ? chunks : queue.takeFirst(), chunkDelayMs);
     }
 
     QTcpServer m_server;
@@ -116,6 +124,27 @@ QByteArray chunk(const QString& content, const QString& field = QStringLiteral("
     const QJsonObject object{{QStringLiteral("object"), QStringLiteral("chat.completion.chunk")},
                              {QStringLiteral("choices"), QJsonArray{choice}}};
     return "data: " + QJsonDocument(object).toJson(QJsonDocument::Compact) + "\n\n";
+}
+
+// One streamed fragment of a tool call; the id and name come only with the first fragment.
+QByteArray toolCallChunk(int index, const QString& id, const QString& name, const QString& arguments,
+                         const QString& finishReason = {})
+{
+    QJsonObject function{{QStringLiteral("arguments"), arguments}};
+    if (!name.isEmpty())
+        function.insert(QStringLiteral("name"), name);
+    QJsonObject call{{QStringLiteral("index"), index}, {QStringLiteral("function"), function}};
+    if (!id.isEmpty()) {
+        call.insert(QStringLiteral("id"), id);
+        call.insert(QStringLiteral("type"), QStringLiteral("function"));
+    }
+    const QJsonObject choice{{QStringLiteral("index"), 0},
+                             {QStringLiteral("delta"), QJsonObject{{QStringLiteral("tool_calls"), QJsonArray{call}}}},
+                             {QStringLiteral("finish_reason"),
+                              finishReason.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(finishReason)}};
+    return "data: " +
+           QJsonDocument(QJsonObject{{QStringLiteral("choices"), QJsonArray{choice}}}).toJson(QJsonDocument::Compact) +
+           "\n\n";
 }
 
 AiSettings settingsFor(const MockServer& server, AiSettings::Provider provider = AiSettings::Provider::DeepSeek)
@@ -156,6 +185,8 @@ private slots:
     void panelShowsStopAndErrors();
     void panelPreviewHasNoKey();
     void renderScreenshots();
+    void toolCallsAreAssembled();
+    void panelRunsTools();
 };
 
 void TestChatClient::initTestCase()
@@ -533,6 +564,117 @@ void TestChatClient::renderScreenshots()
     shot = window.grab();
     if (!dir.isEmpty())
         QVERIFY(shot.save(QString::fromLocal8Bit(dir) + QStringLiteral("/mainwindow-ai.png")));
+}
+
+void TestChatClient::toolCallsAreAssembled()
+{
+    MockServer server;
+    server.chunks = {toolCallChunk(0, QStringLiteral("call_1"), QStringLiteral("read_bytes"), QStringLiteral("{\"off")),
+                     toolCallChunk(0, {}, {}, QStringLiteral("set\":16}")),
+                     toolCallChunk(1, QStringLiteral("call_2"), QStringLiteral("search"), QStringLiteral("{\"query\":\"x\"}"),
+                                   QStringLiteral("tool_calls")),
+                     "data: [DONE]\n\n"};
+    ChatClient client;
+    QList<ToolCall> calls;
+    connect(&client, &ChatClient::toolCallsRequested, this, [&](const QList<ToolCall>& requested) { calls = requested; });
+    QSignalSpy finished(&client, &ChatClient::finished);
+    const QJsonArray definitions{QJsonObject{{QStringLiteral("type"), QStringLiteral("function")}}};
+    client.send(settingsFor(server), question(QStringLiteral("?")), definitions);
+    QTRY_COMPARE(calls.size(), 2);
+    QCOMPARE(calls[0].id, QStringLiteral("call_1"));
+    QCOMPARE(calls[0].name, QStringLiteral("read_bytes"));
+    QCOMPARE(calls[0].arguments, QStringLiteral("{\"offset\":16}"));
+    QCOMPARE(calls[1].name, QStringLiteral("search"));
+    QVERIFY(finished.isEmpty());
+    QCOMPARE(QJsonDocument::fromJson(server.body).object().value(QStringLiteral("tools")).toArray().size(), 1);
+
+    // How a tool exchange is sent back.
+    ChatMessage request(ChatMessage::Role::Assistant, QString());
+    request.toolCalls = calls.mid(0, 1);
+    request.reasoning = QStringLiteral("thinking");
+    ChatMessage reply(ChatMessage::Role::Tool, QStringLiteral("result"));
+    reply.toolCallId = QStringLiteral("call_1");
+    const QJsonArray messages = QJsonDocument::fromJson(ChatClient::requestBody(settingsFor(server), {request, reply}))
+                                    .object()
+                                    .value(QStringLiteral("messages"))
+                                    .toArray();
+    const QJsonObject sentCall = messages[0].toObject().value(QStringLiteral("tool_calls")).toArray()[0].toObject();
+    QCOMPARE(sentCall.value(QStringLiteral("id")).toString(), QStringLiteral("call_1"));
+    QCOMPARE(sentCall.value(QStringLiteral("function")).toObject().value(QStringLiteral("arguments")).toString(),
+             QStringLiteral("{\"offset\":16}"));
+    QCOMPARE(messages[0].toObject().value(QStringLiteral("reasoning_content")).toString(), QStringLiteral("thinking"));
+    QCOMPARE(messages[1].toObject().value(QStringLiteral("role")).toString(), QStringLiteral("tool"));
+    QCOMPARE(messages[1].toObject().value(QStringLiteral("tool_call_id")).toString(), QStringLiteral("call_1"));
+}
+
+void TestChatClient::panelRunsTools()
+{
+    QTemporaryDir dir;
+    const auto path = toPath(dir.filePath(QStringLiteral("dos.exe")));
+    std::ofstream(path, std::ios::binary) << std::string("MZ\x90\x00\x03\x00\x00\x00\x04\x00", 10) << std::string(118, '\0');
+    std::error_code ec;
+    ToolTarget target;
+    target.fileName = QStringLiteral("dos.exe");
+    target.source = aiedit::core::FileSource::open(path, ec);
+    target.type = aiedit::core::detectFileType(target.source->bytes());
+    auto index = std::make_shared<aiedit::core::LineIndex>(target.source->bytes(), aiedit::core::CharScheme::SingleByte,
+                                                           aiedit::core::LineBreak::Lf);
+    index->build();
+    target.index = index;
+    QList<FieldMark> marked;
+    target.markFields = [&](const QList<FieldMark>& marks) { marked = marks; };
+
+    MockServer server;
+    server.queue = {
+        {toolCallChunk(0, QStringLiteral("c1"), QStringLiteral("read_bytes"), QStringLiteral("{\"offset\":0,\"length\":16}"),
+                       QStringLiteral("tool_calls")),
+         "data: [DONE]\n\n"},
+        {chunk(QStringLiteral("It starts with MZ.")),
+         toolCallChunk(0, QStringLiteral("c2"), QStringLiteral("mark_fields"),
+                       QStringLiteral(R"({"fields":[{"offset":0,"length":2,"name":"e_magic","value":"MZ"}]})"),
+                       QStringLiteral("tool_calls")),
+         "data: [DONE]\n\n"},
+        {chunk(QStringLiteral("This is a DOS executable.")), "data: [DONE]\n\n"},
+    };
+    AiPanel panel;
+    panel.setSettingsProvider([&] { return settingsFor(server); });
+    panel.setContextProvider([&] {
+        AiContext context = sampleContext();
+        context.selectionContent.clear();
+        context.toolTarget = target;
+        return std::optional<AiContext>(context);
+    });
+
+    panel.ask(QStringLiteral("What is this?"));
+    QTRY_VERIFY(!panel.isBusy());
+    QCOMPARE(server.requests, 3);
+
+    // The second request carries the first tool call and its result.
+    const QJsonArray second =
+        QJsonDocument::fromJson(server.bodies[1]).object().value(QStringLiteral("messages")).toArray();
+    const QJsonObject callMessage = second[second.size() - 2].toObject();
+    const QJsonObject resultMessage = second.last().toObject();
+    QCOMPARE(callMessage.value(QStringLiteral("tool_calls")).toArray()[0].toObject().value(QStringLiteral("id")).toString(),
+             QStringLiteral("c1"));
+    QCOMPARE(resultMessage.value(QStringLiteral("role")).toString(), QStringLiteral("tool"));
+    QCOMPARE(resultMessage.value(QStringLiteral("tool_call_id")).toString(), QStringLiteral("c1"));
+    QVERIFY(resultMessage.value(QStringLiteral("content")).toString().contains(QStringLiteral("00000000  4D 5A 90 00")));
+    QVERIFY(QJsonDocument::fromJson(server.bodies[0]).object().contains(QStringLiteral("tools")));
+
+    QCOMPARE(marked.size(), 1);
+    QCOMPARE(marked[0].name, QStringLiteral("e_magic"));
+    const QString transcript = panel.transcript();
+    QVERIFY(transcript.contains(QStringLiteral("`read_bytes`")));
+    QVERIFY(transcript.contains(QStringLiteral("`mark_fields`")));
+    QVERIFY2(transcript.contains(QStringLiteral("It starts with MZ.\n\nThis is a DOS executable.")), qPrintable(transcript));
+
+    // A follow-up question gets the answer as history, not the tool traffic.
+    server.chunks = {chunk(QStringLiteral("Yes.")), "data: [DONE]\n\n"};
+    panel.ask(QStringLiteral("Sure?"));
+    QTRY_VERIFY(!panel.isBusy());
+    const QJsonArray followUp =
+        QJsonDocument::fromJson(server.bodies.last()).object().value(QStringLiteral("messages")).toArray();
+    QCOMPARE(followUp.size(), 4);
 }
 
 QTEST_MAIN(TestChatClient)

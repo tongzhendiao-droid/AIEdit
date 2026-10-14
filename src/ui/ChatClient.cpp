@@ -22,6 +22,8 @@ QString roleName(ChatMessage::Role role)
         return QStringLiteral("user");
     case ChatMessage::Role::Assistant:
         return QStringLiteral("assistant");
+    case ChatMessage::Role::Tool:
+        return QStringLiteral("tool");
     }
     return {};
 }
@@ -45,15 +47,34 @@ ChatClient::~ChatClient()
     cancel();
 }
 
-QByteArray ChatClient::requestBody(const AiSettings& settings, const QList<ChatMessage>& messages)
+QByteArray ChatClient::requestBody(const AiSettings& settings, const QList<ChatMessage>& messages,
+                                   const QJsonArray& tools)
 {
     QJsonArray list;
-    for (const ChatMessage& message : messages)
-        list.append(QJsonObject{{QStringLiteral("role"), roleName(message.role)},
-                                {QStringLiteral("content"), message.content}});
+    for (const ChatMessage& message : messages) {
+        QJsonObject object{{QStringLiteral("role"), roleName(message.role)},
+                           {QStringLiteral("content"), message.content}};
+        if (!message.toolCalls.isEmpty()) {
+            QJsonArray calls;
+            for (const ToolCall& call : message.toolCalls)
+                calls.append(QJsonObject{{QStringLiteral("id"), call.id},
+                                         {QStringLiteral("type"), QStringLiteral("function")},
+                                         {QStringLiteral("function"),
+                                          QJsonObject{{QStringLiteral("name"), call.name},
+                                                      {QStringLiteral("arguments"), call.arguments}}}});
+            object.insert(QStringLiteral("tool_calls"), calls);
+        }
+        if (message.role == ChatMessage::Role::Tool)
+            object.insert(QStringLiteral("tool_call_id"), message.toolCallId);
+        if (!message.reasoning.isEmpty() && settings.provider == AiSettings::Provider::DeepSeek)
+            object.insert(QStringLiteral("reasoning_content"), message.reasoning);
+        list.append(object);
+    }
     QJsonObject body{{QStringLiteral("model"), settings.model},
                      {QStringLiteral("messages"), list},
                      {QStringLiteral("stream"), true}};
+    if (!tools.isEmpty())
+        body.insert(QStringLiteral("tools"), tools);
     // DeepSeek thinks by default; other services do not know the field.
     if (settings.provider == AiSettings::Provider::DeepSeek)
         body.insert(QStringLiteral("thinking"),
@@ -62,11 +83,12 @@ QByteArray ChatClient::requestBody(const AiSettings& settings, const QList<ChatM
     return QJsonDocument(body).toJson(QJsonDocument::Compact);
 }
 
-void ChatClient::send(const AiSettings& settings, const QList<ChatMessage>& messages)
+void ChatClient::send(const AiSettings& settings, const QList<ChatMessage>& messages, const QJsonArray& tools)
 {
     cancel();
     m_parser = core::SseParser();
     m_finishReason.clear();
+    m_toolCalls.clear();
     m_streamError.clear();
     m_errorBody.clear();
 
@@ -75,7 +97,7 @@ void ChatClient::send(const AiSettings& settings, const QList<ChatMessage>& mess
     request.setRawHeader("Accept", "text/event-stream");
     request.setRawHeader("Authorization", "Bearer " + settings.apiKey.toUtf8());
     // No transfer timeout: a queued request may wait minutes, kept open by keep-alive comments.
-    m_reply = m_network.post(request, requestBody(settings, messages));
+    m_reply = m_network.post(request, requestBody(settings, messages, tools));
     connect(m_reply, &QNetworkReply::readyRead, this, &ChatClient::readStream);
     connect(m_reply, &QNetworkReply::finished, this, &ChatClient::replyFinished);
 }
@@ -135,6 +157,18 @@ void ChatClient::handleEvent(const core::SseEvent& event)
         emit reasoningReceived(reasoning);
     if (const QString content = delta.value(QStringLiteral("content")).toString(); !content.isEmpty())
         emit contentReceived(content);
+    // Tool calls arrive in fragments: the first carries the id and name, later ones add
+    // pieces of the arguments; `index` says which call a fragment belongs to.
+    for (const QJsonValue& fragment : delta.value(QStringLiteral("tool_calls")).toArray()) {
+        const QJsonObject part = fragment.toObject();
+        ToolCall& call = m_toolCalls[part.value(QStringLiteral("index")).toInt()];
+        if (const QString id = part.value(QStringLiteral("id")).toString(); !id.isEmpty())
+            call.id = id;
+        const QJsonObject function = part.value(QStringLiteral("function")).toObject();
+        if (const QString name = function.value(QStringLiteral("name")).toString(); !name.isEmpty())
+            call.name = name;
+        call.arguments += function.value(QStringLiteral("arguments")).toString();
+    }
     if (const QJsonValue reason = choice.value(QStringLiteral("finish_reason")); reason.isString())
         m_finishReason = reason.toString();
 }
@@ -163,6 +197,8 @@ void ChatClient::replyFinished()
         handleEvent(event);
     if (!m_streamError.isEmpty())
         emit failed(m_streamError);
+    else if (!m_toolCalls.isEmpty())
+        emit toolCallsRequested(m_toolCalls.values());
     else
         emit finished(m_finishReason.isEmpty() ? QStringLiteral("stop") : m_finishReason);
 }

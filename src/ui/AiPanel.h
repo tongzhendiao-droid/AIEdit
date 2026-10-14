@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/AiSettings.h"
+#include "ui/AiTools.h"
 #include "ui/ChatClient.h"
 
 #include <QTimer>
@@ -31,6 +32,8 @@ struct AiContext
     bool truncated = false; // only the start of a large selection is included
     // A local description of the whole file (type, entropy, strings, first bytes), built on demand.
     std::function<QString()> fileSummary;
+    // The document for the assistant's tools (reading, searching, marking fields).
+    std::optional<ToolTarget> toolTarget;
 };
 
 // The AI assistant: a conversation about the open file, streamed from the configured service.
@@ -53,7 +56,7 @@ public:
     // Re-reads the settings, e.g. to drop the "not set up" hint after they were saved.
     void settingsChanged();
 
-    bool isBusy() const { return m_client.isBusy(); }
+    bool isBusy() const { return m_working; }
     QString transcript() const; // the conversation as Markdown
     // The exact JSON that asking `question` now would send.
     QByteArray previewRequest(const QString& question) const;
@@ -83,6 +86,10 @@ private:
         QString reasoning;
         QString note;  // an error or a remark such as "cut off"
         bool streaming = false;
+        std::optional<ToolTarget> target; // the document the tools work on, fixed for the turn
+        QList<ChatMessage> exchange;      // tool calls and their results within this turn
+        QStringList toolLog;              // what the tools did, for the transcript
+        int toolRounds = 0;
     };
 
     struct Attachment
@@ -94,7 +101,10 @@ private:
 
     std::optional<Attachment> selectionAttachment() const;
     QString composeMessage(const QString& question, const std::optional<Attachment>& attachment) const;
-    QList<ChatMessage> conversation(const QString& nextMessage) const;
+    QList<ChatMessage> conversation(const QString& nextMessage, bool withTools = false) const;
+    void sendRequest();
+    void toolCallsRequested(const QList<ToolCall>& calls);
+    void runNextTool();
     void start(const QString& question, const std::optional<Attachment>& attachment);
     void askAboutSelection(const QString& textQuestion, const QString& bytesQuestion);
     void finished(const QString& finishReason);
@@ -104,7 +114,12 @@ private:
     void showPreview();
 
     ChatClient m_client;
+    ToolRunner m_tools;
     QList<Turn> m_turns;
+    QList<ToolCall> m_pendingCalls;
+    bool m_working = false;     // from asking until the final answer, across tool rounds
+    QString m_responseContent;  // what the current request has streamed so far
+    QString m_responseReasoning;
     ContextProvider m_contextProvider;
     SettingsProvider m_settingsProvider;
     QTimer m_renderTimer; // coalesces re-rendering while an answer streams in

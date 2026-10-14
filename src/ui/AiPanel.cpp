@@ -23,6 +23,8 @@ namespace {
 constexpr int kRenderIntervalMs = 60;
 constexpr qsizetype kMaxHistoryTurns = 8;
 constexpr qsizetype kMaxShownReasoning = 600;
+constexpr int kMaxToolRounds = 12;
+constexpr qsizetype kMaxShownToolArguments = 120;
 
 // The instructions are for the model, so they stay in English whatever the UI language.
 const QString kSystemPrompt = QStringLiteral(
@@ -30,6 +32,20 @@ const QString kSystemPrompt = QStringLiteral(
     "part of the open file (text, or a hex dump of bytes) or a summary of the whole file computed on their "
     "machine. Base your answer on what is attached, and say so when it is not enough. Be concise and concrete, "
     "give byte offsets in hex, and use Markdown. Answer in the language of the user's question.");
+
+const QString kToolsPrompt = QStringLiteral(
+    "You can call tools that run on the user's machine against the open file: get_file_info, read_bytes, "
+    "read_lines, search and mark_fields. Files can be very large, so search and read only what you need instead "
+    "of reading from the start. When you work out the structure of binary data, call mark_fields so the user can "
+    "see the fields in the hex view.");
+
+QString describeCall(const ToolCall& call)
+{
+    QString arguments = call.arguments.simplified();
+    if (arguments.size() > kMaxShownToolArguments)
+        arguments = arguments.left(kMaxShownToolArguments) + QStringLiteral("…");
+    return QStringLiteral("`%1` %2").arg(call.name, arguments);
+}
 
 } // namespace
 
@@ -107,16 +123,23 @@ AiPanel::AiPanel(QWidget* parent) : QWidget(parent), m_settingsProvider(&AiSetti
     m_renderTimer.setInterval(kRenderIntervalMs);
     connect(&m_renderTimer, &QTimer::timeout, this, &AiPanel::render);
     connect(&m_client, &ChatClient::contentReceived, this, [this](const QString& text) {
-        m_turns.last().answer += text;
+        Turn& turn = m_turns.last();
+        // Text written before a tool call and the final answer are separate paragraphs.
+        if (m_responseContent.isEmpty() && !turn.answer.isEmpty())
+            turn.answer += QStringLiteral("\n\n");
+        m_responseContent += text;
+        turn.answer += text;
         if (!m_renderTimer.isActive())
             m_renderTimer.start();
     });
     connect(&m_client, &ChatClient::reasoningReceived, this, [this](const QString& text) {
+        m_responseReasoning += text;
         m_turns.last().reasoning += text;
         if (!m_renderTimer.isActive())
             m_renderTimer.start();
     });
     connect(&m_client, &ChatClient::finished, this, &AiPanel::finished);
+    connect(&m_client, &ChatClient::toolCallsRequested, this, &AiPanel::toolCallsRequested);
     connect(&m_client, &ChatClient::failed, this, &AiPanel::failed);
 
     render();
@@ -183,9 +206,10 @@ QString AiPanel::composeMessage(const QString& question, const std::optional<Att
     return attachment ? question + QStringLiteral("\n\n") + attachment->text : question;
 }
 
-QList<ChatMessage> AiPanel::conversation(const QString& nextMessage) const
+QList<ChatMessage> AiPanel::conversation(const QString& nextMessage, bool withTools) const
 {
-    QList<ChatMessage> messages{{ChatMessage::Role::System, kSystemPrompt}};
+    QList<ChatMessage> messages{
+        {ChatMessage::Role::System, withTools ? kSystemPrompt + QLatin1Char(' ') + kToolsPrompt : kSystemPrompt}};
     // Earlier answered turns give the model context for follow-up questions.
     QList<ChatMessage> history;
     for (const Turn& turn : m_turns) {
@@ -202,7 +226,10 @@ QList<ChatMessage> AiPanel::conversation(const QString& nextMessage) const
 QByteArray AiPanel::previewRequest(const QString& question) const
 {
     const auto attachment = m_attach->isChecked() ? selectionAttachment() : std::nullopt;
-    return ChatClient::requestBody(m_settingsProvider(), conversation(composeMessage(question, attachment)));
+    const std::optional<AiContext> context = m_contextProvider ? m_contextProvider() : std::nullopt;
+    const bool withTools = context && context->toolTarget;
+    return ChatClient::requestBody(m_settingsProvider(), conversation(composeMessage(question, attachment), withTools),
+                                   withTools ? tools::definitions() : QJsonArray());
 }
 
 void AiPanel::ask(const QString& question)
@@ -273,12 +300,69 @@ void AiPanel::start(const QString& question, const std::optional<Attachment>& at
     turn.attachmentLabel = attachment ? attachment->label : QString();
     turn.message = composeMessage(question, attachment);
     turn.streaming = true;
-    const QList<ChatMessage> messages = conversation(turn.message);
+    if (m_contextProvider) {
+        if (const std::optional<AiContext> context = m_contextProvider())
+            turn.target = context->toolTarget;
+    }
     m_turns.append(turn);
-    m_client.send(settings, messages);
+    m_working = true;
+    sendRequest();
+    updateState();
+}
+
+void AiPanel::sendRequest()
+{
+    const AiSettings settings = m_settingsProvider();
+    const Turn& turn = m_turns.last();
+    const bool withTools = turn.target.has_value();
+    QList<ChatMessage> messages = conversation(turn.message, withTools);
+    messages += turn.exchange;
+    m_responseContent.clear();
+    m_responseReasoning.clear();
+    m_client.send(settings, messages, withTools ? tools::definitions() : QJsonArray());
     m_status->setText(tr("Asking %1…").arg(settings.chatUrl().host()));
     render();
-    updateState();
+}
+
+void AiPanel::toolCallsRequested(const QList<ToolCall>& calls)
+{
+    Turn& turn = m_turns.last();
+    if (!turn.target || ++turn.toolRounds > kMaxToolRounds) {
+        turn.streaming = false;
+        turn.note = tr("Stopped after %1 rounds of tool calls.").arg(kMaxToolRounds);
+        m_working = false;
+        m_status->clear();
+        render();
+        updateState();
+        return;
+    }
+    ChatMessage request(ChatMessage::Role::Assistant, m_responseContent);
+    request.toolCalls = calls;
+    request.reasoning = m_responseReasoning;
+    turn.exchange.append(request);
+    m_pendingCalls = calls;
+    runNextTool();
+}
+
+void AiPanel::runNextTool()
+{
+    if (!m_working)
+        return;
+    if (m_pendingCalls.isEmpty()) {
+        sendRequest(); // all results are in: let the model continue
+        return;
+    }
+    const ToolCall call = m_pendingCalls.takeFirst();
+    Turn& turn = m_turns.last();
+    turn.toolLog << describeCall(call);
+    m_status->setText(tr("Running %1…").arg(call.name));
+    render();
+    m_tools.run(call, *turn.target, [this, id = call.id](const QString& result) {
+        ChatMessage reply(ChatMessage::Role::Tool, result);
+        reply.toolCallId = id;
+        m_turns.last().exchange.append(reply);
+        runNextTool();
+    });
 }
 
 void AiPanel::stop()
@@ -286,6 +370,9 @@ void AiPanel::stop()
     if (!isBusy())
         return;
     m_client.cancel();
+    m_tools.cancel();
+    m_pendingCalls.clear();
+    m_working = false;
     m_turns.last().streaming = false;
     m_turns.last().note = tr("Stopped.");
     m_status->clear();
@@ -296,6 +383,9 @@ void AiPanel::stop()
 void AiPanel::clearConversation()
 {
     m_client.cancel();
+    m_tools.cancel();
+    m_pendingCalls.clear();
+    m_working = false;
     m_turns.clear();
     m_status->clear();
     render();
@@ -306,6 +396,7 @@ void AiPanel::finished(const QString& finishReason)
 {
     Turn& turn = m_turns.last();
     turn.streaming = false;
+    m_working = false;
     if (finishReason == QLatin1String("length"))
         turn.note = tr("The answer was cut off at the length limit.");
     else if (finishReason != QLatin1String("stop"))
@@ -319,6 +410,7 @@ void AiPanel::failed(const QString& message)
 {
     Turn& turn = m_turns.last();
     turn.streaming = false;
+    m_working = false;
     turn.note = message;
     m_status->setText(tr("The request failed."));
     render();
@@ -342,6 +434,8 @@ QString AiPanel::transcript() const
         if (!turn.attachmentLabel.isEmpty())
             markdown += QStringLiteral("> %1\n\n").arg(tr("Attached: %1").arg(turn.attachmentLabel));
         markdown += QStringLiteral("**%1:**\n\n").arg(tr("AI"));
+        for (const QString& call : turn.toolLog)
+            markdown += QStringLiteral("> %1\n\n").arg(tr("Tool: %1").arg(call));
         if (!turn.reasoning.isEmpty()) {
             QString reasoning = turn.reasoning.simplified();
             if (reasoning.size() > kMaxShownReasoning)

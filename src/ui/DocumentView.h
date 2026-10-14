@@ -21,6 +21,7 @@ class FileSource;
 namespace aiedit::ui {
 
 struct AiContext;
+struct FieldMark;
 class FindBar;
 class HexView;
 class TextDocument;
@@ -63,8 +64,11 @@ public:
     QString syntax() const;
     void setSyntax(const QString& name);
 
-    // What the AI assistant may attach: the selection (text, or a hex dump) and a file summary.
-    AiContext aiContext() const;
+    // What the AI assistant may attach: the selection (text, or a hex dump) and a file summary,
+    // plus a target for its tools, which can mark fields in this view.
+    AiContext aiContext();
+    // Colours the fields in the hex view (and shows it, if only the text view was visible).
+    void showFieldMarks(const QList<FieldMark>& marks);
 
     // Follow mode (like tail -f): after every reload, jump to the end of the file.
     bool isFollowing() const { return m_following; }

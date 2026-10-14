@@ -155,6 +155,14 @@
         <translation>正在请求 %1…</translation>
     </message>
     <message>
+        <source>Stopped after %1 rounds of tool calls.</source>
+        <translation>已在 %1 轮工具调用后停止。</translation>
+    </message>
+    <message>
+        <source>Running %1…</source>
+        <translation>正在运行 %1…</translation>
+    </message>
+    <message>
         <source>Stopped.</source>
         <translation>已停止。</translation>
     </message>
@@ -189,6 +197,10 @@
     <message>
         <source>AI</source>
         <translation>AI</translation>
+    </message>
+    <message>
+        <source>Tool: %1</source>
+        <translation>工具：%1</translation>
     </message>
     <message>
         <source>Thinking:</source>
@@ -456,6 +468,12 @@
 </context>
 <context>
     <name>aiedit::ui::HexView</name>
+    <message numerus="yes">
+        <source>%n byte(s)</source>
+        <translation>
+            <numerusform>%n 字节</numerusform>
+        </translation>
+    </message>
     <message>
         <source>Copy as Hex</source>
         <translation>复制为十六进制</translation>
@@ -475,6 +493,10 @@
     <message>
         <source>Select All</source>
         <translation>全选</translation>
+    </message>
+    <message>
+        <source>Clear Field Marks</source>
+        <translation>清除字段标注</translation>
     </message>
     <message>
         <source>Copied offset</source>

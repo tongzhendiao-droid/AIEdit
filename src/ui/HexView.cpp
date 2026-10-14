@@ -12,9 +12,11 @@
 #include <QMenu>
 #include <QPainter>
 #include <QScrollBar>
+#include <QToolTip>
 #include <QWheelEvent>
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 
 namespace aiedit::ui {
@@ -288,6 +290,10 @@ void HexView::updateColors()
     m_colors.inactiveSelection = mix(m_colors.base, m_colors.selection, 0.35f);
     m_colors.currentRow = mix(m_colors.base, m_colors.selection, dark ? 0.14f : 0.08f);
     m_colors.separator = mix(m_colors.text, m_colors.base, 0.8f);
+    m_colors.marks.clear();
+    for (const QColor hue : {QColor(0x42, 0x85, 0xF4), QColor(0x34, 0xA8, 0x53), QColor(0xF9, 0xAB, 0x00),
+                             QColor(0xA1, 0x42, 0xF4), QColor(0x00, 0xAC, 0xC1), QColor(0xE9, 0x1E, 0x63)})
+        m_colors.marks << mix(m_colors.base, hue, dark ? 0.35f : 0.22f);
 }
 
 const QColor& HexView::byteColor(std::uint8_t byte) const
@@ -371,6 +377,21 @@ void HexView::paintEvent(QPaintEvent* event)
         if (row == cursorRow)
             painter.fillRect(QRectF(scrollX, top, width, m_lineHeight), m_colors.currentRow);
 
+        // Field marks under the selection, so that selecting stays visible.
+        for (qsizetype m = 0; m < m_marks.size(); ++m) {
+            const FieldMark& mark = m_marks[m];
+            const std::uint64_t first = std::max(mark.offset, rowStart);
+            const std::uint64_t end = std::min(mark.offset + mark.length, rowStart + static_cast<std::uint64_t>(count));
+            if (first >= end)
+                continue;
+            const int c0 = static_cast<int>(first - rowStart);
+            const int c1 = static_cast<int>(end - rowStart - 1);
+            const QColor& tint = m_colors.marks[m % m_colors.marks.size()];
+            const qreal hexLeft = hexCellX(c0) - m_charWidth / 2;
+            painter.fillRect(QRectF(hexLeft, top, hexCellX(c1) + 2.5 * m_charWidth - hexLeft, m_lineHeight), tint);
+            painter.fillRect(QRectF(textCellX(c0), top, (c1 - c0 + 1) * m_charWidth, m_lineHeight), tint);
+        }
+
         if (hasRange) {
             const std::uint64_t first = std::max(selStart, rowStart);
             const std::uint64_t end = std::min(selEnd, rowStart + static_cast<std::uint64_t>(count));
@@ -424,6 +445,27 @@ bool HexView::event(QEvent* event)
         }
     }
     return QAbstractScrollArea::event(event);
+}
+
+bool HexView::viewportEvent(QEvent* event)
+{
+    if (event->type() == QEvent::ToolTip) {
+        const auto* help = static_cast<QHelpEvent*>(event);
+        const FieldMark* mark = size() > 0 && help->pos().y() >= m_headerHeight ? markAt(hitTest(help->pos()).offset) : nullptr;
+        if (!mark) {
+            QToolTip::hideText();
+            return true;
+        }
+        QString text = QStringLiteral("<b>%1</b><br>0x%2–0x%3 (%4)")
+                           .arg(mark->name.toHtmlEscaped(), formatOffset(mark->offset),
+                                formatOffset(mark->offset + mark->length - 1),
+                                tr("%n byte(s)", nullptr, static_cast<int>(std::min<std::uint64_t>(mark->length, INT_MAX))));
+        if (!mark->detail.isEmpty())
+            text += QStringLiteral("<br>") + mark->detail.toHtmlEscaped();
+        QToolTip::showText(help->globalPos(), text, viewport());
+        return true;
+    }
+    return QAbstractScrollArea::viewportEvent(event);
 }
 
 void HexView::resizeEvent(QResizeEvent* event)
@@ -654,6 +696,10 @@ void HexView::contextMenuEvent(QContextMenuEvent* event)
     menu.addAction(tr("Copy Offset"), this, &HexView::copyOffset)->setEnabled(hasData);
     menu.addSeparator();
     menu.addAction(tr("Select All"), this, &HexView::selectAll)->setEnabled(hasData);
+    if (!m_marks.isEmpty()) {
+        menu.addSeparator();
+        menu.addAction(tr("Clear Field Marks"), this, &HexView::clearFieldMarks);
+    }
     menu.exec(event->globalPos());
 }
 
@@ -667,6 +713,35 @@ void HexView::focusOutEvent(QFocusEvent* event)
 {
     QAbstractScrollArea::focusOutEvent(event);
     viewport()->update();
+}
+
+// Field marks ---------------------------------------------------------------------------------------
+
+void HexView::setFieldMarks(QList<FieldMark> marks)
+{
+    std::stable_sort(marks.begin(), marks.end(),
+                     [](const FieldMark& a, const FieldMark& b) { return a.offset < b.offset; });
+    m_marks = std::move(marks);
+    viewport()->update();
+}
+
+void HexView::clearFieldMarks()
+{
+    m_marks.clear();
+    viewport()->update();
+}
+
+const FieldMark* HexView::markAt(std::uint64_t offset) const
+{
+    // Later (more deeply nested) marks win where marks overlap.
+    const FieldMark* found = nullptr;
+    for (const FieldMark& mark : m_marks) {
+        if (mark.offset > offset)
+            break;
+        if (offset < mark.offset + mark.length)
+            found = &mark;
+    }
+    return found;
 }
 
 // Copying ------------------------------------------------------------------------------------------
