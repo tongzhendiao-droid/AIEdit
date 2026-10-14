@@ -1,0 +1,15 @@
+# Build output
+/build*/
+/out/
+/cmake-build-*/
+
+# IDE / tooling
+/.vscode/
+/.idea/
+/.cache/
+/compile_commands.json
+*.user
+CMakeUserPresets.json
+
+# Generated translations
+*.qm
