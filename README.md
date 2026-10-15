@@ -1,36 +1,83 @@
-# cppEdit
+# AIEdit
+
+[![CI](https://github.com/tongzhendiao-droid/AIEdit/actions/workflows/ci.yml/badge.svg)](https://github.com/tongzhendiao-droid/AIEdit/actions/workflows/ci.yml)
 
 快速、带 AI 辅助的文本与二进制文件查看器。用 C++20 和 Qt 6 编写，以查看为主、编辑为辅。
 
-> 当前进度：**M1**，即 Hex 查看器。文本视图、AI 面板等后续计划见 [DESIGN.md](DESIGN.md)。
+> 当前进度：已完成 **M3b**（AI 可以用本地工具读取和搜索文件，并在十六进制视图里标注字段）。计划见 [DESIGN.md](DESIGN.md)。
 
-## 功能（M1）
+## 功能
 
-- **秒开任意大小的文件**：用 mmap 映射文件，只绘制屏幕上可见的行，TB 级文件也能流畅滚动。
-- **Hex 视图**：偏移、十六进制、字符三栏，按字节类别着色（NUL、空白、控制字符、高位字节）。
-- **选择和复制**：用键盘或鼠标选择，可复制为十六进制、文本（合法 UTF-8 会按原文复制）、C 数组或偏移。
-- **跳转**：`Ctrl+G` 跳转到偏移，支持 `0x1F`、`1Fh`、`31` 以及 `+16`、`-0x10` 这类相对偏移。
-- **数据检查器**：把光标处的字节解析为各种整数、浮点数、Unix 时间和 UTF-8 字符，可切换大小端。
-- **文件类型识别**：识别文本还是二进制、编码（ASCII、UTF-8、UTF-16/32、GBK 等非 UTF-8 编码）以及约 50 种二进制格式（ELF、PE、PNG、ZIP、SQLite……）。
-- **其他**：多标签页，拖放打开文件，缩放（`Ctrl+滚轮`），中文界面。
+**打开任意大小的文件**
+- 用 mmap 映射文件，只绘制屏幕上可见的行，TB 级文件也能流畅滚动。
+- 大文件在后台建行索引，第一屏马上就能显示。
+- 超长行（比如压缩过的 JSON）会自动拆成多行显示，不会卡住。
+
+**文本视图**
+- 中日韩文字、emoji、Tab 都能正确显示；控制字符显示为 ␀、␛ 这类可见符号。
+- 长行默认按窗口宽度自动换行，看小说、长段落不用横向滚动；`Alt+Z` 可以关掉，改为横向滚动。
+- 自动识别编码（UTF-8/16/32、GB18030、Big5、Shift_JIS 等），也可以在状态栏一键切换（20 种）。
+- 语法高亮支持 300 多种语言（借助 KDE 的 KSyntaxHighlighting），可在状态栏切换语言。
+- 显示行号；`Ctrl+G` 转到行号，也可以输入 `0x1F` 这样的偏移。
+
+**十六进制视图**
+- 偏移、十六进制、字符三栏，按字节类别着色。
+- 可复制为十六进制、文本、C 数组或偏移。
+- 数据检查器：把光标处的字节解析为各种整数、浮点数、Unix 时间和 UTF-8 字符，可切换大小端。
+
+**联动和搜索**
+- 文本、十六进制、并排三种模式，光标和选区始终同步。
+- 查找支持三种模式：
+  - 文本：可选区分大小写。
+  - 正则表达式。
+  - 十六进制：用 `??` 表示任意字节，如 `4D 5A ?? 00`。
+- 搜索在后台运行，大文件也不会卡住界面。搜索 GBK 文件时，会跳过落在字符中间的假匹配。
+
+**看日志**
+- 文件变化时自动重新加载。
+- 「跟随文件末尾」（`Ctrl+Shift+F`）的效果和 `tail -f` 一样。
+
+**AI 助手**（`Ctrl+Shift+A`）
+- 选中文本或字节，可以一键解释、翻译、总结；也可以直接提问和追问，回答以流式显示。
+- 「这是什么文件」只把在本机计算的摘要（类型、熵、字符串、开头字节）发出去，不发送文件本身。
+- 发送前可以预览完整的请求内容，面板会写明将附带什么。
+- **AI 能自己查文件**：问「这个日志里为什么报错」时，AI 会调用本地工具在文件里搜索、读取需要的片段，不用把整个文件发出去。每一次调用都会显示在对话里。
+- **字段标注**：AI 认出二进制结构后，会把字段用颜色标在十六进制视图上，鼠标悬停显示字段名和含义。
+- 默认使用 DeepSeek，也支持其他 OpenAI 兼容服务（通义、Kimi、本地的 Ollama 等）。
+
+设置 API key 有两种方式：
+- 在菜单「AI → AI 设置」里填写。key 只保存在本机的 `~/.config/AIEdit/api-key`，只有你能读取。
+- 用环境变量，此时 key 不会写入文件：
+
+```bash
+AIEDIT_API_KEY=你的key ./build/src/aiedit
+```
+
+**其他**：多标签页、拖放打开文件、缩放、中文界面。
 
 | 操作 | 按键 |
 |---|---|
-| 移动光标 | 方向键、`PgUp`/`PgDn`、`Home`/`End`、`Ctrl+Home`/`Ctrl+End` |
-| 扩展选区 | 按住 `Shift` 移动光标，或用鼠标拖动 |
-| 切换 Hex 栏和字符栏 | `Tab` |
-| 复制（格式取决于当前所在的栏） | `Ctrl+C` |
-| 跳转到偏移 | `Ctrl+G` |
-| 缩放 | `Ctrl++`、`Ctrl+-`、`Ctrl+0` |
+| 文本 / 十六进制 / 并排 | `Ctrl+1` / `Ctrl+2` / `Ctrl+3` |
+| 查找 / 下一个 / 上一个 | `Ctrl+F` / `F3` / `Shift+F3` |
+| 转到行号或偏移 | `Ctrl+G` |
+| 重新加载 / 跟随文件末尾 | `F5` / `Ctrl+Shift+F` |
+| 十六进制视图里切换十六进制栏和字符栏 | `Tab` |
+| 缩放 | `Ctrl++`、`Ctrl+-`、`Ctrl+0`，或 `Ctrl+滚轮` |
+| AI 助手 / 解释选区 | `Ctrl+Shift+A` / `Ctrl+Shift+E` |
 
 ## 构建
 
-依赖：CMake 3.21 或更高、支持 C++20 的编译器，以及 Qt 6.5 或更高（Core、Gui、Widgets、Test）。编译界面翻译还需要 Qt 的 `lrelease`。
+依赖：
+- 必需：CMake 3.21 或更高、支持 C++20 的编译器、Qt 6.5 或更高（Core、Gui、Widgets、Concurrent、Network、Test）。
+- 可选：
+  - KSyntaxHighlighting：语法高亮。
+  - uchardet：更准确的编码识别。
+  - Qt 的 `lrelease`：编译中文界面翻译。
 
 **Ubuntu / Debian**
 
 ```bash
-sudo apt install build-essential cmake qt6-base-dev qt6-l10n-tools
+sudo apt install build-essential cmake qt6-base-dev qt6-l10n-tools libkf6syntaxhighlighting-dev libuchardet-dev
 ```
 
 ```bash
@@ -42,10 +89,35 @@ cmake --build build -j
 ```
 
 ```bash
-./build/src/cppedit 文件1 文件2
+./build/src/aiedit 文件1 文件2
 ```
 
-**Windows**：安装 Qt 6（MSVC 版本）和 CMake 后，用相同的 CMake 命令构建。Windows 版目前还没有验证过。
+**Windows**：安装 Qt 6（MSVC 版本）和 CMake 后，用相同的 CMake 命令构建。Windows 版目前还没有验证过，已知的问题见 DESIGN.md 末尾。
+
+## 安装到桌面（Linux）
+
+安装到 `~/.local`，不需要 sudo：
+
+```bash
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/.local" -DAIEDIT_BUILD_TESTS=OFF
+```
+
+```bash
+cmake --build build-release -j && cmake --install build-release
+```
+
+然后注册到桌面：
+
+```bash
+packaging/linux/register.sh --default
+```
+
+注册后：
+- 应用菜单里出现 AIEdit。
+- 文件管理器右键 →「脚本」→「用 AIEdit 打开」，对任何文件都可用。
+- 加上 `--default` 时，纯文本、日志、Markdown、JSON/XML/YAML、二进制和可执行文件默认用 AIEdit 打开。你已经指定给其他程序的类型（C/C++ 源码、shell 脚本、CSV）保持不变，因为 AIEdit 目前还不能编辑。
+
+AIEdit 只保留一个窗口：再打开文件时，会在已有窗口里新开标签页。需要单独的窗口时用 `aiedit --new-window`。
 
 ## 测试
 
@@ -53,7 +125,7 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-GUI 测试以 offscreen 方式运行，不会弹出窗口。如果设置了 `CPPEDIT_SCREENSHOT_DIR`，测试会把截图保存到这个目录。
+GUI 测试以 offscreen 方式运行，不会弹出窗口。如果设置了 `AIEDIT_SCREENSHOT_DIR`，测试会把截图保存到这个目录。
 
 ## 翻译
 

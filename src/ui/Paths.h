@@ -5,7 +5,7 @@
 
 #include <filesystem>
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 // QString <-> std::filesystem::path without assuming UTF-8 file names on POSIX:
 // QFile::encodeName/decodeName use the same conversion as the rest of Qt.
@@ -27,4 +27,4 @@ inline QString toQString(const std::filesystem::path& path)
 #endif
 }
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

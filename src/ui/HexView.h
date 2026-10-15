@@ -3,18 +3,26 @@
 #include <QAbstractScrollArea>
 #include <QBasicTimer>
 #include <QColor>
+#include <QList>
+#include <QPointer>
 #include <QString>
+
+#include "ui/FieldMark.h"
+#include "ui/RowScrollBar.h"
 
 #include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
 
-namespace cppedit::core {
+class QAction;
+class QMenu;
+
+namespace aiedit::core {
 class FileSource;
 }
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 // Read-only hex view with three columns: offset | hex bytes | characters.
 //
@@ -44,6 +52,8 @@ public:
     ~HexView() override;
 
     void setSource(std::shared_ptr<const core::FileSource> source);
+    // Like setSource(), but keeps the cursor, selection and scroll position where they still fit.
+    void replaceSource(std::shared_ptr<const core::FileSource> source);
     const std::shared_ptr<const core::FileSource>& source() const { return m_source; }
     std::uint64_t size() const;
 
@@ -64,8 +74,20 @@ public:
     // Selects [start, start + length) and puts the cursor on its last byte.
     void select(std::uint64_t start, std::uint64_t length);
 
-    std::uint64_t topRow() const { return m_topRow; }
+    std::uint64_t topRow() const { return m_rows.topRow(); }
     int visibleRows() const;
+    // Wide enough for every column, so a split view can give the hex view exactly that.
+    QSize sizeHint() const override;
+
+    // Coloured ranges with names, e.g. fields the AI assistant worked out. Hovering shows them.
+    void setFieldMarks(QList<FieldMark> marks);
+    const QList<FieldMark>& fieldMarks() const { return m_marks; }
+    void clearFieldMarks();
+
+    // Extra actions for the right-click menu (the AI actions), shown after the copy actions.
+    void setContextActions(const QList<QAction*>& actions);
+    // The right-click menu as it would open now; contextMenuEvent() shows it.
+    std::unique_ptr<QMenu> createContextMenu();
 
     // Text for the selection in different formats; empty if the selection exceeds kMaxCopyBytes.
     QString selectionAsHex() const;
@@ -89,6 +111,7 @@ signals:
 
 protected:
     bool event(QEvent* event) override;
+    bool viewportEvent(QEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void changeEvent(QEvent* event) override;
@@ -123,6 +146,7 @@ private:
         QColor selectionText;
         QColor inactiveSelection;
         QColor separator;
+        QList<QColor> marks; // field mark tints, used in turn
     };
 
     void updateMetrics();
@@ -130,8 +154,6 @@ private:
     void updateScrollBars();
     std::uint64_t rowCount() const;
     std::uint64_t maxTopRow() const;
-    int scrollValueForRow(std::uint64_t row) const;
-    std::uint64_t rowForScrollValue(int value) const;
     void setTopRow(std::uint64_t row);
     void ensureCursorVisible();
     void moveCursor(std::uint64_t offset, bool extendSelection);
@@ -141,6 +163,7 @@ private:
     void dragTo(const QPoint& pos);
     void copyToClipboard(const QString& text, const QString& message);
     QString formatOffset(std::uint64_t offset) const;
+    const FieldMark* markAt(std::uint64_t offset) const;
 
     qreal hexCellX(int column) const;
     qreal textCellX(int column) const;
@@ -155,9 +178,7 @@ private:
     std::uint64_t m_anchor = 0;
     Pane m_activePane = Pane::Hex;
 
-    std::uint64_t m_topRow = 0;
-    bool m_scrollBarScaled = false;
-    bool m_updatingScrollBars = false;
+    RowScrollBar m_rows;
     int m_wheelRemainder = 0;
     int m_zoomRemainder = 0;
 
@@ -175,8 +196,10 @@ private:
     qreal m_textStart = 0;
 
     Colors m_colors;
+    QList<FieldMark> m_marks; // sorted by offset
+    QList<QPointer<QAction>> m_contextActions;
     std::array<QString, 256> m_hexText;
     std::array<QString, 256> m_charText;
 };
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

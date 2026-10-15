@@ -1,0 +1,23 @@
+[Desktop Entry]
+Type=Application
+Name=AIEdit
+GenericName=Text and Binary Viewer
+GenericName[zh_CN]=文本与二进制查看器
+Comment=Fast, AI-assisted viewer for text and binary files
+Comment[zh_CN]=快速、带 AI 辅助的文本与二进制文件查看器
+Keywords=text;hex;binary;log;viewer;editor;encoding;AI;
+Keywords[zh_CN]=文本;十六进制;二进制;日志;查看器;编辑器;编码;AI;
+Exec=@AIEDIT_EXEC@ %F
+TryExec=@AIEDIT_EXEC@
+Icon=aiedit
+Terminal=false
+StartupNotify=true
+StartupWMClass=aiedit
+Categories=Utility;TextEditor;
+MimeType=text/plain;text/x-log;text/markdown;application/json;application/xml;text/xml;application/x-yaml;application/toml;text/x-python;text/x-python3;text/x-cmake;text/x-patch;text/x-diff;application/octet-stream;application/x-executable;application/x-pie-executable;application/x-sharedlib;application/x-object;application/x-core;application/x-zerosize;
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New Window
+Name[zh_CN]=新窗口
+Exec=@AIEDIT_EXEC@ --new-window

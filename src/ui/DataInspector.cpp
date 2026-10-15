@@ -20,7 +20,7 @@
 #include <optional>
 #include <span>
 
-namespace cppedit::ui {
+namespace aiedit::ui {
 
 namespace {
 
@@ -194,4 +194,4 @@ void DataInspector::refresh()
     show(Utf8Row, utf8.isEmpty() ? std::nullopt : std::optional<QString>(utf8));
 }
 
-} // namespace cppedit::ui
+} // namespace aiedit::ui

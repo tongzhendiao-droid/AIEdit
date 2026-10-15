@@ -3,8 +3,10 @@
 #include "ui/DocumentView.h"
 #include "ui/HexView.h"
 #include "ui/MainWindow.h"
+#include "ui/TextView.h"
 #include "ui/Paths.h"
 
+#include <QMenu>
 #include <QMenuBar>
 #include <QScrollBar>
 #include <QSignalSpy>
@@ -14,7 +16,7 @@
 
 #include <fstream>
 
-using namespace cppedit;
+using namespace aiedit;
 using ui::HexView;
 
 namespace {
@@ -60,6 +62,7 @@ private slots:
     void mainWindowOpensAndDeduplicates();
     void renderScreenshot();
     void chineseTranslation();
+    void fieldMarks();
 
 private:
     QTemporaryDir m_dir;
@@ -271,8 +274,8 @@ void TestHexView::mainWindowOpensAndDeduplicates()
 
 void TestHexView::renderScreenshot()
 {
-    // Set CPPEDIT_SCREENSHOT_DIR to look at the rendering; otherwise this only checks that it paints.
-    std::string content = "#!/bin/sh\necho \"hello, cppEdit\"\n";
+    // Set AIEDIT_SCREENSHOT_DIR to look at the rendering; otherwise this only checks that it paints.
+    std::string content = "#!/bin/sh\necho \"hello, AIEdit\"\n";
     content += std::string("\x00\x00\x00\x00\x7F" "ELF\x02\x01\x01\x00\xFF\xFE\x80\x1B\x01\x02\t\r", 22);
     content += "UTF-8: 你好，世界\n";
     content += countingBytes(200);
@@ -289,7 +292,7 @@ void TestHexView::renderScreenshot()
 
     const QPixmap shot = window.grab();
     QVERIFY(!shot.isNull());
-    if (const QByteArray dir = qgetenv("CPPEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
+    if (const QByteArray dir = qgetenv("AIEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
         QVERIFY(shot.save(QString::fromLocal8Bit(dir) + QStringLiteral("/hexview.png")));
 }
 
@@ -297,22 +300,63 @@ void TestHexView::chineseTranslation()
 {
     // Catches .ts contexts that do not match the runtime class names (e.g. a missing namespace).
     QTranslator translator;
-    if (!translator.load(QStringLiteral(CPPEDIT_QM_DIR "/cppedit_zh_CN.qm")))
+    if (!translator.load(QStringLiteral(AIEDIT_QM_DIR "/aiedit_zh_CN.qm")))
         QSKIP("Translations were not built (lrelease missing)");
     QCoreApplication::installTranslator(&translator);
 
     ui::MainWindow window;
     window.resize(1100, 520);
     QCOMPARE(window.menuBar()->actions().first()->text(), QStringLiteral("文件(&F)"));
-    QVERIFY(window.openFile(ui::toQString(writeFile(m_dir, "zh.txt", "你好，cppEdit\n"))));
+    QVERIFY(window.openFile(ui::toQString(writeFile(m_dir, "zh.txt", "你好，AIEdit\n"))));
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
     window.currentDocument()->hexView()->setFocus();
     QCoreApplication::processEvents();
-    if (const QByteArray dir = qgetenv("CPPEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
+    if (const QByteArray dir = qgetenv("AIEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
         QVERIFY(window.grab().save(QString::fromLocal8Bit(dir) + QStringLiteral("/hexview_zh.png")));
 
+    // The right-click menu of a selection, with the AI actions in Chinese.
+    ui::TextView* text = window.currentDocument()->textView();
+    text->selectAll();
+    auto menu = text->createContextMenu();
+    QStringList labels;
+    for (const QAction* action : menu->actions())
+        labels << action->text();
+    QVERIFY2(labels.contains(QStringLiteral("AI 解释(&E)")), qPrintable(labels.join(QLatin1Char('|'))));
+    menu->popup(window.mapToGlobal(QPoint(200, 120)));
+    QTest::qWait(50);
+    if (const QByteArray dir = qgetenv("AIEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
+        QVERIFY(menu->grab().save(QString::fromLocal8Bit(dir) + QStringLiteral("/contextmenu_zh.png")));
+    menu->hide();
+
     QCoreApplication::removeTranslator(&translator);
+}
+
+void TestHexView::fieldMarks()
+{
+    std::string header("MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00\xFF\xFF\x00\x00\xB8\x00", 18);
+    header += std::string(46, '\0') + countingBytes(64);
+    ui::MainWindow window;
+    window.resize(1100, 420);
+    QVERIFY(window.openFile(ui::toQString(writeFile(m_dir, "marked.exe", header))));
+    ui::DocumentView* doc = window.currentDocument();
+    doc->showFieldMarks({{0, 2, QStringLiteral("e_magic"), QStringLiteral("MZ — DOS signature")},
+                         {2, 2, QStringLiteral("e_cblp"), QStringLiteral("144 — bytes on last page")},
+                         {4, 2, QStringLiteral("e_cp"), QStringLiteral("3 — pages in file")},
+                         {6, 2, QStringLiteral("e_crlc"), QString()},
+                         {8, 2, QStringLiteral("e_cparhdr"), QString()},
+                         {0x3C, 4, QStringLiteral("e_lfanew"), QStringLiteral("offset of the PE header")}});
+    HexView* view = doc->hexView();
+    QCOMPARE(view->fieldMarks().size(), 6);
+    QCOMPARE(view->fieldMarks().last().name, QStringLiteral("e_lfanew"));
+    view->select(0x10, 4);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QCoreApplication::processEvents();
+    if (const QByteArray dir = qgetenv("AIEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
+        QVERIFY(window.grab().save(QString::fromLocal8Bit(dir) + QStringLiteral("/fieldmarks.png")));
+    view->clearFieldMarks();
+    QVERIFY(view->fieldMarks().isEmpty());
 }
 
 QTEST_MAIN(TestHexView)

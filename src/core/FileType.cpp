@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cstring>
 
-namespace cppedit::core {
+namespace aiedit::core {
 
 namespace {
 
@@ -265,4 +265,4 @@ FileTypeInfo detectFileType(std::span<const std::uint8_t> data)
     return binary(weakFormat);
 }
 
-} // namespace cppedit::core
+} // namespace aiedit::core

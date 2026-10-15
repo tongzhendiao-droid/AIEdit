@@ -7,7 +7,7 @@
 #include <system_error>
 #include <vector>
 
-namespace cppedit::core {
+namespace aiedit::core {
 
 // Errors specific to FileSource; OS errors are reported through std::system_category().
 enum class FileError
@@ -25,8 +25,8 @@ std::error_code make_error_code(FileError e);
 // Files that report size 0 but still have content (/proc, /sys) or that live on file
 // systems without mmap support are read into memory instead, up to kMaxReadSize.
 //
-// Known limitation: if another process truncates a mapped file, touching the pages past
-// the new end raises SIGBUS on POSIX. Reloading on change is planned (see DESIGN.md).
+// If another process truncates a mapped file, the bytes past its new end read as zeros (see
+// MappingGuard) until the file is opened again.
 class FileSource
 {
 public:
@@ -53,9 +53,9 @@ private:
     std::vector<std::uint8_t> m_owned; // contents, if read into memory
 };
 
-} // namespace cppedit::core
+} // namespace aiedit::core
 
 template <>
-struct std::is_error_code_enum<cppedit::core::FileError> : std::true_type
+struct std::is_error_code_enum<aiedit::core::FileError> : std::true_type
 {
 };

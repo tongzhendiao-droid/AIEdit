@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(cppEdit
+project(AIEdit
     VERSION 0.1.0
     DESCRIPTION "A fast, AI-assisted viewer for text and binary files"
     LANGUAGES CXX)
@@ -14,22 +14,27 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
 endif()
 
-option(CPPEDIT_BUILD_TESTS "Build the unit tests" ON)
+option(AIEDIT_BUILD_TESTS "Build the unit tests" ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
 qt_standard_project_setup()
 
+# Optional: better charset detection, and syntax highlighting (the engine Kate uses).
+find_package(uchardet CONFIG QUIET)
+find_package(KF6SyntaxHighlighting 6.0 CONFIG QUIET)
+message(STATUS "uchardet: ${uchardet_FOUND}, KF6SyntaxHighlighting: ${KF6SyntaxHighlighting_FOUND}")
+
 # Shared warning flags, linked privately into every target we own.
-add_library(cppedit_warnings INTERFACE)
+add_library(aiedit_warnings INTERFACE)
 if(MSVC)
-    target_compile_options(cppedit_warnings INTERFACE /W4 /permissive- /utf-8)
+    target_compile_options(aiedit_warnings INTERFACE /W4 /permissive- /utf-8)
 else()
-    target_compile_options(cppedit_warnings INTERFACE -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wno-sign-conversion)
+    target_compile_options(aiedit_warnings INTERFACE -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wno-sign-conversion)
 endif()
 
 add_subdirectory(src)
 
-if(CPPEDIT_BUILD_TESTS)
+if(AIEDIT_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
