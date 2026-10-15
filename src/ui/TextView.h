@@ -8,6 +8,7 @@
 #include <QAbstractScrollArea>
 #include <QBasicTimer>
 #include <QColor>
+#include <QPointer>
 #include <QTextLayout>
 
 #include <cstdint>
@@ -15,6 +16,9 @@
 #include <optional>
 #include <unordered_map>
 #include <vector>
+
+class QAction;
+class QMenu;
 
 namespace aiedit::ui {
 
@@ -60,6 +64,10 @@ public:
     // A KSyntaxHighlighting definition name such as "C++"; empty for plain text.
     QString syntax() const { return m_syntax; }
     void setSyntax(const QString& name);
+    // Extra actions for the right-click menu (the AI actions), shown after Copy.
+    void setContextActions(const QList<QAction*>& actions);
+    // The right-click menu as it would open now; contextMenuEvent() shows it.
+    std::unique_ptr<QMenu> createContextMenu();
     // The highlighting formats of a row, as the view draws them (for tests).
     QList<QTextLayout::FormatRange> rowFormats(std::uint64_t rowIndex) const;
 
@@ -156,6 +164,7 @@ private:
 
     TextDocument* m_document = nullptr;
     RowScrollBar m_rows;
+    QList<QPointer<QAction>> m_contextActions;
     std::uint64_t m_cursor = 0;
     std::uint64_t m_anchor = 0;
     std::optional<qreal> m_desiredX; // kept while moving up and down

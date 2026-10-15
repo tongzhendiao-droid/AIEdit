@@ -128,6 +128,7 @@ private:
     QAction* m_aiTranslateAction = nullptr;
     QAction* m_aiSummarizeAction = nullptr;
     QAction* m_aiIdentifyAction = nullptr;
+    QAction* m_aiAskAction = nullptr;
     QAction* m_aiSettingsAction = nullptr;
     QAction* m_aboutAction = nullptr;
     QAction* m_aboutQtAction = nullptr;

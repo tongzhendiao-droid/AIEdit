@@ -862,13 +862,30 @@ void TextView::wheelEvent(QWheelEvent* event)
     event->accept();
 }
 
+void TextView::setContextActions(const QList<QAction*>& actions)
+{
+    m_contextActions.clear();
+    for (QAction* action : actions)
+        m_contextActions << action;
+}
+
+std::unique_ptr<QMenu> TextView::createContextMenu()
+{
+    auto menu = std::make_unique<QMenu>(this);
+    menu->addAction(tr("Copy"), this, &TextView::copy)->setEnabled(hasSelection());
+    menu->addSeparator();
+    for (QAction* action : m_contextActions) {
+        if (action)
+            menu->addAction(action);
+    }
+    menu->addSeparator();
+    menu->addAction(tr("Select All"), this, &TextView::selectAll)->setEnabled(rowCount() > 0);
+    return menu;
+}
+
 void TextView::contextMenuEvent(QContextMenuEvent* event)
 {
-    QMenu menu(this);
-    menu.addAction(tr("Copy"), this, &TextView::copy)->setEnabled(hasSelection());
-    menu.addSeparator();
-    menu.addAction(tr("Select All"), this, &TextView::selectAll)->setEnabled(rowCount() > 0);
-    menu.exec(event->globalPos());
+    createContextMenu()->exec(event->globalPos());
 }
 
 void TextView::focusInEvent(QFocusEvent* event)

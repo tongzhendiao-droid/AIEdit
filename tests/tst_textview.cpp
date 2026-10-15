@@ -9,6 +9,7 @@
 #include "ui/TextDocument.h"
 #include "ui/TextView.h"
 
+#include <QMenu>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -61,6 +62,7 @@ private slots:
     void reloadsAfterTruncationAndDeletion();
     void highlightingCarriesStateAcrossCheckpoints();
     void renderHighlightedCode();
+    void aiActionsInContextMenus();
     void renderScreenshot();
 
 private:
@@ -433,6 +435,51 @@ void TestTextView::renderHighlightedCode()
     QVERIFY(!shot.isNull());
     if (const QByteArray dir = qgetenv("AIEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
         QVERIFY(shot.save(QString::fromLocal8Bit(dir) + QStringLiteral("/highlight.png")));
+}
+
+void TestTextView::aiActionsInContextMenus()
+{
+    const auto path = ui::toPath(m_dir.filePath(QStringLiteral("book.txt")));
+    std::ofstream(path, std::ios::binary) << "第一章\n很久以前，有一座山。\nOnce upon a time there was a mountain.\n";
+    ui::MainWindow window;
+    QVERIFY(window.openFile(ui::toQString(path)));
+    ui::DocumentView* doc = window.currentDocument();
+
+    const auto actionTexts = [](QMenu* menu) {
+        QStringList texts;
+        for (const QAction* action : menu->actions())
+            if (!action->isSeparator())
+                texts << action->text();
+        return texts;
+    };
+    const auto find = [](QMenu* menu, const QString& text) -> QAction* {
+        for (QAction* action : menu->actions())
+            if (action->text() == text)
+                return action;
+        return nullptr;
+    };
+
+    // Without a selection, the selection actions are there but disabled; asking is not.
+    auto menu = doc->textView()->createContextMenu();
+    QCOMPARE(actionTexts(menu.get()), (QStringList{QStringLiteral("Copy"), QStringLiteral("AI &Explain"),
+                                                   QStringLiteral("AI &Translate"), QStringLiteral("AI &Summarize"),
+                                                   QStringLiteral("&Ask AI…"), QStringLiteral("Select All")}));
+    QVERIFY(!find(menu.get(), QStringLiteral("AI &Explain"))->isEnabled());
+    QVERIFY(find(menu.get(), QStringLiteral("&Ask AI…"))->isEnabled());
+
+    // Selecting a sentence enables them, as a right-click on it would see.
+    doc->textView()->select(10, 40);
+    menu = doc->textView()->createContextMenu();
+    QVERIFY(find(menu.get(), QStringLiteral("AI &Explain"))->isEnabled());
+    QVERIFY(find(menu.get(), QStringLiteral("AI &Translate"))->isEnabled());
+
+    // The hex view offers the byte-oriented set, including identifying the file.
+    doc->setViewMode(ui::DocumentView::ViewMode::Hex);
+    menu = doc->hexView()->createContextMenu();
+    const QStringList hexTexts = actionTexts(menu.get());
+    QVERIFY(hexTexts.contains(QStringLiteral("What Is This &File?")));
+    QVERIFY(!hexTexts.contains(QStringLiteral("AI &Translate")));
+    QVERIFY(find(menu.get(), QStringLiteral("AI &Explain"))->isEnabled()); // the selection carried over
 }
 
 void TestTextView::renderScreenshot()

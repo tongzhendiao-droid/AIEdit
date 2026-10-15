@@ -197,6 +197,17 @@ std::uint64_t DocumentView::cursorOffset() const
     return isTextActive() ? m_textView->cursorOffset() : m_hexView->cursorOffset();
 }
 
+bool DocumentView::hasSelection() const
+{
+    return isTextActive() ? m_textView->hasSelection() : m_hexView->selectionLength() > 1;
+}
+
+void DocumentView::setContextActions(const QList<QAction*>& textActions, const QList<QAction*>& hexActions)
+{
+    m_textView->setContextActions(textActions);
+    m_hexView->setContextActions(hexActions);
+}
+
 void DocumentView::setCodec(const core::TextCodec& codec)
 {
     m_textDocument->setCodec(codec);

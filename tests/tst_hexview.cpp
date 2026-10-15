@@ -3,8 +3,10 @@
 #include "ui/DocumentView.h"
 #include "ui/HexView.h"
 #include "ui/MainWindow.h"
+#include "ui/TextView.h"
 #include "ui/Paths.h"
 
+#include <QMenu>
 #include <QMenuBar>
 #include <QScrollBar>
 #include <QSignalSpy>
@@ -312,6 +314,20 @@ void TestHexView::chineseTranslation()
     QCoreApplication::processEvents();
     if (const QByteArray dir = qgetenv("AIEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
         QVERIFY(window.grab().save(QString::fromLocal8Bit(dir) + QStringLiteral("/hexview_zh.png")));
+
+    // The right-click menu of a selection, with the AI actions in Chinese.
+    ui::TextView* text = window.currentDocument()->textView();
+    text->selectAll();
+    auto menu = text->createContextMenu();
+    QStringList labels;
+    for (const QAction* action : menu->actions())
+        labels << action->text();
+    QVERIFY2(labels.contains(QStringLiteral("AI 解释(&E)")), qPrintable(labels.join(QLatin1Char('|'))));
+    menu->popup(window.mapToGlobal(QPoint(200, 120)));
+    QTest::qWait(50);
+    if (const QByteArray dir = qgetenv("AIEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
+        QVERIFY(menu->grab().save(QString::fromLocal8Bit(dir) + QStringLiteral("/contextmenu_zh.png")));
+    menu->hide();
 
     QCoreApplication::removeTranslator(&translator);
 }

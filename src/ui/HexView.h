@@ -4,6 +4,7 @@
 #include <QBasicTimer>
 #include <QColor>
 #include <QList>
+#include <QPointer>
 #include <QString>
 
 #include "ui/FieldMark.h"
@@ -13,6 +14,9 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+
+class QAction;
+class QMenu;
 
 namespace aiedit::core {
 class FileSource;
@@ -79,6 +83,11 @@ public:
     void setFieldMarks(QList<FieldMark> marks);
     const QList<FieldMark>& fieldMarks() const { return m_marks; }
     void clearFieldMarks();
+
+    // Extra actions for the right-click menu (the AI actions), shown after the copy actions.
+    void setContextActions(const QList<QAction*>& actions);
+    // The right-click menu as it would open now; contextMenuEvent() shows it.
+    std::unique_ptr<QMenu> createContextMenu();
 
     // Text for the selection in different formats; empty if the selection exceeds kMaxCopyBytes.
     QString selectionAsHex() const;
@@ -188,6 +197,7 @@ private:
 
     Colors m_colors;
     QList<FieldMark> m_marks; // sorted by offset
+    QList<QPointer<QAction>> m_contextActions;
     std::array<QString, 256> m_hexText;
     std::array<QString, 256> m_charText;
 };

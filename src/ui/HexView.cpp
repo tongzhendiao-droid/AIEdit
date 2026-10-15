@@ -686,21 +686,38 @@ void HexView::wheelEvent(QWheelEvent* event)
     event->accept();
 }
 
-void HexView::contextMenuEvent(QContextMenuEvent* event)
+void HexView::setContextActions(const QList<QAction*>& actions)
+{
+    m_contextActions.clear();
+    for (QAction* action : actions)
+        m_contextActions << action;
+}
+
+std::unique_ptr<QMenu> HexView::createContextMenu()
 {
     const bool hasData = size() > 0;
-    QMenu menu(this);
-    menu.addAction(tr("Copy as Hex"), this, &HexView::copyAsHex)->setEnabled(hasData);
-    menu.addAction(tr("Copy as Text"), this, &HexView::copyAsText)->setEnabled(hasData);
-    menu.addAction(tr("Copy as C Array"), this, &HexView::copyAsCArray)->setEnabled(hasData);
-    menu.addAction(tr("Copy Offset"), this, &HexView::copyOffset)->setEnabled(hasData);
-    menu.addSeparator();
-    menu.addAction(tr("Select All"), this, &HexView::selectAll)->setEnabled(hasData);
-    if (!m_marks.isEmpty()) {
-        menu.addSeparator();
-        menu.addAction(tr("Clear Field Marks"), this, &HexView::clearFieldMarks);
+    auto menu = std::make_unique<QMenu>(this);
+    menu->addAction(tr("Copy as Hex"), this, &HexView::copyAsHex)->setEnabled(hasData);
+    menu->addAction(tr("Copy as Text"), this, &HexView::copyAsText)->setEnabled(hasData);
+    menu->addAction(tr("Copy as C Array"), this, &HexView::copyAsCArray)->setEnabled(hasData);
+    menu->addAction(tr("Copy Offset"), this, &HexView::copyOffset)->setEnabled(hasData);
+    menu->addSeparator();
+    for (QAction* action : m_contextActions) {
+        if (action)
+            menu->addAction(action);
     }
-    menu.exec(event->globalPos());
+    menu->addSeparator();
+    menu->addAction(tr("Select All"), this, &HexView::selectAll)->setEnabled(hasData);
+    if (!m_marks.isEmpty()) {
+        menu->addSeparator();
+        menu->addAction(tr("Clear Field Marks"), this, &HexView::clearFieldMarks);
+    }
+    return menu;
+}
+
+void HexView::contextMenuEvent(QContextMenuEvent* event)
+{
+    createContextMenu()->exec(event->globalPos());
 }
 
 void HexView::focusInEvent(QFocusEvent* event)

@@ -12,6 +12,7 @@
 #include <optional>
 #include <utility>
 
+class QAction;
 class QSplitter;
 
 namespace aiedit::core {
@@ -58,6 +59,10 @@ public:
     // The view the user works in: the visible one, or in split mode the one focused last.
     bool isTextActive() const;
     std::uint64_t cursorOffset() const;
+    // Whether the active view has a selection worth handing to the AI.
+    bool hasSelection() const;
+    // Right-click actions for the text and the hex view (the AI actions).
+    void setContextActions(const QList<QAction*>& textActions, const QList<QAction*>& hexActions);
 
     void setCodec(const core::TextCodec& codec);
     // Syntax highlighting definition name; empty for plain text.

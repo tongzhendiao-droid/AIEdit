@@ -357,9 +357,11 @@ void MainWindow::createActions()
         connect(a, &QAction::triggered, this, [this, action] { runAiAction(action); });
         return a;
     };
-    m_aiExplainAction = aiAction(tr("&Explain Selection"), &AiPanel::explainSelection, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E));
-    m_aiTranslateAction = aiAction(tr("&Translate Selection"), &AiPanel::translateSelection);
-    m_aiSummarizeAction = aiAction(tr("&Summarize Selection"), &AiPanel::summarizeSelection);
+    // Shared by the AI menu and the right-click menus of both views.
+    m_aiExplainAction = aiAction(tr("AI &Explain"), &AiPanel::explainSelection, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E));
+    m_aiTranslateAction = aiAction(tr("AI &Translate"), &AiPanel::translateSelection);
+    m_aiSummarizeAction = aiAction(tr("AI &Summarize"), &AiPanel::summarizeSelection);
+    m_aiAskAction = aiAction(tr("&Ask AI…"), &AiPanel::focusInput);
     m_aiIdentifyAction = aiAction(tr("What Is This &File?"), &AiPanel::identifyFile);
     m_aiSettingsAction = new QAction(tr("AI Setti&ngs…"), this);
     connect(m_aiSettingsAction, &QAction::triggered, this, &MainWindow::showAiSettings);
@@ -420,6 +422,7 @@ void MainWindow::createMenus()
     ai->addAction(m_aiExplainAction);
     ai->addAction(m_aiTranslateAction);
     ai->addAction(m_aiSummarizeAction);
+    ai->addAction(m_aiAskAction);
     ai->addAction(m_aiIdentifyAction);
     ai->addSeparator();
     ai->addAction(m_aiSettingsAction);
@@ -565,6 +568,8 @@ bool MainWindow::openFile(const QString& path)
     const core::TextCodec& codec = core::defaultCodec(type, source->bytes(), preferredLegacyCodec());
     auto* doc = new DocumentView(source, type, codec);
     applyViewSettings(doc);
+    doc->setContextActions({m_aiExplainAction, m_aiTranslateAction, m_aiSummarizeAction, m_aiAskAction},
+                           {m_aiExplainAction, m_aiSummarizeAction, m_aiAskAction, m_aiIdentifyAction});
     connect(doc, &DocumentView::stateChanged, this, [this, doc] { documentStateChanged(doc); });
     connect(doc, &DocumentView::sourceChanged, this, [this, doc] {
         if (doc != currentDocument())
@@ -630,6 +635,10 @@ void MainWindow::documentStateChanged(DocumentView* doc)
         const QSignalBlocker blocker(m_followAction);
         m_followAction->setChecked(doc->isFollowing());
     }
+    // Explaining, translating and summarizing need a selection; asking and identifying do not.
+    const bool selected = doc && doc->hasSelection();
+    for (QAction* action : {m_aiExplainAction, m_aiTranslateAction, m_aiSummarizeAction})
+        action->setEnabled(selected);
     updateCursorStatus();
     updateTextStatus();
     m_aiPanel->refreshContext();
@@ -640,8 +649,7 @@ void MainWindow::updateActions()
     const bool hasDocument = currentDocument() != nullptr;
     for (QAction* action : {m_closeAction, m_reloadAction, m_followAction, m_copyAction, m_copyHexAction, m_copyTextAction, m_copyCArrayAction,
                             m_copyOffsetAction, m_selectAllAction, m_goToAction, m_findAction, m_findNextAction,
-                            m_findPreviousAction, m_aiExplainAction, m_aiTranslateAction, m_aiSummarizeAction,
-                            m_aiIdentifyAction}) {
+                            m_findPreviousAction, m_aiAskAction, m_aiIdentifyAction}) {
         action->setEnabled(hasDocument);
     }
     m_viewModeGroup->setEnabled(hasDocument);

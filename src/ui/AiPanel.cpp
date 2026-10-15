@@ -392,6 +392,11 @@ void AiPanel::clearConversation()
     updateState();
 }
 
+void AiPanel::focusInput()
+{
+    m_input->setFocus(Qt::OtherFocusReason);
+}
+
 void AiPanel::finished(const QString& finishReason)
 {
     Turn& turn = m_turns.last();

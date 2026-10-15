@@ -69,6 +69,8 @@ public slots:
     void identifyFile();
     void stop();
     void clearConversation();
+    // Puts the cursor in the question field, for typing a question about the selection.
+    void focusInput();
 
 signals:
     void settingsRequested();

@@ -644,16 +644,20 @@
         <translation>每行 %1 字节</translation>
     </message>
     <message>
-        <source>&amp;Explain Selection</source>
-        <translation>解释选区(&amp;E)</translation>
+        <source>AI &amp;Explain</source>
+        <translation>AI 解释(&amp;E)</translation>
     </message>
     <message>
-        <source>&amp;Translate Selection</source>
-        <translation>翻译选区(&amp;T)</translation>
+        <source>AI &amp;Translate</source>
+        <translation>AI 翻译(&amp;T)</translation>
     </message>
     <message>
-        <source>&amp;Summarize Selection</source>
-        <translation>总结选区(&amp;S)</translation>
+        <source>AI &amp;Summarize</source>
+        <translation>AI 总结(&amp;S)</translation>
+    </message>
+    <message>
+        <source>&amp;Ask AI…</source>
+        <translation>问 AI(&amp;A)…</translation>
     </message>
     <message>
         <source>What Is This &amp;File?</source>
