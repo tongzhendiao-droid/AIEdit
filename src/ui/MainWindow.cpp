@@ -376,6 +376,12 @@ void MainWindow::createActions()
         if (DocumentView* doc = currentDocument())
             doc->findNext(true);
     });
+    m_replaceAction = new QAction(tr("R&eplace…"), this);
+    m_replaceAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_H));
+    connect(m_replaceAction, &QAction::triggered, this, [this] {
+        if (DocumentView* doc = currentDocument())
+            doc->showFindBar(true);
+    });
     m_findPreviousAction = new QAction(tr("Find Pre&vious"), this);
     m_findPreviousAction->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F3));
     connect(m_findPreviousAction, &QAction::triggered, this, [this] {
@@ -479,6 +485,7 @@ void MainWindow::createMenus()
     edit->addAction(m_findAction);
     edit->addAction(m_findNextAction);
     edit->addAction(m_findPreviousAction);
+    edit->addAction(m_replaceAction);
     edit->addAction(m_goToAction);
 
     QMenu* view = menuBar()->addMenu(tr("&View"));
@@ -845,7 +852,7 @@ void MainWindow::updateActions()
     DocumentView* doc = currentDocument();
     const bool hasDocument = doc != nullptr;
     for (QAction* action : {m_closeAction, m_saveAction, m_saveAsAction, m_copyOffsetAction, m_goToAction, m_findAction,
-                            m_findNextAction, m_findPreviousAction, m_aiAskAction, m_aiIdentifyAction}) {
+                            m_findNextAction, m_findPreviousAction, m_replaceAction, m_aiAskAction, m_aiIdentifyAction}) {
         action->setEnabled(hasDocument);
     }
     // A new document has no file on disk to reload or follow yet.

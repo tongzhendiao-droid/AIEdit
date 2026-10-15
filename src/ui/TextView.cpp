@@ -973,17 +973,26 @@ void TextView::replaceSelection(const QString& text, core::EditBuffer::Merge mer
     replaceRange(start, hasSelection() ? selectionEnd() : start, text, merge);
 }
 
-void TextView::replaceRange(std::uint64_t start, std::uint64_t end, const QString& text, core::EditBuffer::Merge merge)
+bool TextView::replaceRange(std::uint64_t start, std::uint64_t end, const QString& text, core::EditBuffer::Merge merge)
 {
     const std::optional<std::uint64_t> inserted = m_document->replace(start, end, text, merge);
     if (!inserted) {
         emit statusMessage(tr("These characters cannot be written in this file's encoding (%1)")
                                .arg(QString::fromLatin1(m_document->codec().name.data())));
-        return;
+        return false;
     }
     m_desiredX.reset();
     setCursorAndAnchor(start + *inserted, start + *inserted);
     ensureCursorVisible();
+    return true;
+}
+
+bool TextView::replaceSelectedText(const QString& text)
+{
+    if (!canEdit())
+        return false;
+    m_document->breakUndoMerge();
+    return replaceRange(selectionStart(), selectionEnd(), text, core::EditBuffer::Merge::No);
 }
 
 void TextView::insertText(const QString& text)

@@ -2,6 +2,17 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN">
 <context>
+    <name>Replace</name>
+    <message>
+        <source>The match changed; search again</source>
+        <translation>匹配已经变了，请重新查找</translation>
+    </message>
+    <message>
+        <source>The file is still being read; try again in a moment</source>
+        <translation>文件还在读取中，请稍后再试</translation>
+    </message>
+</context>
+<context>
     <name>SearchJob</name>
     <message>
         <source>Enter something to search for.</source>
@@ -383,6 +394,16 @@
 <context>
     <name>aiedit::ui::DocumentView</name>
     <message>
+        <source>Nothing to replace</source>
+        <translation>没有可替换的内容</translation>
+    </message>
+    <message numerus="yes">
+        <source>Replaced %n time(s)</source>
+        <translation>
+            <numerusform>已替换 %n 处</numerusform>
+        </translation>
+    </message>
+    <message>
         <source>%1 changed on disk; your unsaved edits are kept</source>
         <translation>%1 在磁盘上被修改了；你未保存的修改仍然保留</translation>
     </message>
@@ -450,12 +471,36 @@
         <translation>关闭（Esc）</translation>
     </message>
     <message>
+        <source>Replace</source>
+        <translation>替换</translation>
+    </message>
+    <message>
+        <source>Replace this match and find the next (Enter)</source>
+        <translation>替换这一处，并查找下一处（Enter）</translation>
+    </message>
+    <message>
+        <source>Replace All</source>
+        <translation>全部替换</translation>
+    </message>
+    <message>
+        <source>Replace every match in the file, as one step to undo</source>
+        <translation>替换文件中的每一处，可以一步撤销</translation>
+    </message>
+    <message>
         <source>Find:</source>
         <translation>查找：</translation>
     </message>
     <message>
+        <source>Replace:</source>
+        <translation>替换：</translation>
+    </message>
+    <message>
         <source>Searching… %1%</source>
         <translation>正在查找… %1%</translation>
+    </message>
+    <message>
+        <source>Bytes are not replaced in hex mode</source>
+        <translation>十六进制模式下不替换字节</translation>
     </message>
     <message>
         <source>Searching…</source>
@@ -480,6 +525,14 @@
     <message>
         <source>Text to find</source>
         <translation>要查找的文本</translation>
+    </message>
+    <message>
+        <source>Replace with: $1 or \1 for groups, \n for a line break</source>
+        <translation>替换为：$1 或 \1 表示分组，\n 表示换行</translation>
+    </message>
+    <message>
+        <source>Replace with</source>
+        <translation>替换为</translation>
     </message>
 </context>
 <context>
@@ -674,6 +727,10 @@
     <message>
         <source>Find &amp;Next</source>
         <translation>查找下一个(&amp;N)</translation>
+    </message>
+    <message>
+        <source>R&amp;eplace…</source>
+        <translation>替换(&amp;E)…</translation>
     </message>
     <message>
         <source>Find Pre&amp;vious</source>

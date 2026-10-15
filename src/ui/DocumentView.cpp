@@ -7,6 +7,7 @@
 #include "ui/FindBar.h"
 #include "ui/HexView.h"
 #include "ui/Paths.h"
+#include "ui/Replace.h"
 #include "ui/SyntaxHighlighting.h"
 #include "ui/TextDocument.h"
 #include "ui/TextView.h"
@@ -107,6 +108,8 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
     connect(m_findBar, &FindBar::searchRequested, this, &DocumentView::findNext);
     connect(m_findBar, &FindBar::matchFound, this, &DocumentView::selectMatch);
     connect(m_findBar, &FindBar::closeRequested, this, &DocumentView::closeFindBar);
+    connect(m_findBar, &FindBar::replaceRequested, this, &DocumentView::replaceCurrent);
+    connect(m_findBar, &FindBar::replaceAllRequested, this, &DocumentView::replaceAll);
     // A search runs against the index of one codec; a new codec makes it meaningless.
     connect(m_textDocument, &TextDocument::codecChanged, m_findBar, &FindBar::cancel);
 
@@ -231,7 +234,7 @@ void DocumentView::setCodec(const core::TextCodec& codec)
     emit stateChanged();
 }
 
-void DocumentView::showFindBar()
+void DocumentView::showFindBar(bool replace)
 {
     // Seed the query with a short selection, as text or as hex bytes.
     if (isTextActive() && m_textView->hasSelection()) {
@@ -245,7 +248,66 @@ void DocumentView::showFindBar()
         m_findBar->setQuery(m_hexView->selectionAsHex());
         m_findBar->setMode(SearchMode::Hex);
     }
-    m_findBar->activate();
+    m_findBar->activate(replace);
+}
+
+SearchContext DocumentView::searchContext() const
+{
+    return {m_source, m_textDocument->sharedIndex(), m_textDocument->codec()};
+}
+
+void DocumentView::replaceCurrent()
+{
+    if (!isEditable() || m_findBar->mode() == SearchMode::Hex)
+        return;
+    if (m_findBar->query().isEmpty()) {
+        showFindBar(true);
+        return;
+    }
+    ReplaceRequest request{m_findBar->mode(), m_findBar->query(), m_findBar->caseSensitive(),
+                           m_findBar->replacement(), m_textDocument->lineTerminator()};
+    // Only what the search found and is still selected; otherwise this finds the first match.
+    const std::uint64_t start = m_textView->selectionStart();
+    const std::uint64_t end = m_textView->selectionEnd();
+    if (m_lastMatch && *m_lastMatch == std::pair(start, end) && end > start) {
+        QString error;
+        const std::optional<QString> text = replacementFor(request, searchContext(), start, end, &error);
+        if (!text) {
+            m_findBar->showMessage(error, true);
+            return;
+        }
+        if (!m_textView->replaceSelectedText(*text))
+            return; // the status bar says why
+    }
+    findNext(true);
+}
+
+void DocumentView::replaceAll()
+{
+    if (!isEditable() || m_findBar->mode() == SearchMode::Hex)
+        return;
+    if (m_findBar->query().isEmpty()) {
+        showFindBar(true);
+        return;
+    }
+    m_findBar->cancel();
+    const ReplaceRequest request{m_findBar->mode(), m_findBar->query(), m_findBar->caseSensitive(),
+                                 m_findBar->replacement(), m_textDocument->lineTerminator()};
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    const ReplaceAllResult result = ui::replaceAll(request, searchContext());
+    QGuiApplication::restoreOverrideCursor();
+    if (!result.error.isEmpty()) {
+        m_findBar->showMessage(result.error, true);
+        return;
+    }
+    if (result.count == 0) {
+        m_findBar->showMessage(tr("Nothing to replace"), true);
+        return;
+    }
+    m_textDocument->breakUndoMerge();
+    m_textDocument->replaceBytes(result.start, result.end, result.bytes);
+    m_textView->setCursorOffset(result.start); // at the first replacement
+    m_findBar->showMessage(tr("Replaced %n time(s)", nullptr, static_cast<int>(result.count)));
 }
 
 void DocumentView::findNext(bool forward)
@@ -274,7 +336,7 @@ void DocumentView::findNext(bool forward)
     request.caseSensitive = m_findBar->caseSensitive();
     request.forward = forward;
     request.from = forward ? end : start;
-    m_findBar->start(request, {m_source, m_textDocument->sharedIndex(), m_textDocument->codec()});
+    m_findBar->start(request, searchContext());
 }
 
 void DocumentView::selectMatch(std::uint64_t start, std::uint64_t end)
@@ -467,6 +529,7 @@ void DocumentView::updateEditable()
         reason = tr("Files larger than %1 can only be viewed here")
                      .arg(QLocale().formattedDataSize(static_cast<qint64>(core::EditBuffer::kMaxEditableSize)));
     m_textView->setReadOnly(!reason.isEmpty(), reason);
+    m_findBar->setReplaceAvailable(reason.isEmpty(), reason);
 }
 
 void DocumentView::documentEdited()

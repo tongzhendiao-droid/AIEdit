@@ -23,6 +23,7 @@ namespace aiedit::ui {
 
 struct AiContext;
 struct FieldMark;
+struct SearchContext;
 class FindBar;
 class HexView;
 class TextDocument;
@@ -101,10 +102,14 @@ public slots:
     void paste();
     void undo();
     void redo();
-    // Shows the find bar, seeded with a short selection.
-    void showFindBar();
+    // Shows the find bar, seeded with a short selection; with `replace`, its replace row too.
+    void showFindBar(bool replace = false);
     // Finds the next or previous match of the find bar's query from the caret or selection.
     void findNext(bool forward = true);
+    // Replaces the match found last, if it is still selected, then finds the next one.
+    void replaceCurrent();
+    // Replaces every match in the document, as one step to undo.
+    void replaceAll();
     // Re-reads the file from disk, keeping the caret, view mode and codec. This also happens on
     // its own, shortly after the file changes.
     bool reload();
@@ -138,6 +143,7 @@ private:
     void updateEditable();
     void documentEdited();
     bool writeTo(const QString& path, QString* error);
+    SearchContext searchContext() const;
 
     std::shared_ptr<const core::FileSource> m_source;
     core::FileTypeInfo m_fileType;
