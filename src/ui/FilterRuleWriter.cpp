@@ -34,7 +34,11 @@ Write the patterns for the format the sample lines show: their level words, time
 
 } // namespace
 
-FilterRuleWriter::FilterRuleWriter(QObject* parent) : QObject(parent), m_settingsProvider(&AiSettings::load)
+FilterRuleWriter::FilterRuleWriter(QObject* parent)
+    : QObject(parent), m_settingsProvider(&AiSettings::load), m_instructions(QString::fromUtf8(kSystemPrompt)),
+      m_sampleNote(QStringLiteral("Sample lines (the start of the log, then lines from further on; long lines are "
+                                  "cut to %1 characters):")
+                       .arg(kSampleLineLength))
 {
     connect(&m_client, &ChatClient::contentReceived, this, [this](const QString& text) { m_answer += text; });
     connect(&m_client, &ChatClient::finished, this, &FilterRuleWriter::finished);
@@ -97,16 +101,17 @@ QStringList FilterRuleWriter::sampleLines(const SearchContext& context, int coun
     return lines;
 }
 
-QList<ChatMessage> FilterRuleWriter::messages(const QString& description, const QStringList& samples)
+void FilterRuleWriter::setInstructions(const QString& instructions, const QString& sampleNote)
 {
-    const QString message =
-        QStringLiteral("Request: %1\n\nSample lines (the start of the log, then lines from further on; long lines are "
-                       "cut to %2 characters):\n```text\n%3\n```")
-            .arg(description.trimmed())
-            .arg(kSampleLineLength)
-            .arg(samples.join(u'\n'));
-    return {{ChatMessage::Role::System, QString::fromUtf8(kSystemPrompt)},
-            {ChatMessage::Role::User, message}};
+    m_instructions = instructions;
+    m_sampleNote = sampleNote;
+}
+
+QList<ChatMessage> FilterRuleWriter::messages(const QString& description, const QStringList& samples) const
+{
+    const QString message = QStringLiteral("Request: %1\n\n%2\n```text\n%3\n```")
+                                .arg(description.trimmed(), m_sampleNote, samples.join(u'\n'));
+    return {{ChatMessage::Role::System, m_instructions}, {ChatMessage::Role::User, message}};
 }
 
 QByteArray FilterRuleWriter::previewRequest(const QString& description, const QStringList& samples) const

@@ -26,6 +26,7 @@ struct TextCodec;
 namespace aiedit::ui {
 
 class AiPanel;
+class ContentsPanel;
 class DataInspector;
 class FindInFilesPanel;
 
@@ -112,6 +113,11 @@ private:
     void runAiAction(void (AiPanel::*action)());
     // Find in Files, in the current document's folder at first.
     void showFindInFiles();
+    // Reading mode for the current document, with its contents beside it.
+    void setReadingMode(bool on);
+    QFont readingFont() const;
+    // A chapter for the AI: summarized, translated or explained.
+    void askAboutChapter(int action, const QString& title, const QString& text, bool cut);
     // Opens a result of Find in Files at its line.
     void openAtLine(const QString& path, std::uint64_t line, std::uint64_t offset);
 
@@ -134,6 +140,8 @@ private:
     AiPanel* m_aiPanel = nullptr;
     QDockWidget* m_findInFilesDock = nullptr;
     FindInFilesPanel* m_findInFiles = nullptr;
+    QDockWidget* m_contentsDock = nullptr;
+    ContentsPanel* m_contents = nullptr;
 
     QLabel* m_typeLabel = nullptr;
     QLabel* m_sizeLabel = nullptr;
@@ -156,6 +164,7 @@ private:
     QAction* m_reloadAction = nullptr;
     QAction* m_followAction = nullptr;
     QAction* m_wordWrapAction = nullptr;
+    QAction* m_readingAction = nullptr;
     QAction* m_quitAction = nullptr;
     QAction* m_copyAction = nullptr;
     QAction* m_copyHexAction = nullptr;
@@ -186,6 +195,8 @@ private:
     QAction* m_aiTranslateAction = nullptr;
     QAction* m_aiSummarizeAction = nullptr;
     QAction* m_aiIdentifyAction = nullptr;
+    QAction* m_aiChapterSummaryAction = nullptr;
+    QAction* m_aiChapterTranslationAction = nullptr;
     QAction* m_aiAskAction = nullptr;
     QAction* m_aiSettingsAction = nullptr;
     QAction* m_aboutAction = nullptr;

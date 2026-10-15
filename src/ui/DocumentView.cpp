@@ -212,6 +212,30 @@ void DocumentView::setViewMode(ViewMode mode)
     emit stateChanged();
 }
 
+bool DocumentView::isReadingMode() const
+{
+    return m_textView->isReadingMode();
+}
+
+void DocumentView::setReadingMode(bool on)
+{
+    if (on == isReadingMode())
+        return;
+    if (on && m_viewMode != ViewMode::Text)
+        setViewMode(ViewMode::Text); // a book is read as text
+    m_textView->setReadingMode(on);
+    emit readingModeChanged(on);
+    emit stateChanged();
+}
+
+void DocumentView::showFromOffset(std::uint64_t offset)
+{
+    if (m_viewMode == ViewMode::Hex)
+        setViewMode(ViewMode::Text);
+    m_textView->setCursorOffset(offset);
+    m_textView->scrollToOffset(offset);
+}
+
 bool DocumentView::isTextActive() const
 {
     switch (m_viewMode) {
@@ -257,6 +281,7 @@ DocumentView::State DocumentView::state() const
     state.cursor = cursorOffset();
     state.top = m_textView->firstVisibleOffset();
     state.mode = m_viewMode;
+    state.reading = isReadingMode();
     if (m_codecChosen)
         state.codec = QString::fromLatin1(m_textDocument->codec().name.data());
     return state;
@@ -268,6 +293,7 @@ void DocumentView::restoreState(const State& state)
         codec && codec->name != m_textDocument->codec().name)
         setCodec(*codec);
     setViewMode(state.mode);
+    setReadingMode(state.reading);
     const auto apply = [this, state] {
         m_pendingState.reset();
         if (isTextActive()) {

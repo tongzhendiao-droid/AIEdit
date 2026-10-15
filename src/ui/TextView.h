@@ -77,8 +77,13 @@ public:
     bool isReadOnly() const { return m_readOnly; }
     void setReadOnly(bool readOnly, const QString& reason = {});
     // Off by default: long lines then scroll sideways.
-    bool wordWrap() const { return m_wordWrap; }
+    // The user's choice; reading mode wraps lines whatever it is.
+    bool wordWrap() const { return m_wrapWanted; }
     void setWordWrap(bool on);
+    // For reading a book: no line numbers, a column of about 40 characters in the middle,
+    // more space between lines, lines wrapped.
+    bool isReadingMode() const { return m_readingMode; }
+    void setReadingMode(bool on);
     int tabWidth() const { return m_tabWidth; }
     void setTabWidth(int spaces);
     // A KSyntaxHighlighting definition name such as "C++"; empty for plain text.
@@ -205,6 +210,8 @@ private:
     void indexGrew();
     void updateMetrics();
     void updateColors();
+    // Wraps lines or not, keeping the text at the top where it was.
+    void applyWordWrap(bool on);
     void updateScrollBars();
     void updateHorizontalRange();
     std::uint64_t rowCount() const;
@@ -284,7 +291,9 @@ private:
     std::optional<qreal> m_desiredX; // kept while moving up and down
     int m_tabWidth = 4;
 
-    bool m_wordWrap = false;
+    bool m_wordWrap = false;   // lines wrap now
+    bool m_wrapWanted = false; // the user's choice
+    bool m_readingMode = false;
     qreal m_wrapWidth = 0;           // the width wrapped layouts were made for
     std::uint64_t m_topOffset = 0;    // word wrap: where the first line on screen starts
     std::uint64_t m_maxTopOffset = 0; // word wrap: as far as m_topOffset can scroll
@@ -310,6 +319,7 @@ private:
     qreal m_charWidth = 8;
     int m_lineHeight = 16;
     int m_ascent = 12;
+    qreal m_columnWidth = 0; // of the text in reading mode
     Colors m_colors;
 };
 

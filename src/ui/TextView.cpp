@@ -26,6 +26,9 @@ namespace aiedit::ui {
 
 namespace {
 
+// Reading mode: the width of the text, in CJK characters, and the space a line takes.
+constexpr qreal kReadingColumn = 40;
+constexpr qreal kReadingLineSpacing = 1.7;
 constexpr std::size_t kMaxCachedLayouts = 1024;
 constexpr std::uint64_t kMaxCachedLayoutBytes = 4ull * 1024 * 1024;
 constexpr qreal kUnboundedLineWidth = 1e6; // rows never wrap
@@ -213,6 +216,29 @@ void TextView::setTabWidth(int spaces)
 }
 
 void TextView::setWordWrap(bool on)
+{
+    m_wrapWanted = on;
+    applyWordWrap(on || m_readingMode);
+}
+
+void TextView::setReadingMode(bool on)
+{
+    if (on == m_readingMode)
+        return;
+    const std::uint64_t top = rowCount() == 0 ? 0 : lineStart(topLine());
+    m_readingMode = on;
+    updateMetrics(); // the line height
+    applyWordWrap(m_wrapWanted || on);
+    m_topOffset = top;
+    m_wrapWidth = wrapWidth();
+    clearLayouts();
+    updateScrollBars();
+    if (!m_wordWrap && rowCount() > 0)
+        setTopRow(m_document->index().rowIndexAt(top));
+    viewport()->update();
+}
+
+void TextView::applyWordWrap(bool on)
 {
     if (on == m_wordWrap)
         return;
@@ -454,6 +480,13 @@ void TextView::updateMetrics()
     m_charWidth = metrics.horizontalAdvance(QLatin1Char('0'));
     m_lineHeight = static_cast<int>(std::ceil(std::max(metrics.lineSpacing(), line.height()))) + 2;
     m_ascent = static_cast<int>(std::round(std::max(metrics.ascent(), line.ascent()))) + 1;
+    m_columnWidth = kReadingColumn * metrics.horizontalAdvance(QChar(0x4E2D)); // 中
+    if (m_readingMode) {
+        // Room between the lines of a book, the text in the middle of each line.
+        const int extra = static_cast<int>(std::round(m_lineHeight * (kReadingLineSpacing - 1)));
+        m_lineHeight += extra;
+        m_ascent += extra / 2;
+    }
 }
 
 void TextView::updateColors()
@@ -472,6 +505,8 @@ void TextView::updateColors()
 
 int TextView::gutterWidth() const
 {
+    if (m_readingMode)
+        return 0; // no line numbers in a book
     std::uint64_t lines = m_document ? std::max<std::uint64_t>(1, m_document->index().lineCount()) : 1;
     int digits = 1;
     while (lines >= 10) {
@@ -483,11 +518,15 @@ int TextView::gutterWidth() const
 
 qreal TextView::textLeft() const
 {
+    if (m_readingMode) // the column in the middle
+        return std::max(2 * m_charWidth, (viewport()->width() - m_columnWidth) / 2);
     return gutterWidth() + m_charWidth / 2;
 }
 
 qreal TextView::wrapWidth() const
 {
+    if (m_readingMode)
+        return std::max(8 * m_charWidth, std::min(m_columnWidth, viewport()->width() - 4 * m_charWidth));
     // Leaves room for the caret after the last character.
     return std::max(8 * m_charWidth, viewport()->width() - textLeft() - m_charWidth / 2);
 }
@@ -1289,10 +1328,10 @@ void TextView::paintEvent(QPaintEvent* event)
         const QPointF origin(textLeft() - scrollX, y);
         const bool isCaretBlock = block.firstRow == caret.block.firstRow;
 
-        if (isCaretBlock && !hasSelection())
+        if (isCaretBlock && !hasSelection() && !m_readingMode)
             painter.fillRect(QRect(gutter, y + caret.line * m_lineHeight, width - gutter, m_lineHeight),
                              m_colors.currentLine);
-        if (!span.continuation) {
+        if (!span.continuation && gutter > 0) {
             painter.setPen(isCaretBlock ? m_colors.text : m_colors.dim);
             painter.drawText(QRectF(0, y, gutter - m_charWidth, m_lineHeight), Qt::AlignRight | Qt::AlignVCenter,
                              QString::number(span.line + 1));

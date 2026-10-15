@@ -5,6 +5,8 @@ qt_add_library(aiedit_ui STATIC
     AiTools.cpp AiTools.h
     BackupStore.cpp BackupStore.h
     ChatClient.cpp ChatClient.h
+    Contents.cpp Contents.h
+    ContentsPanel.cpp ContentsPanel.h
     DataInspector.cpp DataInspector.h
     DocumentView.cpp DocumentView.h
     FieldMark.h

@@ -6,6 +6,7 @@
 #include "core/TextCodec.h"
 #include "ui/AiPanel.h"
 #include "ui/AiSettingsDialog.h"
+#include "ui/ContentsPanel.h"
 #include "ui/DataInspector.h"
 #include "ui/FindInFilesPanel.h"
 #include "ui/HexView.h"
@@ -39,6 +40,7 @@
 #include <QMimeData>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QScrollBar>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QStackedWidget>
@@ -117,7 +119,8 @@ QVariantMap toVariant(const DocumentView::State& state)
             {QStringLiteral("cursor"), static_cast<qulonglong>(state.cursor)},
             {QStringLiteral("top"), static_cast<qulonglong>(state.top)},
             {QStringLiteral("mode"), static_cast<int>(state.mode)},
-            {QStringLiteral("codec"), state.codec}};
+            {QStringLiteral("codec"), state.codec},
+            {QStringLiteral("reading"), state.reading}};
 }
 
 DocumentView::State stateFromVariant(const QVariant& value)
@@ -129,6 +132,7 @@ DocumentView::State stateFromVariant(const QVariant& value)
     state.top = map.value(QStringLiteral("top")).toULongLong();
     state.mode = static_cast<DocumentView::ViewMode>(std::clamp(map.value(QStringLiteral("mode")).toInt(), 0, 2));
     state.codec = map.value(QStringLiteral("codec")).toString();
+    state.reading = map.value(QStringLiteral("reading")).toBool();
     return state;
 }
 
@@ -192,7 +196,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     connect(&m_backupTimer, &QTimer::timeout, this, &MainWindow::writeBackups);
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow()
+{
+    // The documents go with the window, and what they report while going (a scroll bar back
+    // at the top) must not reach a window that is half gone.
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        DocumentView* doc = document(i);
+        doc->disconnect(this);
+        doc->textView()->verticalScrollBar()->disconnect(this);
+    }
+}
 
 void MainWindow::createWidgets()
 {
@@ -269,6 +282,18 @@ void MainWindow::createWidgets()
     addDockWidget(Qt::RightDockWidgetArea, m_aiDock);
     tabifyDockWidget(m_inspectorDock, m_aiDock);
     m_aiDock->raise();
+
+    m_contents = new ContentsPanel;
+    connect(m_contents, &ContentsPanel::chapterAction, this,
+            [this](ContentsPanel::ChapterAction action, const QString& title, const QString& text, bool cut) {
+                askAboutChapter(static_cast<int>(action), title, text, cut);
+            });
+    connect(m_contents, &ContentsPanel::aiSettingsRequested, this, &MainWindow::showAiSettings);
+    m_contentsDock = new QDockWidget(tr("Contents"), this);
+    m_contentsDock->setObjectName(QStringLiteral("contentsDock"));
+    m_contentsDock->setWidget(m_contents);
+    addDockWidget(Qt::LeftDockWidgetArea, m_contentsDock);
+    m_contentsDock->hide();
 
     m_findInFiles = new FindInFilesPanel;
     m_findInFiles->setLegacyCodec(preferredLegacyCodec());
@@ -375,6 +400,13 @@ void MainWindow::createActions()
         if (DocumentView* doc = currentDocument())
             doc->setFollowing(on);
     });
+
+    m_readingAction = new QAction(tr("Rea&ding Mode"), this);
+    m_readingAction->setCheckable(true);
+    m_readingAction->setShortcut(QKeySequence(Qt::Key_F9)); // as in Firefox's reader view
+    m_readingAction->setToolTip(tr("Read a book: no line numbers, the text in a column in the middle with room "
+                                   "between the lines, and its contents beside it"));
+    connect(m_readingAction, &QAction::triggered, this, &MainWindow::setReadingMode);
 
     m_wordWrapAction = new QAction(tr("&Word Wrap"), this);
     m_wordWrapAction->setCheckable(true);
@@ -535,6 +567,17 @@ void MainWindow::createActions()
     m_aiSummarizeAction = aiAction(tr("AI &Summarize"), &AiPanel::summarizeSelection);
     m_aiAskAction = aiAction(tr("&Ask AI…"), &AiPanel::focusInput);
     m_aiIdentifyAction = aiAction(tr("What Is This &File?"), &AiPanel::identifyFile);
+    // The chapter being read, by the contents of the book.
+    m_aiChapterSummaryAction = new QAction(tr("Summarize This &Chapter"), this);
+    connect(m_aiChapterSummaryAction, &QAction::triggered, this, [this] {
+        m_contentsDock->show(); // where the chapters are found, and where it says if there are none
+        m_contents->askAboutCurrentChapter(ContentsPanel::ChapterAction::Summarize);
+    });
+    m_aiChapterTranslationAction = new QAction(tr("Translate This C&hapter"), this);
+    connect(m_aiChapterTranslationAction, &QAction::triggered, this, [this] {
+        m_contentsDock->show();
+        m_contents->askAboutCurrentChapter(ContentsPanel::ChapterAction::Translate);
+    });
     m_aiSettingsAction = new QAction(tr("AI Setti&ngs…"), this);
     connect(m_aiSettingsAction, &QAction::triggered, this, &MainWindow::showAiSettings);
 
@@ -590,6 +633,11 @@ void MainWindow::createMenus()
     QMenu* view = menuBar()->addMenu(tr("&View"));
     view->addActions(m_viewModeGroup->actions());
     view->addSeparator();
+    view->addAction(m_readingAction);
+    QAction* showContents = m_contentsDock->toggleViewAction();
+    showContents->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
+    view->addAction(showContents);
+    view->addSeparator();
     view->addAction(m_wordWrapAction);
     view->addAction(m_followAction);
     view->addSeparator();
@@ -620,6 +668,9 @@ void MainWindow::createMenus()
     ai->addAction(m_aiSummarizeAction);
     ai->addAction(m_aiAskAction);
     ai->addAction(m_aiIdentifyAction);
+    ai->addSeparator();
+    ai->addAction(m_aiChapterSummaryAction);
+    ai->addAction(m_aiChapterTranslationAction);
     ai->addSeparator();
     ai->addAction(m_aiSettingsAction);
 
@@ -1230,6 +1281,12 @@ void MainWindow::addDocument(DocumentView* doc)
     });
     connect(doc, &DocumentView::zoomRequested, this, &MainWindow::zoomBy);
     connect(doc, &DocumentView::aiSettingsRequested, this, &MainWindow::showAiSettings);
+    connect(doc, &DocumentView::readingModeChanged, this, [this, doc] { applyViewSettings(doc); });
+    // How far a book is read shows as it scrolls.
+    connect(doc->textView()->verticalScrollBar(), &QScrollBar::valueChanged, this, [this, doc] {
+        if (doc == currentDocument() && doc->isReadingMode())
+            updateCursorStatus();
+    });
     connect(doc, &DocumentView::statusMessage, this,
             [this](const QString& message) { statusBar()->showMessage(message, kStatusTimeoutMs); });
 
@@ -1328,6 +1385,7 @@ void MainWindow::currentTabChanged()
 {
     DocumentView* doc = currentDocument();
     m_inspector->setSource(doc ? doc->source() : nullptr);
+    m_contents->setDocument(doc);
     if (doc) {
         updateDocumentTitle(doc);
     } else {
@@ -1351,6 +1409,7 @@ void MainWindow::documentStateChanged(DocumentView* doc)
         m_splitModeAction->setChecked(mode == DocumentView::ViewMode::Split);
         const QSignalBlocker blocker(m_followAction);
         m_followAction->setChecked(doc->isFollowing());
+        m_readingAction->setChecked(doc->isReadingMode());
     }
     updateEditActions(doc);
     // Explaining, translating and summarizing need a selection; asking and identifying do not.
@@ -1386,7 +1445,7 @@ void MainWindow::updateActions()
     const bool hasDocument = doc != nullptr;
     for (QAction* action : {m_closeAction, m_saveAction, m_saveAsAction, m_copyOffsetAction, m_goToAction, m_findAction,
                             m_findNextAction, m_findPreviousAction, m_replaceAction, m_filterAction, m_aiAskAction,
-                            m_aiIdentifyAction}) {
+                            m_aiIdentifyAction, m_readingAction}) {
         action->setEnabled(hasDocument);
     }
     // A new document has no file on disk to reload or follow yet.
@@ -1466,7 +1525,11 @@ void MainWindow::setCodec(const core::TextCodec& codec)
 void MainWindow::applyViewSettings(DocumentView* doc) const
 {
     for (QWidget* view : {static_cast<QWidget*>(doc->textView()), static_cast<QWidget*>(doc->hexView())}) {
-        QFont font = view->font();
+        if (view == doc->textView() && doc->isReadingMode()) {
+            view->setFont(readingFont());
+            continue;
+        }
+        QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
         if (!m_fontFamily.isEmpty())
             font.setFamily(m_fontFamily);
         font.setPointSize(m_pointSize);
@@ -1575,6 +1638,58 @@ void MainWindow::showAiSettings()
         return;
     dialog.settings().save();
     m_aiPanel->settingsChanged();
+}
+
+void MainWindow::setReadingMode(bool on)
+{
+    DocumentView* doc = currentDocument();
+    if (!doc)
+        return;
+    doc->setReadingMode(on); // the font follows, through readingModeChanged
+    if (on) {
+        m_contentsDock->show();
+        m_contentsDock->raise();
+    }
+    doc->setFocus();
+}
+
+QFont MainWindow::readingFont() const
+{
+    // A serif for reading, Chinese ones first; else the font of the interface.
+    QFont font = QApplication::font();
+    for (const char* family : {"Noto Serif CJK SC", "Source Han Serif SC", "Songti SC", "SimSun", "Noto Serif"}) {
+        if (QFontDatabase::hasFamily(QString::fromLatin1(family))) {
+            font.setFamily(QString::fromLatin1(family));
+            break;
+        }
+    }
+    font.setPointSize(m_pointSize + 2);
+    return font;
+}
+
+void MainWindow::askAboutChapter(int action, const QString& title, const QString& text, bool cut)
+{
+    QString question;
+    switch (static_cast<ContentsPanel::ChapterAction>(action)) {
+    case ContentsPanel::ChapterAction::Summarize:
+        question = tr("Summarize this chapter: what happens, who is in it, and what stands out.");
+        break;
+    case ContentsPanel::ChapterAction::Translate:
+        question = tr("Translate this chapter into %1, paragraph by paragraph. Classical Chinese goes into modern "
+                      "vernacular Chinese.")
+                       .arg(QLocale().nativeLanguageName());
+        break;
+    case ContentsPanel::ChapterAction::Explain:
+        question =
+            tr("Explain this chapter: its background, the difficult words and allusions, and what it means.");
+        break;
+    }
+    const QString size = QLocale().toString(static_cast<qulonglong>(text.size()));
+    const QString label = cut ? tr("the first %1 characters of %2").arg(size, title)
+                              : tr("%1 (%2 characters)").arg(title, size);
+    m_aiDock->show();
+    m_aiDock->raise();
+    m_aiPanel->askAbout(question, label, text);
 }
 
 void MainWindow::showFindInFiles()
@@ -1718,6 +1833,14 @@ void MainWindow::updateCursorStatus()
     const auto offset = doc->cursorOffset();
     std::uint64_t selectionStart = 0;
     std::uint64_t selectionLength = 0;
+    if (doc->isReadingMode()) {
+        // A book: how far it is read, by the text at the top.
+        const std::uint64_t size = std::max<std::uint64_t>(1, doc->source()->size());
+        const auto top = static_cast<double>(doc->textView()->firstVisibleOffset());
+        const double read = 100.0 * top / static_cast<double>(size);
+        m_positionLabel->setText(tr("%1% read").arg(locale.toString(read, 'f', read < 10 ? 1 : 0)));
+        return;
+    }
     if (doc->isTextActive()) {
         const TextView* view = doc->textView();
         const auto column = view->cursorColumn();

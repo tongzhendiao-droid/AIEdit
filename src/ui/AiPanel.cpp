@@ -252,6 +252,11 @@ void AiPanel::askAboutSelection(const QString& textQuestion, const QString& byte
     start(attachment->binary ? bytesQuestion : textQuestion, attachment);
 }
 
+void AiPanel::askAbout(const QString& question, const QString& label, const QString& text)
+{
+    start(question, Attachment{label, text, false});
+}
+
 void AiPanel::explainSelection()
 {
     askAboutSelection(tr("Explain this."), tr("Explain these bytes: what they are and how they are structured."));

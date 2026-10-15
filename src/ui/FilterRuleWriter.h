@@ -30,13 +30,16 @@ public:
 
     // Defaults to AiSettings::load(); tests point it at a local server.
     void setSettingsProvider(SettingsProvider provider);
+    // What the model is told the rule is for, and how the samples are introduced; by default
+    // a filter for the lines of a log. The contents of a book use the same rules for headings.
+    void setInstructions(const QString& instructions, const QString& sampleNote);
     AiSettings settings() const { return m_settingsProvider(); }
 
     // Lines to show the AI: the start of the file, then lines spread over the rest of what is
     // indexed, each cut to kSampleLineLength characters. Empty lines are left out.
     static QStringList sampleLines(const SearchContext& context, int count = kSampleLines);
     // The conversation write() starts.
-    static QList<ChatMessage> messages(const QString& description, const QStringList& samples);
+    QList<ChatMessage> messages(const QString& description, const QStringList& samples) const;
     // The JSON that write() would post now, for the preview.
     QByteArray previewRequest(const QString& description, const QStringList& samples) const;
     // The rule in an answer: a JSON object, perhaps in a code fence or after a few words.
@@ -58,6 +61,8 @@ private:
 
     ChatClient m_client;
     SettingsProvider m_settingsProvider;
+    QString m_instructions;
+    QString m_sampleNote;
     QList<ChatMessage> m_messages; // the conversation so far
     QString m_answer;
     bool m_retried = false;
