@@ -2,6 +2,7 @@
 
 #include "core/LineIndex.h"
 #include "core/TextCodec.h"
+#include "ui/Collation.h"
 #include "ui/TextDecoder.h"
 #include "ui/TextDocument.h"
 
@@ -123,8 +124,7 @@ std::optional<LineEdit> lineOperation(LineOperation operation, const TextDocumen
     switch (operation) {
     case LineOperation::SortAscending:
     case LineOperation::SortDescending: {
-        QCollator collator; // the user's locale
-        collator.setNumericMode(true);
+        QCollator collator = naturalCollator(); // the user's language
         collator.setCaseSensitivity(Qt::CaseInsensitive);
         std::vector<QCollatorSortKey> keys;
         keys.reserve(lines.size());
