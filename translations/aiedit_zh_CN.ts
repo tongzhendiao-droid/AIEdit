@@ -617,12 +617,28 @@
         <translation>AI 助手</translation>
     </message>
     <message>
-        <source>Text encoding. Click to show the file in another encoding.</source>
-        <translation>文本编码。点击可换用其他编码显示文件。</translation>
+        <source>Text encoding. Click to read the file in another encoding, or to save it in one.</source>
+        <translation>文本编码。点击可以换一种编码来读，或者以另一种编码保存。</translation>
     </message>
     <message>
         <source>Syntax highlighting. Click to choose a language.</source>
         <translation>语法高亮。点击可选择语言。</translation>
+    </message>
+    <message>
+        <source>Line endings. Click to give every line the same one.</source>
+        <translation>换行符。点击可以把所有行统一成同一种。</translation>
+    </message>
+    <message>
+        <source>Convert to LF (Linux, macOS)</source>
+        <translation>转换为 LF（Linux、macOS）</translation>
+    </message>
+    <message>
+        <source>Convert to CRLF (Windows)</source>
+        <translation>转换为 CRLF（Windows）</translation>
+    </message>
+    <message>
+        <source>Convert to CR (classic Mac OS)</source>
+        <translation>转换为 CR（经典 Mac OS）</translation>
     </message>
     <message>
         <source>&amp;New</source>
@@ -869,6 +885,10 @@
         <translation>阿拉伯文</translation>
     </message>
     <message>
+        <source>Save with Encoding</source>
+        <translation>以其他编码保存</translation>
+    </message>
+    <message>
         <source>Plain Text</source>
         <translation>纯文本</translation>
     </message>
@@ -919,6 +939,26 @@
     <message>
         <source>%1[*] — AIEdit</source>
         <translation>%1[*] — AIEdit</translation>
+    </message>
+    <message>
+        <source>Some bytes in %1 are not valid %2. Saved in %3, each becomes the replacement character �. Save anyway?</source>
+        <translation>%1 里有一些字节不是有效的 %2。以 %3 保存时，它们都会变成替换字符 �。仍要保存吗？</translation>
+    </message>
+    <message>
+        <source>Saved %1 in %2</source>
+        <translation>已用 %2 保存 %1</translation>
+    </message>
+    <message>
+        <source>%1 cannot hold some of the characters in %2; nothing was changed.</source>
+        <translation>%1 无法表示 %2 中的某些字符，文件没有改动。</translation>
+    </message>
+    <message>
+        <source>Every line now ends with %1</source>
+        <translation>所有行的换行符已统一为 %1</translation>
+    </message>
+    <message>
+        <source>Every line already ends with %1</source>
+        <translation>所有行的换行符本来就是 %1</translation>
     </message>
     <message>
         <source>Font size: %1 pt</source>

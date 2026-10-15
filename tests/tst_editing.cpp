@@ -90,6 +90,8 @@ private slots:
     void asksBeforeClosingUnsavedChanges();
     void editMenuFollowsSelectionAndClipboard();
     void newDocumentsAreUntitledUntilSaved();
+    void convertsLineEndings();
+    void savesInAnotherEncoding();
 
 private:
     std::filesystem::path pathOf(const char* name) const;
@@ -531,6 +533,64 @@ void TestEditing::newDocumentsAreUntitledUntilSaved()
     // An untouched new document closes without asking.
     emit tabs->tabCloseRequested(2);
     QCOMPARE(window.documentCount(), 2);
+}
+
+void TestEditing::convertsLineEndings()
+{
+    const auto source = write("crlf.txt", "one\r\ntwo\r\nthree");
+    ui::DocumentView doc(source, core::detectFileType(source->bytes()), core::utf8Codec());
+    doc.textView()->setCursorOffset(6); // on the second line
+    QVERIFY(doc.convertLineEndings(QStringLiteral("\n")));
+    QCOMPARE(contents(*doc.textDocument()), std::string("one\ntwo\nthree"));
+    QCOMPARE(doc.textView()->cursorLine(), 1u); // the caret kept its line
+    QCOMPARE(doc.textDocument()->lineTerminator(), QStringLiteral("\n"));
+    QVERIFY(!doc.convertLineEndings(QStringLiteral("\n"))); // nothing left to change
+    doc.textView()->undo();
+    QCOMPARE(contents(*doc.textDocument()), std::string("one\r\ntwo\r\nthree")); // one step
+
+    const auto mixed = write("mixed.txt", "a\nb\r\nc\n");
+    ui::DocumentView mixedDoc(mixed, core::detectFileType(mixed->bytes()), core::utf8Codec());
+    QVERIFY(mixedDoc.convertLineEndings(QStringLiteral("\r\n")));
+    QCOMPARE(contents(*mixedDoc.textDocument()), std::string("a\r\nb\r\nc\r\n"));
+
+    // In UTF-16 a line break is two bytes per character.
+    const auto wide = write("wide.txt", std::string("\xFF\xFE" "a\0\r\0\n\0" "b\0", 10));
+    ui::DocumentView wideDoc(wide, core::detectFileType(wide->bytes()), codec("UTF-16LE"));
+    QVERIFY(wideDoc.convertLineEndings(QStringLiteral("\n")));
+    QCOMPARE(contents(*wideDoc.textDocument()), std::string("\xFF\xFE" "a\0\n\0" "b\0", 8));
+}
+
+void TestEditing::savesInAnotherEncoding()
+{
+    // 你好 in GB18030, saved as UTF-8: the file is rewritten and read as UTF-8 from then on.
+    const auto path = pathOf("gbk-to-utf8.txt");
+    std::ofstream(path, std::ios::binary) << "\xC4\xE3\xBA\xC3\n";
+    std::error_code ec;
+    std::shared_ptr<const core::FileSource> source = core::FileSource::open(path, ec);
+    ui::DocumentView doc(source, core::detectFileType(source->bytes()), codec("GB18030"));
+    doc.textView()->insertText(QStringLiteral("！")); // unsaved edits go along
+    QCOMPARE(doc.saveWithCodec(codec("UTF-8"), false), ui::DocumentView::Conversion::Saved);
+    QCOMPARE(readFile(path), std::string("！你好\n"));
+    QCOMPARE(doc.textDocument()->codec().name, std::string_view("UTF-8"));
+    QVERIFY(!doc.isModified());
+
+    // UTF-16 gets a byte order mark, so that it is recognised.
+    QCOMPARE(doc.saveWithCodec(codec("UTF-16LE"), false), ui::DocumentView::Conversion::Saved);
+    QCOMPARE(readFile(path), std::string("\xFF\xFE\x01\xFF\x60\x4F\x7D\x59\n\0", 10));
+
+    // A codec that cannot hold the text changes nothing.
+    QCOMPARE(doc.saveWithCodec(codec("ISO-8859-1"), false), ui::DocumentView::Conversion::Unwritable);
+    QCOMPARE(readFile(path).size(), 10u);
+
+    // Bytes that are not valid in the current codec need a yes before they become U+FFFD.
+    const auto broken = pathOf("broken.txt");
+    std::ofstream(broken, std::ios::binary) << "a\xFF" "b\n";
+    source = core::FileSource::open(broken, ec);
+    ui::DocumentView brokenDoc(source, core::detectFileType(source->bytes()), core::utf8Codec());
+    QCOMPARE(brokenDoc.saveWithCodec(codec("UTF-16LE"), false), ui::DocumentView::Conversion::Unreadable);
+    QCOMPARE(readFile(broken), std::string("a\xFF" "b\n"));
+    QCOMPARE(brokenDoc.saveWithCodec(codec("UTF-16LE"), true), ui::DocumentView::Conversion::Saved);
+    QCOMPARE(readFile(broken), std::string("\xFF\xFE" "a\0\xFD\xFF" "b\0\n\0", 10));
 }
 
 QTEST_MAIN(TestEditing)

@@ -74,6 +74,9 @@ private:
     void goTo();
     void setViewMode(DocumentView::ViewMode mode);
     void setCodec(const core::TextCodec& codec);
+    // Writes the current document in another codec, asking first if anything would be lost.
+    void saveWithCodec(const core::TextCodec& codec);
+    void convertLineEndings(const QString& terminator);
     void setBytesPerRow(int bytesPerRow);
     void setWordWrap(bool on);
     void zoomBy(int steps);
@@ -105,7 +108,7 @@ private:
     QLabel* m_sizeLabel = nullptr;
     QToolButton* m_codecButton = nullptr;
     QToolButton* m_syntaxButton = nullptr;
-    QLabel* m_lineEndingLabel = nullptr;
+    QToolButton* m_lineEndingButton = nullptr;
     QLabel* m_linesLabel = nullptr;
     QLabel* m_positionLabel = nullptr;
     QLabel* m_selectionLabel = nullptr;

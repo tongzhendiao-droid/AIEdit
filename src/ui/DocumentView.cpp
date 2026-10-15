@@ -19,6 +19,8 @@
 #include <QLocale>
 #include <QPointer>
 #include <QSaveFile>
+#include <QStringDecoder>
+#include <QStringEncoder>
 #include <QScopedValueRollback>
 #include <QSplitter>
 #include <QTimer>
@@ -548,6 +550,11 @@ void DocumentView::documentEdited()
 
 bool DocumentView::writeTo(const QString& path, QString* error)
 {
+    return writeBytes(path, m_source->bytes(), error);
+}
+
+bool DocumentView::writeBytes(const QString& path, std::span<const std::uint8_t> bytes, QString* error)
+{
     // QSaveFile writes a temporary file and renames it over the target, so a failure halfway
     // leaves the old file as it was. It keeps the file's permissions and follows symlinks; where
     // the folder is not writable but the file is, it writes the file in place.
@@ -556,7 +563,6 @@ bool DocumentView::writeTo(const QString& path, QString* error)
     const bool watched = m_watcher.files().contains(path);
     if (watched)
         m_watcher.removePath(path); // our own write is no change on disk to react to
-    const auto bytes = m_source->bytes();
     const bool ok = file.open(QIODevice::WriteOnly) &&
                     file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<qint64>(bytes.size())) ==
                         static_cast<qint64>(bytes.size()) &&
@@ -614,6 +620,64 @@ bool DocumentView::saveAs(const QString& path, QString* error)
     emit sourceChanged();
     emit stateChanged();
     return true;
+}
+
+bool DocumentView::convertLineEndings(const QString& terminator)
+{
+    if (!isEditable())
+        return false;
+    // The caret keeps its line; offsets after the first change move.
+    const std::uint64_t line = m_textView->cursorLine();
+    if (!m_textDocument->convertLineEndings(terminator))
+        return false;
+    if (const auto row = m_textDocument->index().rowIndexOfLine(line))
+        m_textView->setCursorOffset(m_textDocument->index().row(*row).start);
+    return true;
+}
+
+DocumentView::Conversion DocumentView::saveWithCodec(const core::TextCodec& codec, bool replaceUnreadable,
+                                                     QString* error)
+{
+    // The text as it reads now (unsaved edits included), without its old byte order mark.
+    const auto bytes = m_source->bytes().subspan(static_cast<std::size_t>(m_textDocument->textStart()));
+    QStringDecoder decoder(m_textDocument->codec().name.data());
+    const QString text =
+        decoder.decode(QByteArrayView(reinterpret_cast<const char*>(bytes.data()), static_cast<qsizetype>(bytes.size())));
+    if (decoder.hasError() && !replaceUnreadable)
+        return Conversion::Unreadable;
+
+    // UTF-16 and UTF-32 need their byte order mark to be recognised; UTF-8 and the rest do not.
+    const bool wide = codec.scheme == core::CharScheme::Utf16LE || codec.scheme == core::CharScheme::Utf16BE ||
+                      codec.scheme == core::CharScheme::Utf32LE || codec.scheme == core::CharScheme::Utf32BE;
+    QStringEncoder encoder(codec.name.data(), wide ? QStringConverter::Flag::WriteBom : QStringConverter::Flag::Default);
+    const QByteArray converted = encoder.encode(text);
+    if (encoder.hasError())
+        return Conversion::Unwritable;
+    if (!writeBytes(filePath(), {reinterpret_cast<const std::uint8_t*>(converted.constData()),
+                                 static_cast<std::size_t>(converted.size())},
+                    error))
+        return Conversion::Failed;
+
+    // Show the file as written, in its new codec; the undo history goes with the old bytes.
+    std::error_code ec;
+    std::shared_ptr<const core::FileSource> source = core::FileSource::open(toPath(filePath()), ec);
+    if (!source) {
+        if (error)
+            *error = QString::fromLocal8Bit(ec.message());
+        return Conversion::Failed;
+    }
+    m_findBar->cancel();
+    m_lastMatch.reset();
+    m_source = std::move(source);
+    {
+        const QScopedValueRollback guard(m_syncing, true);
+        m_textDocument->setCodec(codec);
+        m_textDocument->setSource(m_source);
+        m_hexView->replaceSource(m_source);
+    }
+    emit sourceChanged();
+    emit stateChanged();
+    return Conversion::Saved;
 }
 
 void DocumentView::cut()

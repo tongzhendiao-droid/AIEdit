@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <utility>
 
 class QAction;
@@ -90,6 +91,20 @@ public:
     // reason in `error`, if that failed.
     bool save(QString* error = nullptr);
     bool saveAs(const QString& path, QString* error = nullptr);
+    // Ends every line with `terminator` ("\n", "\r\n" or "\r"), as one edit to undo. False if
+    // every line ended so already, or the document cannot be edited.
+    bool convertLineEndings(const QString& terminator);
+
+    enum class Conversion
+    {
+        Saved,
+        Unreadable, // bytes that are not valid in the current codec would become U+FFFD
+        Unwritable, // the new codec cannot hold some of the characters
+        Failed,     // writing the file failed
+    };
+    // Writes the text in another codec (UTF-16 and UTF-32 with a byte order mark) and shows the
+    // file in that codec from then on. Unreadable bytes stop it unless `replaceUnreadable`.
+    Conversion saveWithCodec(const core::TextCodec& codec, bool replaceUnreadable, QString* error = nullptr);
 
     // Follow mode (like tail -f): after every reload, jump to the end of the file.
     bool isFollowing() const { return m_following; }
@@ -143,6 +158,7 @@ private:
     void updateEditable();
     void documentEdited();
     bool writeTo(const QString& path, QString* error);
+    bool writeBytes(const QString& path, std::span<const std::uint8_t> bytes, QString* error);
     SearchContext searchContext() const;
 
     std::shared_ptr<const core::FileSource> m_source;

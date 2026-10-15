@@ -239,7 +239,7 @@ void MainWindow::createWidgets()
     m_codecButton = new QToolButton;
     m_codecButton->setAutoRaise(true);
     m_codecButton->setPopupMode(QToolButton::InstantPopup);
-    m_codecButton->setToolTip(tr("Text encoding. Click to show the file in another encoding."));
+    m_codecButton->setToolTip(tr("Text encoding. Click to read the file in another encoding, or to save it in one."));
     m_syntaxButton = new QToolButton;
     m_syntaxButton->setAutoRaise(true);
     m_syntaxButton->setPopupMode(QToolButton::InstantPopup);
@@ -248,14 +248,32 @@ void MainWindow::createWidgets()
     // Hundreds of definitions: build the menu the first time it opens.
     connect(syntaxMenu, &QMenu::aboutToShow, this, &MainWindow::populateSyntaxMenu);
     m_syntaxButton->setMenu(syntaxMenu);
-    m_lineEndingLabel = new QLabel;
+    m_lineEndingButton = new QToolButton;
+    m_lineEndingButton->setAutoRaise(true);
+    m_lineEndingButton->setPopupMode(QToolButton::InstantPopup);
+    m_lineEndingButton->setToolTip(tr("Line endings. Click to give every line the same one."));
+    auto* lineEndingMenu = new QMenu(this);
+    const std::pair<QString, QString> lineEndings[] = {
+        {tr("Convert to LF (Linux, macOS)"), QStringLiteral("\n")},
+        {tr("Convert to CRLF (Windows)"), QStringLiteral("\r\n")},
+        {tr("Convert to CR (classic Mac OS)"), QStringLiteral("\r")},
+    };
+    for (const auto& [text, terminator] : lineEndings)
+        lineEndingMenu->addAction(text, this, [this, terminator] { convertLineEndings(terminator); });
+    // Only documents that can be edited can be converted.
+    connect(lineEndingMenu, &QMenu::aboutToShow, this, [this, lineEndingMenu] {
+        const DocumentView* doc = currentDocument();
+        for (QAction* action : lineEndingMenu->actions())
+            action->setEnabled(doc && doc->isEditable());
+    });
+    m_lineEndingButton->setMenu(lineEndingMenu);
     m_linesLabel = new QLabel;
     m_positionLabel = new QLabel;
     m_selectionLabel = new QLabel;
     statusBar()->addPermanentWidget(m_selectionLabel);
     statusBar()->addPermanentWidget(m_positionLabel);
     statusBar()->addPermanentWidget(m_linesLabel);
-    statusBar()->addPermanentWidget(m_lineEndingLabel);
+    statusBar()->addPermanentWidget(m_lineEndingButton);
     statusBar()->addPermanentWidget(m_syntaxButton);
     statusBar()->addPermanentWidget(m_codecButton);
     statusBar()->addPermanentWidget(m_sizeLabel);
@@ -542,17 +560,32 @@ void MainWindow::createCodecMenu()
     };
 
     auto* menu = new QMenu(this);
+    auto* saveMenu = new QMenu(tr("Save with Encoding"), menu);
     m_codecGroup = new QActionGroup(this);
     for (const auto& [title, names] : groups) {
         menu->addSection(title);
+        saveMenu->addSection(title);
         for (const std::string_view name : names) {
             const core::TextCodec* codec = core::findCodec(name);
             QAction* action = menu->addAction(codecName(*codec));
             action->setCheckable(true);
             m_codecGroup->addAction(action);
             connect(action, &QAction::triggered, this, [this, codec] { setCodec(*codec); });
+            QAction* save = saveMenu->addAction(codecName(*codec));
+            save->setData(QString::fromLatin1(codec->name.data()));
+            connect(save, &QAction::triggered, this, [this, codec] { saveWithCodec(*codec); });
         }
     }
+    menu->addSeparator();
+    menu->addMenu(saveMenu);
+    // Saving needs an editable document with a file, in a codec other than its own.
+    connect(saveMenu, &QMenu::aboutToShow, this, [this, saveMenu] {
+        const DocumentView* doc = currentDocument();
+        const bool possible = doc && doc->isEditable() && !doc->isUntitled();
+        const QString current = doc ? QString::fromLatin1(doc->textDocument()->codec().name.data()) : QString();
+        for (QAction* action : saveMenu->actions())
+            action->setEnabled(possible && action->data().toString() != current);
+    });
     m_codecButton->setMenu(menu);
 }
 
@@ -869,6 +902,54 @@ void MainWindow::setViewMode(DocumentView::ViewMode mode)
         doc->setViewMode(mode);
 }
 
+void MainWindow::saveWithCodec(const core::TextCodec& codec)
+{
+    DocumentView* doc = currentDocument();
+    if (!doc)
+        return;
+    QString error;
+    DocumentView::Conversion result = doc->saveWithCodec(codec, false, &error);
+    if (result == DocumentView::Conversion::Unreadable) {
+        const auto answer = QMessageBox::question(
+            this, tr("Save with Encoding"),
+            tr("Some bytes in %1 are not valid %2. Saved in %3, each becomes the replacement character �. Save anyway?")
+                .arg(doc->title(), codecName(doc->textDocument()->codec()), codecName(codec)),
+            QMessageBox::Save | QMessageBox::Cancel, QMessageBox::Cancel);
+        if (answer != QMessageBox::Save)
+            return;
+        result = doc->saveWithCodec(codec, true, &error);
+    }
+    switch (result) {
+    case DocumentView::Conversion::Saved:
+        statusBar()->showMessage(tr("Saved %1 in %2").arg(doc->title(), codecName(codec)), kStatusTimeoutMs);
+        break;
+    case DocumentView::Conversion::Unwritable:
+        QMessageBox::warning(this, tr("Save with Encoding"),
+                             tr("%1 cannot hold some of the characters in %2; nothing was changed.")
+                                 .arg(codecName(codec), doc->title()));
+        break;
+    case DocumentView::Conversion::Failed:
+        QMessageBox::warning(this, tr("Cannot Save"),
+                             tr("Cannot save %1:\n%2").arg(QDir::toNativeSeparators(doc->filePath()), error));
+        break;
+    case DocumentView::Conversion::Unreadable:
+        break;
+    }
+}
+
+void MainWindow::convertLineEndings(const QString& terminator)
+{
+    DocumentView* doc = currentDocument();
+    if (!doc)
+        return;
+    const QString name = terminator == QStringLiteral("\r\n") ? QStringLiteral("CRLF")
+                         : terminator == QStringLiteral("\r")  ? QStringLiteral("CR")
+                                                                : QStringLiteral("LF");
+    statusBar()->showMessage(doc->convertLineEndings(terminator) ? tr("Every line now ends with %1").arg(name)
+                                                                 : tr("Every line already ends with %1").arg(name),
+                             kStatusTimeoutMs);
+}
+
 void MainWindow::setCodec(const core::TextCodec& codec)
 {
     DocumentView* doc = currentDocument();
@@ -1059,7 +1140,7 @@ void MainWindow::updateTextStatus()
     const bool textual = doc && (doc->fileType().kind != core::ContentKind::Binary || doc->isTextActive());
     m_codecButton->setVisible(doc != nullptr);
     m_syntaxButton->setVisible(textual && isSyntaxHighlightingAvailable());
-    m_lineEndingLabel->setVisible(textual);
+    m_lineEndingButton->setVisible(textual);
     m_linesLabel->setVisible(textual);
     if (!doc)
         return;
@@ -1069,7 +1150,7 @@ void MainWindow::updateTextStatus()
     m_codecButton->setText(codec);
     for (QAction* action : m_codecGroup->actions())
         action->setChecked(action->text() == codec);
-    m_lineEndingLabel->setText(lineEndingName(text->lineEndings()));
+    m_lineEndingButton->setText(lineEndingName(text->lineEndings()));
     m_syntaxButton->setText(doc->syntax().isEmpty() ? tr("Plain Text") : translatedSyntaxName(doc->syntax()));
 
     const core::LineIndex& index = text->index();
