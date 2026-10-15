@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AIEdit icon: a page of hex bytes with a spark for the assistant. Shapes only, no fonts. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2F6FD6"/>
+      <stop offset="1" stop-color="#1B3F86"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFE082"/>
+      <stop offset="1" stop-color="#FFB300"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="24" fill="url(#background)"/>
+  <!-- the page, with a folded corner -->
+  <path d="M30 24 H78 L98 44 V104 H30 Z" fill="#FFFFFF"/>
+  <path d="M78 24 V44 H98 Z" fill="#C9D8F2"/>
+  <!-- rows of bytes; a few are highlighted like marked fields -->
+  <g>
+    <rect x="38" y="52" width="10" height="7" rx="2" fill="#2F6FD6"/>
+    <rect x="51" y="52" width="10" height="7" rx="2" fill="#2F6FD6"/>
+    <rect x="64" y="52" width="10" height="7" rx="2" fill="#9DB4DC"/>
+    <rect x="77" y="52" width="10" height="7" rx="2" fill="#9DB4DC"/>
+    <rect x="38" y="64" width="10" height="7" rx="2" fill="#9DB4DC"/>
+    <rect x="51" y="64" width="10" height="7" rx="2" fill="#F59E0B"/>
+    <rect x="64" y="64" width="10" height="7" rx="2" fill="#F59E0B"/>
+    <rect x="77" y="64" width="10" height="7" rx="2" fill="#9DB4DC"/>
+    <rect x="38" y="76" width="10" height="7" rx="2" fill="#9DB4DC"/>
+    <rect x="51" y="76" width="10" height="7" rx="2" fill="#9DB4DC"/>
+    <rect x="64" y="76" width="10" height="7" rx="2" fill="#34A853"/>
+    <rect x="77" y="76" width="10" height="7" rx="2" fill="#34A853"/>
+    <rect x="38" y="88" width="10" height="7" rx="2" fill="#9DB4DC"/>
+    <rect x="51" y="88" width="10" height="7" rx="2" fill="#9DB4DC"/>
+  </g>
+  <!-- the assistant's spark -->
+  <path d="M100 18 C101.5 27 104 29.5 113 31 C104 32.5 101.5 35 100 44 C98.5 35 96 32.5 87 31 C96 29.5 98.5 27 100 18 Z"
+        fill="url(#spark)" stroke="#1B3F86" stroke-width="2.5" stroke-linejoin="round"/>
+</svg>

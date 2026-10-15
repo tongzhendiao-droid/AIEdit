@@ -46,7 +46,25 @@ if(AIEDIT_LUPDATE)
         VERBATIM)
 endif()
 
+# The icon also goes inside the binary, for systems without an icon theme (Windows).
+qt_add_resources(aiedit "icons"
+    PREFIX "/icons"
+    BASE "${PROJECT_SOURCE_DIR}/packaging/icons"
+    FILES "${PROJECT_SOURCE_DIR}/packaging/icons/aiedit.svg")
+
 include(GNUInstallDirs)
 install(TARGETS aiedit
     BUNDLE DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+if(UNIX AND NOT APPLE)
+    # Desktop integration: the launcher entry (with the absolute path of the installed binary,
+    # which does not depend on PATH) and the icon in the hicolor theme.
+    set(AIEDIT_EXEC "${CMAKE_INSTALL_FULL_BINDIR}/aiedit")
+    configure_file("${PROJECT_SOURCE_DIR}/packaging/linux/aiedit.desktop.in"
+                   "${CMAKE_CURRENT_BINARY_DIR}/aiedit.desktop" @ONLY)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/aiedit.desktop"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
+    install(FILES "${PROJECT_SOURCE_DIR}/packaging/icons/aiedit.svg"
+            DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps")
+endif()

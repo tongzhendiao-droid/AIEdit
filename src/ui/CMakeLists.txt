@@ -13,6 +13,7 @@ qt_add_library(aiedit_ui STATIC
     Paths.h
     RowScrollBar.cpp RowScrollBar.h
     SearchJob.cpp SearchJob.h
+    SingleInstance.cpp SingleInstance.h
     SyntaxHighlighting.cpp SyntaxHighlighting.h
     TextDecoder.cpp TextDecoder.h
     TextDocument.cpp TextDocument.h

@@ -886,6 +886,10 @@
         <translation>快速的文本与二进制文件查看器。</translation>
     </message>
     <message>
+        <source>Open a separate window instead of using the one already open.</source>
+        <translation>打开一个新窗口，而不是使用已经打开的窗口。</translation>
+    </message>
+    <message>
         <source>Files to open.</source>
         <translation>要打开的文件。</translation>
     </message>

@@ -56,7 +56,9 @@ src/
     AiTools      给 AI 用的本地工具（读字节、读行、搜索、标注字段）和 ToolRunner
     FieldMark    带名字的字节区间，Hex 视图用不同颜色显示
     AiSettingsDialog
+    SingleInstance 单实例：再次启动时把文件交给已打开的窗口（QLocalServer，每个用户一个）
     MainWindow, DataInspector
+packaging/  桌面集成：.desktop 模板、SVG 图标、register.sh（默认程序、右键菜单）
 tests/    Qt Test；GUI 测试以 offscreen 方式运行
 translations/  界面翻译（.ts）
 ```

@@ -91,6 +91,31 @@ cmake --build build -j
 
 **Windows**：安装 Qt 6（MSVC 版本）和 CMake 后，用相同的 CMake 命令构建。Windows 版目前还没有验证过，已知的问题见 DESIGN.md 末尾。
 
+## 安装到桌面（Linux）
+
+安装到 `~/.local`，不需要 sudo：
+
+```bash
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/.local" -DAIEDIT_BUILD_TESTS=OFF
+```
+
+```bash
+cmake --build build-release -j && cmake --install build-release
+```
+
+然后注册到桌面：
+
+```bash
+packaging/linux/register.sh --default
+```
+
+注册后：
+- 应用菜单里出现 AIEdit。
+- 文件管理器右键 →「脚本」→「用 AIEdit 打开」，对任何文件都可用。
+- 加上 `--default` 时，纯文本、日志、Markdown、JSON/XML/YAML、二进制和可执行文件默认用 AIEdit 打开。你已经指定给其他程序的类型（C/C++ 源码、shell 脚本、CSV）保持不变，因为 AIEdit 目前还不能编辑。
+
+AIEdit 只保留一个窗口：再打开文件时，会在已有窗口里新开标签页。需要单独的窗口时用 `aiedit --new-window`。
+
 ## 测试
 
 ```bash
