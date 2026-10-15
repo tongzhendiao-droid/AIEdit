@@ -1,5 +1,7 @@
 # AIEdit
 
+[![CI](https://github.com/tongzhendiao-droid/AIEdit/actions/workflows/ci.yml/badge.svg)](https://github.com/tongzhendiao-droid/AIEdit/actions/workflows/ci.yml)
+
 快速、带 AI 辅助的文本与二进制文件查看器。用 C++20 和 Qt 6 编写，以查看为主、编辑为辅。
 
 > 当前进度：已完成 **M3b**（AI 可以用本地工具读取和搜索文件，并在十六进制视图里标注字段）。计划见 [DESIGN.md](DESIGN.md)。
