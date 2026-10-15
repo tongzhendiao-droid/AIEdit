@@ -71,6 +71,11 @@ public:
 
     ViewMode viewMode() const { return m_viewMode; }
     void setViewMode(ViewMode mode);
+    // Reading mode (see TextView::setReadingMode), in the text view. Remembered with the file.
+    bool isReadingMode() const;
+    void setReadingMode(bool on);
+    // Shows the text from `offset` on at the top, with the caret there: where a chapter starts.
+    void showFromOffset(std::uint64_t offset);
     // The view the user works in: the visible one, or in split mode the one focused last.
     bool isTextActive() const;
     std::uint64_t cursorOffset() const;
@@ -127,6 +132,7 @@ public:
         std::uint64_t top = 0; // where the first line on screen started: the reading position
         ViewMode mode = ViewMode::Text;
         QString codec; // empty unless chosen by the user; otherwise the file's is detected again
+        bool reading = false;
     };
     State state() const;
     // Puts it back; positions the index has not reached yet are applied once it has.
@@ -170,6 +176,7 @@ signals:
     void zoomRequested(int steps);
     void statusMessage(const QString& message);
     void aiSettingsRequested();
+    void readingModeChanged(bool on);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;

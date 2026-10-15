@@ -61,6 +61,10 @@ public:
     // The exact JSON that asking `question` now would send.
     QByteArray previewRequest(const QString& question) const;
 
+    // Asks a question with a text attached, such as a chapter of a book; `label` says what it
+    // is, for the conversation.
+    void askAbout(const QString& question, const QString& label, const QString& text);
+
 public slots:
     void ask(const QString& question);
     void explainSelection();

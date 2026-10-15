@@ -355,6 +355,91 @@
     </message>
 </context>
 <context>
+    <name>aiedit::ui::ContentsPanel</name>
+    <message>
+        <source>Let the AI work out what this book&apos;s headings look like. It sees the first lines and short lines from all through the book; the rule it writes runs here.</source>
+        <translation>让 AI 找出这本书的标题是什么样子。它看到的是开头的若干行和全书各处的短行；它写出的规则在本机运行。</translation>
+    </message>
+    <message>
+        <source>Built-in Rule</source>
+        <translation>内置规则</translation>
+    </message>
+    <message>
+        <source>Find the headings with AIEdit&apos;s own rule again</source>
+        <translation>改回用 AIEdit 自己的规则找标题</translation>
+    </message>
+    <message>
+        <source>Line %L1</source>
+        <translation>第 %L1 行</translation>
+    </message>
+    <message>
+        <source>There is no chapter here to send</source>
+        <translation>这里没有可以发送的章节</translation>
+    </message>
+    <message>
+        <source>&amp;Go There</source>
+        <translation>跳到这里(&amp;G)</translation>
+    </message>
+    <message>
+        <source>&amp;Summarize This Chapter</source>
+        <translation>总结这一章(&amp;S)</translation>
+    </message>
+    <message>
+        <source>&amp;Translate This Chapter</source>
+        <translation>翻译这一章(&amp;T)</translation>
+    </message>
+    <message>
+        <source>&amp;Explain This Chapter</source>
+        <translation>解释这一章(&amp;E)</translation>
+    </message>
+    <message>
+        <source>Stopped.</source>
+        <translation>已停止。</translation>
+    </message>
+    <message>
+        <source>Asking %1 to find the headings…</source>
+        <translation>正在请 %1 找出标题…</translation>
+    </message>
+    <message>
+        <source>The AI&apos;s rule: %1</source>
+        <translation>AI 的规则：%1</translation>
+    </message>
+    <message>
+        <source>no description</source>
+        <translation>无说明</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>停止</translation>
+    </message>
+    <message>
+        <source>Find with AI</source>
+        <translation>AI 找目录</translation>
+    </message>
+    <message>
+        <source>Open a book to see its contents.</source>
+        <translation>打开一本书就能看到它的目录。</translation>
+    </message>
+    <message>
+        <source>A binary file has no contents to show.</source>
+        <translation>二进制文件没有目录。</translation>
+    </message>
+    <message>
+        <source>Looking for headings…</source>
+        <translation>正在找标题…</translation>
+    </message>
+    <message>
+        <source>No headings found. The AI can work out what this book&apos;s headings look like.</source>
+        <translation>没有找到标题。可以让 AI 找出这本书的标题是什么样子。</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n heading(s)</source>
+        <translation>
+            <numerusform>共 %n 个标题</numerusform>
+        </translation>
+    </message>
+</context>
+<context>
     <name>aiedit::ui::DataInspector</name>
     <message>
         <source>Little-endian</source>
@@ -993,6 +1078,10 @@
         <translation>AI 助手</translation>
     </message>
     <message>
+        <source>Contents</source>
+        <translation>目录</translation>
+    </message>
+    <message>
         <source>Find in Files</source>
         <translation>在文件夹里查找</translation>
     </message>
@@ -1059,6 +1148,14 @@
     <message>
         <source>Keep showing the end of the file as it grows, like tail -f</source>
         <translation>像 tail -f 那样，文件增长时始终显示末尾</translation>
+    </message>
+    <message>
+        <source>Rea&amp;ding Mode</source>
+        <translation>阅读模式(&amp;D)</translation>
+    </message>
+    <message>
+        <source>Read a book: no line numbers, the text in a column in the middle with room between the lines, and its contents beside it</source>
+        <translation>读书用：不显示行号，正文居中成一栏、行距加大，旁边显示目录</translation>
     </message>
     <message>
         <source>&amp;Word Wrap</source>
@@ -1243,6 +1340,14 @@
     <message>
         <source>What Is This &amp;File?</source>
         <translation>这是什么文件(&amp;F)？</translation>
+    </message>
+    <message>
+        <source>Summarize This &amp;Chapter</source>
+        <translation>总结本章(&amp;C)</translation>
+    </message>
+    <message>
+        <source>Translate This C&amp;hapter</source>
+        <translation>翻译本章(&amp;H)</translation>
     </message>
     <message>
         <source>AI Setti&amp;ngs…</source>
@@ -1483,6 +1588,26 @@
         <translation>%1 超出文件末尾，已移到最后一个字节</translation>
     </message>
     <message>
+        <source>Summarize this chapter: what happens, who is in it, and what stands out.</source>
+        <translation>总结这一章：讲了什么事，有哪些人物，有什么值得注意的地方。</translation>
+    </message>
+    <message>
+        <source>Translate this chapter into %1, paragraph by paragraph. Classical Chinese goes into modern vernacular Chinese.</source>
+        <translation>把这一章逐段翻译成%1。如果是文言文，就译成现代白话文。</translation>
+    </message>
+    <message>
+        <source>Explain this chapter: its background, the difficult words and allusions, and what it means.</source>
+        <translation>解释这一章：它的背景、难懂的字词和典故，以及它的意思。</translation>
+    </message>
+    <message>
+        <source>the first %1 characters of %2</source>
+        <translation>%2 的前 %1 字</translation>
+    </message>
+    <message>
+        <source>%1 (%2 characters)</source>
+        <translation>%1（%2 字）</translation>
+    </message>
+    <message>
         <source>About AIEdit</source>
         <translation>关于 AIEdit</translation>
     </message>
@@ -1533,6 +1658,10 @@
     <message>
         <source>Indexing… %1%</source>
         <translation>正在索引… %1%</translation>
+    </message>
+    <message>
+        <source>%1% read</source>
+        <translation>已读 %1%</translation>
     </message>
     <message>
         <source>Ln %1, Col %2 · %3</source>
