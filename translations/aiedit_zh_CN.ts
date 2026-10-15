@@ -564,6 +564,14 @@
         <translation>像 tail -f 那样，文件增长时始终显示末尾</translation>
     </message>
     <message>
+        <source>&amp;Word Wrap</source>
+        <translation>自动换行(&amp;W)</translation>
+    </message>
+    <message>
+        <source>Wrap long lines at the edge of the window instead of scrolling sideways</source>
+        <translation>长行在窗口边缘折行显示，不用横向滚动</translation>
+    </message>
+    <message>
         <source>&amp;Quit</source>
         <translation>退出(&amp;Q)</translation>
     </message>

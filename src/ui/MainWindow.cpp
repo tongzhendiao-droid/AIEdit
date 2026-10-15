@@ -250,6 +250,12 @@ void MainWindow::createActions()
             doc->setFollowing(on);
     });
 
+    m_wordWrapAction = new QAction(tr("&Word Wrap"), this);
+    m_wordWrapAction->setCheckable(true);
+    m_wordWrapAction->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Z));
+    m_wordWrapAction->setToolTip(tr("Wrap long lines at the edge of the window instead of scrolling sideways"));
+    connect(m_wordWrapAction, &QAction::toggled, this, &MainWindow::setWordWrap);
+
     m_quitAction = new QAction(tr("&Quit"), this);
     m_quitAction->setShortcut(QKeySequence::Quit);
     m_quitAction->setMenuRole(QAction::QuitRole);
@@ -400,6 +406,7 @@ void MainWindow::createMenus()
     QMenu* view = menuBar()->addMenu(tr("&View"));
     view->addActions(m_viewModeGroup->actions());
     view->addSeparator();
+    view->addAction(m_wordWrapAction);
     view->addAction(m_followAction);
     view->addSeparator();
     QMenu* hex = view->addMenu(tr("Hex &Layout"));
@@ -494,6 +501,7 @@ void MainWindow::readSettings()
                              kMinPointSize, kMaxPointSize);
     m_inspector->setBigEndian(settings.value(QStringLiteral("inspector/bigEndian"), false).toBool());
     setBytesPerRow(settings.value(QStringLiteral("view/bytesPerRow"), 16).toInt());
+    setWordWrap(settings.value(QStringLiteral("view/wordWrap"), true).toBool());
 }
 
 void MainWindow::writeSettings() const
@@ -504,6 +512,7 @@ void MainWindow::writeSettings() const
     settings.setValue(QStringLiteral("files/lastDirectory"), m_lastDirectory);
     settings.setValue(QStringLiteral("view/pointSize"), m_pointSize);
     settings.setValue(QStringLiteral("view/bytesPerRow"), m_bytesPerRow);
+    settings.setValue(QStringLiteral("view/wordWrap"), m_wordWrap);
     settings.setValue(QStringLiteral("inspector/bigEndian"), m_inspector->isBigEndian());
 }
 
@@ -682,6 +691,7 @@ void MainWindow::applyViewSettings(DocumentView* doc) const
         view->setFont(font);
     }
     doc->hexView()->setBytesPerRow(m_bytesPerRow);
+    doc->textView()->setWordWrap(m_wordWrap);
 }
 
 void MainWindow::setBytesPerRow(int bytesPerRow)
@@ -692,6 +702,15 @@ void MainWindow::setBytesPerRow(int bytesPerRow)
         action->setChecked(action->data().toInt() == m_bytesPerRow);
     for (int i = 0; i < m_tabs->count(); ++i)
         document(i)->hexView()->setBytesPerRow(m_bytesPerRow);
+}
+
+void MainWindow::setWordWrap(bool on)
+{
+    m_wordWrap = on;
+    const QSignalBlocker blocker(m_wordWrapAction);
+    m_wordWrapAction->setChecked(on);
+    for (int i = 0; i < m_tabs->count(); ++i)
+        document(i)->textView()->setWordWrap(on);
 }
 
 void MainWindow::zoomBy(int steps)

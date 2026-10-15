@@ -66,6 +66,7 @@ private:
     void setViewMode(DocumentView::ViewMode mode);
     void setCodec(const core::TextCodec& codec);
     void setBytesPerRow(int bytesPerRow);
+    void setWordWrap(bool on);
     void zoomBy(int steps);
     void resetZoom();
     void applyViewSettings(DocumentView* doc) const;
@@ -102,6 +103,7 @@ private:
     QAction* m_closeAction = nullptr;
     QAction* m_reloadAction = nullptr;
     QAction* m_followAction = nullptr;
+    QAction* m_wordWrapAction = nullptr;
     QAction* m_quitAction = nullptr;
     QAction* m_copyAction = nullptr;
     QAction* m_copyHexAction = nullptr;
@@ -134,6 +136,7 @@ private:
     QAction* m_aboutQtAction = nullptr;
 
     int m_bytesPerRow = 16;
+    bool m_wordWrap = true;
     int m_defaultPointSize = 10;
     int m_pointSize = 10;
     QString m_lastDirectory;

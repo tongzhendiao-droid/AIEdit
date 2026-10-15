@@ -13,7 +13,9 @@ bool isSurrogate(char32_t c)
     return c >= 0xD800 && c <= 0xDFFF;
 }
 
-// What to show for a code point: C0 controls and DEL as control pictures, C1 as U+FFFD.
+// What to show for a code point: C0 controls and DEL as control pictures, C1 as U+FFFD. The
+// Unicode line and paragraph separators, which text layout would break the row at, show as
+// ␤ and ¶.
 char32_t displayable(char32_t c)
 {
     if (c == '\t')
@@ -24,6 +26,10 @@ char32_t displayable(char32_t c)
         return 0x2421;
     if (c >= 0x80 && c <= 0x9F)
         return kReplacement;
+    if (c == 0x2028)
+        return 0x2424;
+    if (c == 0x2029)
+        return 0x00B6;
     return c;
 }
 

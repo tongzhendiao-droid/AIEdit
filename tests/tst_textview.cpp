@@ -10,10 +10,12 @@
 #include "ui/TextView.h"
 
 #include <QMenu>
+#include <QScrollBar>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <algorithm>
 #include <fstream>
 
 using namespace aiedit;
@@ -54,6 +56,10 @@ private slots:
     void selectionAndCopyInLegacyEncoding();
     void goToLine();
     void columnOnSplitLongLine();
+    void wordWrapFlowsAcrossRowSplits();
+    void wordWrapMovesByScreenLines();
+    void wordWrapKeepsPositionWhenToggled();
+    void wordWrapHighlightsRowByRow();
 
     void documentViewSyncsViews();
     void syntaxDetection();
@@ -63,6 +69,8 @@ private slots:
     void highlightingCarriesStateAcrossCheckpoints();
     void renderHighlightedCode();
     void aiActionsInContextMenus();
+    void wordWrapMenuAppliesToOpenDocuments();
+    void renderWrappedBook();
     void renderScreenshot();
 
 private:
@@ -105,6 +113,8 @@ void TestTextView::decodesInvalidAndControlBytes()
     QCOMPARE(decoded.text, QString::fromUtf16(u"x�␁\t␡"));
     QCOMPARE(decoded.byteOffsets.size(), 6u);
     QCOMPARE(decoder.decodePlain(bytesOf("a\tb\n")), QStringLiteral("a\tb\n"));
+    // Unicode line and paragraph separators would break a row in two; they show as symbols.
+    QCOMPARE(decoder.decode(bytesOf("a\u2028b\u2029")).text, QString::fromUtf16(u"a␤b¶"));
 }
 
 void TestTextView::decodesGb18030()
@@ -259,6 +269,163 @@ void TestTextView::columnOnSplitLongLine()
     view.setCursorOffset(9000);
     QCOMPARE(view.cursorLine(), 0u);
     QCOMPARE(view.cursorColumn(), std::optional<std::uint64_t>(9000));
+
+    // End on a split row goes after its last character, which is where the next row starts.
+    view.setCursorOffset(100);
+    QTest::keyClick(&view, Qt::Key_End);
+    QCOMPARE(view.cursorOffset(), 4096u);
+    QCOMPARE(view.cursorColumn(), std::optional<std::uint64_t>(4096));
+}
+
+void TestTextView::wordWrapFlowsAcrossRowSplits()
+{
+    // One 20,000-byte line of words, which the index splits every 4096 bytes, inside a word.
+    std::string content;
+    while (content.size() < 20000)
+        content += "word ";
+    content += "\n";
+    ui::TextDocument document(write("words.txt", content), codec("UTF-8"));
+    const std::uint64_t split = document.index().row(1).start;
+    QCOMPARE(split % 5, 1u); // between "w" and "ord"
+
+    TextView view;
+    view.resize(500, 300);
+    view.setDocument(&document);
+    view.setWordWrap(true);
+    view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    QCOMPARE(view.horizontalScrollBar()->maximum(), 0);
+
+    // The rows wrap as one paragraph: every line starts at a word, so none at the split.
+    view.setCursorOffset(split);
+    QTest::keyClick(&view, Qt::Key_Home);
+    QVERIFY(view.cursorOffset() < split);
+    QCOMPARE(view.cursorOffset() % 5, 0u);
+    QTest::keyClick(&view, Qt::Key_End); // and that line goes on past the split
+    QVERIFY(view.cursorOffset() > split);
+    QCOMPARE(view.cursorLine(), 0u);
+}
+
+void TestTextView::wordWrapMovesByScreenLines()
+{
+    // Three long paragraphs, each on one line, as many .txt books are.
+    std::string paragraph;
+    for (int i = 0; i < 300; ++i)
+        paragraph += "天下大势，分久必合，合久必分。";
+    const std::string content = paragraph + "\n" + paragraph + "\n" + paragraph + "\n";
+    ui::TextDocument document(write("paragraphs.txt", content), codec("UTF-8"));
+    TextView view;
+    view.resize(500, 300);
+    view.setDocument(&document);
+    view.setWordWrap(true);
+    view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+    const int lineHeight = view.cursorRect().height();
+    QCOMPARE(view.cursorRect().top(), 0);
+
+    // End stays on the line, after its last character, though that is where the next line starts.
+    QTest::keyClick(&view, Qt::Key_Down);
+    QTest::keyClick(&view, Qt::Key_Home);
+    const std::uint64_t secondLine = view.cursorOffset();
+    QTest::keyClick(&view, Qt::Key_Home, Qt::ControlModifier);
+    QTest::keyClick(&view, Qt::Key_End, Qt::ShiftModifier);
+    QCOMPARE(view.cursorOffset(), secondLine);
+    QCOMPARE(view.cursorRect().top(), 0);
+    QCOMPARE(view.selectionStart(), 0u); // the whole first line, nothing of the second
+    // So does a click past the end of the line.
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, QPoint(view.viewport()->width() - 2, lineHeight / 2));
+    QCOMPARE(view.cursorOffset(), secondLine);
+    QCOMPARE(view.cursorRect().top(), 0);
+    QTest::keyClick(&view, Qt::Key_Home, Qt::ControlModifier);
+
+    // Down goes to the next line on screen, still in the first paragraph.
+    QTest::keyClick(&view, Qt::Key_Down);
+    QCOMPARE(view.cursorLine(), 0u);
+    QVERIFY(view.cursorOffset() > 0);
+    QCOMPARE(view.cursorRect().top(), lineHeight);
+
+    // Page Down scrolls by lines on screen too, so the caret keeps its place in the view.
+    QTest::keyClick(&view, Qt::Key_PageDown);
+    QCOMPARE(view.cursorLine(), 0u);
+    QCOMPARE(view.cursorRect().top(), lineHeight);
+
+    // The scroll bar's arrow moves one line on screen, not a whole paragraph.
+    view.verticalScrollBar()->triggerAction(QAbstractSlider::SliderSingleStepAdd);
+    QCOMPARE(view.cursorRect().top(), 0);
+
+    // A click lands on the line under the mouse.
+    QTest::mouseClick(view.viewport(), Qt::LeftButton, {}, QPoint(view.width() / 2, 2 * lineHeight + lineHeight / 2));
+    QCOMPARE(view.cursorRect().top(), 2 * lineHeight);
+    QCOMPARE(view.cursorLine(), 0u);
+
+    // At the end of the file, its last line is at the bottom of the view.
+    QTest::keyClick(&view, Qt::Key_End, Qt::ControlModifier);
+    QCOMPARE(view.cursorLine(), 2u);
+    QCOMPARE(view.cursorRect().top(), (view.visibleRows() - 1) * lineHeight);
+    QCOMPARE(view.verticalScrollBar()->value(), view.verticalScrollBar()->maximum());
+
+    // Dragging the bar back to the top shows the start again.
+    view.verticalScrollBar()->setValue(0);
+    QCOMPARE(view.topRow(), 0u);
+    QTest::keyClick(&view, Qt::Key_Home, Qt::ControlModifier);
+    QCOMPARE(view.cursorRect().top(), 0);
+}
+
+void TestTextView::wordWrapKeepsPositionWhenToggled()
+{
+    std::string content;
+    for (int i = 1; i <= 300; ++i)
+        content += "line " + std::to_string(i) + (i % 10 == 0 ? std::string(400, '-') : std::string()) + "\n";
+    ui::TextDocument document(write("toggle.txt", content), codec("UTF-8"));
+    TextView view;
+    view.resize(600, 300);
+    view.setDocument(&document);
+    view.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&view));
+
+    view.verticalScrollBar()->setValue(100); // unwrapped, the bar counts rows
+    QCOMPARE(view.topRow(), 100u);
+    view.setCursorOffset(document.index().row(105).start);
+    view.setWordWrap(true);
+    QCOMPARE(view.topRow(), 100u); // the same text stays at the top
+    QVERIFY(!view.cursorRect().isNull()); // and the caret in view
+    QVERIFY(!view.horizontalScrollBar()->isVisible());
+    view.setWordWrap(false);
+    QCOMPARE(view.topRow(), 100u);
+}
+
+void TestTextView::wordWrapHighlightsRowByRow()
+{
+    if (!ui::isSyntaxHighlightingAvailable())
+        QSKIP("Built without KSyntaxHighlighting");
+    // A 10,000-character line takes three rows, which word wrap lays out together.
+    const std::string code = "auto s = \"" + std::string(10000, 'x') + "\"; // end\nint after = 1;\n";
+    const auto path = ui::toPath(m_dir.filePath(QStringLiteral("long.cpp")));
+    std::ofstream(path, std::ios::binary) << code;
+    std::error_code ec;
+    const std::shared_ptr<const core::FileSource> source = core::FileSource::open(path, ec);
+    ui::DocumentView doc(source, core::detectFileType(source->bytes()), core::utf8Codec());
+    QCOMPARE(doc.syntax(), QStringLiteral("C++"));
+    TextView* view = doc.textView();
+    const core::LineIndex& index = doc.textDocument()->index();
+    QCOMPARE(index.row(3).line, 1u);
+
+    // Unwrapped, row by row; moved to where each row starts in the line (ASCII: bytes = characters).
+    QList<QTextLayout::FormatRange> joined;
+    for (std::uint64_t row = 0; row < 3; ++row) {
+        for (QTextLayout::FormatRange range : view->rowFormats(row)) {
+            range.start += static_cast<int>(index.row(row).start);
+            joined << range;
+        }
+    }
+    const auto after = view->rowFormats(3);
+    QVERIFY(!after.isEmpty());
+
+    // Wrapped, the same formats for the joined rows, and the same state carried to the next line.
+    view->setWordWrap(true);
+    QVERIFY(view->rowFormats(1) == joined);
+    QVERIFY(std::any_of(joined.begin(), joined.end(), [](const auto& range) { return range.start >= 8192; }));
+    QVERIFY(view->rowFormats(3) == after);
 }
 
 void TestTextView::documentViewSyncsViews()
@@ -480,6 +647,58 @@ void TestTextView::aiActionsInContextMenus()
     QVERIFY(hexTexts.contains(QStringLiteral("What Is This &File?")));
     QVERIFY(!hexTexts.contains(QStringLiteral("AI &Translate")));
     QVERIFY(find(menu.get(), QStringLiteral("AI &Explain"))->isEnabled()); // the selection carried over
+}
+
+void TestTextView::wordWrapMenuAppliesToOpenDocuments()
+{
+    const auto path = ui::toPath(m_dir.filePath(QStringLiteral("menu.txt")));
+    std::ofstream(path, std::ios::binary) << std::string(2000, 'x') << "\n";
+    ui::MainWindow window;
+    QAction* wrap = nullptr;
+    for (QAction* action : window.findChildren<QAction*>())
+        if (action->text() == QStringLiteral("&Word Wrap"))
+            wrap = action;
+    QVERIFY(wrap && wrap->isCheckable());
+
+    QVERIFY(window.openFile(ui::toQString(path)));
+    TextView* view = window.currentDocument()->textView();
+    QCOMPARE(view->wordWrap(), wrap->isChecked());
+    wrap->trigger();
+    QCOMPARE(view->wordWrap(), wrap->isChecked());
+    wrap->trigger();
+    QCOMPARE(view->wordWrap(), wrap->isChecked());
+}
+
+void TestTextView::renderWrappedBook()
+{
+    // Set AIEDIT_SCREENSHOT_DIR to look at it: a chapter whose paragraphs are one line each.
+    std::string book = "第一回　天下大势\n\n";
+    for (int p = 0; p < 6; ++p) {
+        book += "　　";
+        if (p == 1)
+            book += "AIEdit 会在窗口边缘自动换行：English words wrap at spaces, 中文可以在任意两个字之间换行。";
+        for (int i = 0; i < 12 + p * 25; ++i)
+            book += "话说天下大势，分久必合，合久必分。";
+        book += "\n\n";
+    }
+    const auto path = ui::toPath(m_dir.filePath(QStringLiteral("chapter.txt")));
+    std::ofstream(path, std::ios::binary) << book;
+
+    ui::MainWindow window;
+    window.resize(1000, 560);
+    QVERIFY(window.openFile(ui::toQString(path)));
+    ui::DocumentView* doc = window.currentDocument();
+    doc->textView()->setWordWrap(true);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    doc->textView()->setFocus();
+    doc->textView()->select(100, 700); // across several lines on screen
+    QCoreApplication::processEvents();
+
+    const QPixmap shot = window.grab();
+    QVERIFY(!shot.isNull());
+    if (const QByteArray dir = qgetenv("AIEDIT_SCREENSHOT_DIR"); !dir.isEmpty())
+        QVERIFY(shot.save(QString::fromLocal8Bit(dir) + QStringLiteral("/wrapped.png")));
 }
 
 void TestTextView::renderScreenshot()

@@ -31,7 +31,8 @@ struct DecodedText
 // be traced back to bytes (needed for the cursor, selections and Text/Hex synchronisation).
 //
 // Malformed bytes become U+FFFD, one per byte. Control characters are shown as Unicode
-// "control pictures" (␀, ␛, ␍ …) so they stay visible; tabs are kept for tab stops.
+// "control pictures" (␀, ␛, ␍ …) so they stay visible; tabs are kept for tab stops. The
+// Unicode line and paragraph separators show as ␤ and ¶, so that a row stays one line.
 class TextDecoder
 {
 public:

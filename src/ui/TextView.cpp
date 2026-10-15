@@ -22,7 +22,11 @@ namespace aiedit::ui {
 namespace {
 
 constexpr std::size_t kMaxCachedLayouts = 1024;
+constexpr std::uint64_t kMaxCachedLayoutBytes = 4ull * 1024 * 1024;
 constexpr qreal kUnboundedLineWidth = 1e6; // rows never wrap
+// With word wrap on, a block holds at most this many rows (64 KiB). Every kMaxBlockRows-th row
+// starts a new block, so the block holding a row is found from at most that many rows back.
+constexpr std::uint64_t kMaxBlockRows = 16;
 constexpr int kAutoScrollIntervalMs = 40;
 constexpr int kWheelStep = 120; // QWheelEvent::angleDelta() units per notch
 constexpr int kCaretWidth = 2;
@@ -49,6 +53,13 @@ std::uint64_t countCharacters(const QString& text, qsizetype end)
         std::count_if(text.begin(), text.begin() + end, [](QChar c) { return !c.isLowSurrogate(); }));
 }
 
+// The line on which a cursor position shows; the last line for a position past every line.
+QTextLine lineAtPosition(const QTextLayout& layout, int position)
+{
+    const QTextLine line = layout.lineForTextPosition(position);
+    return line.isValid() ? line : layout.lineAt(layout.lineCount() - 1);
+}
+
 } // namespace
 
 TextView::TextView(QWidget* parent) : QAbstractScrollArea(parent), m_rows(verticalScrollBar())
@@ -59,6 +70,7 @@ TextView::TextView(QWidget* parent) : QAbstractScrollArea(parent), m_rows(vertic
     updateMetrics();
     updateColors();
     updateScrollBars();
+    connect(verticalScrollBar(), &QAbstractSlider::actionTriggered, this, &TextView::scrollBarAction);
 }
 
 TextView::~TextView() = default;
@@ -81,6 +93,7 @@ void TextView::setDocument(TextDocument* document)
         });
     }
     m_rows.setTopRow(0);
+    m_topOffset = 0;
     m_cursor = m_anchor = 0;
     resetForDocument();
 }
@@ -109,6 +122,7 @@ void TextView::setSyntax(const QString& name)
         return;
     m_syntax = name;
     resetHighlighting();
+    updateScrollBars(); // bold or italic text can wrap differently
     viewport()->update();
 }
 
@@ -116,7 +130,7 @@ QList<QTextLayout::FormatRange> TextView::rowFormats(std::uint64_t rowIndex) con
 {
     if (rowIndex >= rowCount())
         return {};
-    return layoutFor(m_document->index().row(rowIndex)).layout.formats();
+    return layoutFor(blockAt(rowIndex)).layout.formats();
 }
 
 void TextView::resetHighlighting()
@@ -169,6 +183,30 @@ void TextView::setTabWidth(int spaces)
         return;
     m_tabWidth = spaces;
     clearLayouts();
+    updateScrollBars();
+    viewport()->update();
+}
+
+void TextView::setWordWrap(bool on)
+{
+    if (on == m_wordWrap)
+        return;
+    // Keep the same text at the top, and the caret in view if it was.
+    const bool caretShown = !cursorRect().isNull();
+    const std::uint64_t top = rowCount() == 0 ? 0 : lineStart(topLine());
+    m_wordWrap = on;
+    m_caretAtLineEnd = false;
+    m_topOffset = top;
+    m_wrapWidth = wrapWidth();
+    m_maxRowWidth = 0;
+    m_desiredX.reset();
+    clearLayouts();
+    setHorizontalScrollBarPolicy(on ? Qt::ScrollBarAlwaysOff : Qt::ScrollBarAsNeeded);
+    updateScrollBars();
+    if (!on && rowCount() > 0)
+        setTopRow(m_document->index().rowIndexAt(top));
+    if (caretShown)
+        ensureCursorVisible();
     viewport()->update();
 }
 
@@ -209,9 +247,9 @@ bool TextView::goToLine(std::uint64_t line)
     const auto rowIndex = m_document->index().rowIndexOfLine(line);
     if (!rowIndex)
         return false;
-    const auto half = static_cast<std::uint64_t>(visibleRows() / 2);
-    setTopRow(*rowIndex > half ? *rowIndex - half : 0);
-    moveCursor(m_document->index().row(*rowIndex).start, false);
+    const std::uint64_t start = m_document->index().row(*rowIndex).start;
+    scrollToLine(moveLines(visualLineAt(start), -(visibleRows() / 2)));
+    moveCursor(start, false);
     return true;
 }
 
@@ -243,17 +281,104 @@ void TextView::setTopRow(std::uint64_t row)
         viewport()->update();
 }
 
+void TextView::scrollToLine(const VisualLine& line)
+{
+    if (!m_wordWrap) {
+        setTopRow(line.block.firstRow);
+        return;
+    }
+    const std::uint64_t offset = std::min(lineStart(line), m_maxTopOffset);
+    if (offset == m_topOffset)
+        return;
+    m_topOffset = offset;
+    m_rows.setTopRow(m_document->index().rowIndexAt(offset));
+    viewport()->update();
+}
+
+void TextView::scrollLines(std::int64_t delta)
+{
+    if (rowCount() == 0 || delta == 0)
+        return;
+    if (!m_wordWrap) {
+        const std::uint64_t top = topRow();
+        const auto steps = static_cast<std::uint64_t>(delta < 0 ? -delta : delta);
+        setTopRow(delta < 0 ? (top > steps ? top - steps : 0) : top + steps);
+        return;
+    }
+    scrollToLine(moveLines(topLine(), delta));
+}
+
+void TextView::scrollBarAction(int action)
+{
+    // The bar counts rows; with word wrap, its arrows and page steps should move by lines.
+    if (!m_wordWrap)
+        return;
+    std::int64_t lines = 0;
+    switch (action) {
+    case QAbstractSlider::SliderSingleStepAdd:
+        lines = 1;
+        break;
+    case QAbstractSlider::SliderSingleStepSub:
+        lines = -1;
+        break;
+    case QAbstractSlider::SliderPageStepAdd:
+        lines = visibleRows();
+        break;
+    case QAbstractSlider::SliderPageStepSub:
+        lines = -visibleRows();
+        break;
+    default:
+        return;
+    }
+    scrollLines(lines);
+    verticalScrollBar()->setSliderPosition(verticalScrollBar()->value()); // cancels the bar's own step
+}
+
 void TextView::scrollContentsBy(int /*dx*/, int dy)
 {
-    if (dy != 0)
-        m_rows.syncFromBar();
+    if (dy != 0 && m_rows.syncFromBar() && m_wordWrap && rowCount() > 0) {
+        // The bar was dragged: show the line in which the chosen row starts, and at the bottom,
+        // the end of the file.
+        const std::uint64_t row = m_rows.topRow();
+        m_topOffset = row >= m_rows.maxTopRow()
+                          ? m_maxTopOffset
+                          : std::min(lineStart(visualLineAt(m_document->index().row(row).start)), m_maxTopOffset);
+    }
     viewport()->update();
 }
 
 void TextView::updateScrollBars()
 {
-    m_rows.setRange(maxTopRow(), visibleRows());
-    updateHorizontalRange();
+    if (!m_wordWrap) {
+        m_rows.setRange(maxTopRow(), visibleRows());
+        updateHorizontalRange();
+        return;
+    }
+    if (const qreal width = wrapWidth(); width != m_wrapWidth) {
+        m_wrapWidth = width;
+        clearLayouts();
+    }
+    horizontalScrollBar()->setRange(0, 0);
+    if (rowCount() == 0) {
+        m_topOffset = m_maxTopOffset = 0;
+        m_rows.setRange(0, visibleRows());
+        return;
+    }
+    const core::LineIndex& index = m_document->index();
+    m_maxTopOffset = computeMaxTopOffset();
+    m_topOffset = std::min(lineStart(visualLineAt(m_topOffset)), m_maxTopOffset);
+    m_rows.setRange(index.rowIndexAt(m_maxTopOffset), visibleRows());
+    m_rows.setTopRow(index.rowIndexAt(m_topOffset));
+}
+
+std::uint64_t TextView::computeMaxTopOffset() const
+{
+    const Block last = blockAt(rowCount() - 1);
+    // While indexing goes on the end keeps moving, and laying it out each time would be wasted:
+    // until then the last block may scroll up to the top.
+    if (!m_document->index().isComplete())
+        return last.span.start;
+    return lineStart(moveLines({last, lineCount(last) - 1}, -(visibleRows() - 1)));
 }
 
 void TextView::updateHorizontalRange()
@@ -314,48 +439,245 @@ qreal TextView::textLeft() const
     return gutterWidth() + m_charWidth / 2;
 }
 
-const TextView::RowLayout& TextView::layoutFor(const core::Row& row) const
+qreal TextView::wrapWidth() const
 {
-    if (const auto it = m_layouts.find(row.start); it != m_layouts.end() && it->second->row == row)
-        return *it->second;
-    if (m_layouts.size() >= kMaxCachedLayouts)
-        m_layouts.clear();
+    // Leaves room for the caret after the last character.
+    return std::max(8 * m_charWidth, viewport()->width() - textLeft() - m_charWidth / 2);
+}
 
-    auto entry = std::make_unique<RowLayout>();
-    entry->row = row;
-    const auto bytes = m_document->bytes().subspan(row.start, static_cast<std::size_t>(row.contentEnd - row.start));
-    entry->decoded = m_document->decoder().decode(bytes);
-    if (m_highlighter) {
-        const std::uint64_t rowIndex = m_document->index().rowIndexAt(row.start);
-        SyntaxState state = stateBefore(rowIndex);
-        entry->layout.setFormats(m_highlighter->highlightLine(entry->decoded.text, state));
-        if (m_stateAfterRow.size() >= kMaxCachedStates)
-            m_stateAfterRow.clear();
-        m_stateAfterRow[rowIndex] = state;
+const TextView::BlockLayout& TextView::layoutFor(const Block& block) const
+{
+    const core::Row& span = block.span;
+    if (const auto it = m_layouts.find(span.start); it != m_layouts.end()) {
+        if (it->second->span == span)
+            return *it->second;
+        // The block grew (the index got further): replace it.
+        m_cachedLayoutBytes -= it->second->span.contentEnd - it->second->span.start;
+        m_layouts.erase(it);
+    }
+    const std::uint64_t size = span.contentEnd - span.start;
+    if (m_layouts.size() >= kMaxCachedLayouts || m_cachedLayoutBytes + size > kMaxCachedLayoutBytes) {
+        m_layouts.clear();
+        m_cachedLayoutBytes = 0;
     }
 
+    auto entry = std::make_unique<BlockLayout>();
+    entry->span = span;
+    entry->decoded = m_document->decoder().decode(m_document->bytes().subspan(span.start, static_cast<std::size_t>(size)));
+    if (m_highlighter)
+        entry->layout.setFormats(highlight(block, entry->decoded));
+
     QTextOption option;
-    option.setWrapMode(QTextOption::NoWrap);
+    option.setWrapMode(m_wordWrap ? QTextOption::WrapAtWordBoundaryOrAnywhere : QTextOption::NoWrap);
     option.setTabStopDistance(m_tabWidth * m_charWidth);
     entry->layout.setText(entry->decoded.text);
     entry->layout.setFont(font());
     entry->layout.setTextOption(option);
     entry->layout.setCacheEnabled(true);
     entry->layout.beginLayout();
-    QTextLine line = entry->layout.createLine();
-    line.setLineWidth(kUnboundedLineWidth);
-    line.setPosition(QPointF(0, 0));
+    // Lines go on a fixed pitch with aligned baselines, whatever fallback fonts they need.
+    for (int i = 0;; ++i) {
+        QTextLine line = entry->layout.createLine();
+        if (!line.isValid())
+            break;
+        line.setLineWidth(m_wordWrap ? m_wrapWidth : kUnboundedLineWidth);
+        line.setPosition(QPointF(0, i * m_lineHeight + m_ascent - line.ascent()));
+        if (!m_wordWrap) {
+            m_maxRowWidth = std::max(m_maxRowWidth, line.naturalTextWidth());
+            break; // a row is one line
+        }
+    }
     entry->layout.endLayout();
-    m_maxRowWidth = std::max(m_maxRowWidth, line.naturalTextWidth());
 
-    const RowLayout& result = *entry;
-    m_layouts[row.start] = std::move(entry);
+    const BlockLayout& result = *entry;
+    m_cachedLayoutBytes += size;
+    m_layouts[span.start] = std::move(entry);
     return result;
+}
+
+QList<QTextLayout::FormatRange> TextView::highlight(const Block& block, const DecodedText& decoded) const
+{
+    // Row by row, as lines, also when word wrap lays several out together.
+    const std::vector<core::Row> rows =
+        block.rowCount == 1 ? std::vector<core::Row>{block.span}
+                            : m_document->index().rows(block.firstRow, static_cast<std::size_t>(block.rowCount));
+    QList<QTextLayout::FormatRange> formats;
+    SyntaxState state = stateBefore(block.firstRow);
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        const qsizetype from = decoded.positionAt(static_cast<std::uint32_t>(rows[i].start - block.span.start));
+        const qsizetype to = decoded.positionAt(static_cast<std::uint32_t>(rows[i].contentEnd - block.span.start));
+        for (QTextLayout::FormatRange range : m_highlighter->highlightLine(decoded.text.mid(from, to - from), state)) {
+            range.start += static_cast<int>(from);
+            formats.append(range);
+        }
+        if (m_stateAfterRow.size() >= kMaxCachedStates)
+            m_stateAfterRow.clear();
+        m_stateAfterRow[block.firstRow + i] = state;
+    }
+    return formats;
 }
 
 void TextView::clearLayouts()
 {
     m_layouts.clear();
+    m_cachedLayoutBytes = 0;
+}
+
+// Blocks and lines on screen -----------------------------------------------------------------
+
+TextView::Block TextView::blockAt(std::uint64_t rowIndex) const
+{
+    if (!m_wordWrap)
+        return {m_document->index().row(rowIndex), rowIndex, 1};
+    // A block starts at least every kMaxBlockRows rows, and blocks are the same from any start.
+    const std::uint64_t first = rowIndex - rowIndex % kMaxBlockRows;
+    for (const Block& block : blocksFrom(first, static_cast<std::size_t>(kMaxBlockRows))) {
+        if (rowIndex < block.firstRow + block.rowCount)
+            return block;
+    }
+    return {m_document->index().row(rowIndex), rowIndex, 1}; // not indexed (yet)
+}
+
+std::vector<TextView::Block> TextView::blocksFrom(std::uint64_t first, std::size_t count) const
+{
+    const core::LineIndex& index = m_document->index();
+    // Whether a row goes into the same block as the one before it.
+    const auto joins = [this](const core::Row& row, std::uint64_t rowIndex) {
+        return m_wordWrap && row.continuation && rowIndex % kMaxBlockRows != 0;
+    };
+
+    std::vector<Block> blocks;
+    while (blocks.size() < count) {
+        // Enough rows for the blocks still wanted, if each is one row, plus the longest block.
+        const std::size_t wanted = count - blocks.size() + (m_wordWrap ? static_cast<std::size_t>(kMaxBlockRows) : 0);
+        const std::vector<core::Row> rows = index.rows(first, wanted);
+        if (rows.empty())
+            break;
+        const bool more = rows.size() == wanted; // rows may follow that were not read
+        std::size_t i = 0;
+        while (i < rows.size() && blocks.size() < count) {
+            std::size_t j = i + 1;
+            while (j < rows.size() && joins(rows[j], first + j))
+                ++j;
+            if (j == rows.size() && more && i > 0)
+                break; // the block may go on past what was read: read again from its start
+            Block block{rows[i], first + i, j - i};
+            block.span.contentEnd = rows[j - 1].contentEnd;
+            block.span.end = rows[j - 1].end;
+            blocks.push_back(block);
+            i = j;
+        }
+        first += i;
+    }
+    return blocks;
+}
+
+int TextView::lineCount(const Block& block) const
+{
+    return layoutFor(block).layout.lineCount();
+}
+
+TextView::VisualLine TextView::visualLineAt(std::uint64_t offset) const
+{
+    const Block block = blockAt(m_document->index().rowIndexAt(offset));
+    const BlockLayout& layout = layoutFor(block);
+    offset = std::clamp(offset, block.span.start, block.span.contentEnd);
+    const auto position = static_cast<int>(layout.decoded.positionAt(static_cast<std::uint32_t>(offset - block.span.start)));
+    return {block, lineAtPosition(layout.layout, position).lineNumber()};
+}
+
+TextView::VisualLine TextView::caretLine() const
+{
+    const VisualLine line = visualLineAt(m_cursor);
+    if (!m_caretAtLineEnd || m_cursor != lineStart(line))
+        return line;
+    if (line.line > 0)
+        return {line.block, line.line - 1};
+    if (line.block.span.continuation && line.block.firstRow > 0) {
+        const Block previous = blockAt(line.block.firstRow - 1);
+        return {previous, lineCount(previous) - 1};
+    }
+    return line;
+}
+
+TextView::VisualLine TextView::topLine() const
+{
+    return m_wordWrap ? visualLineAt(m_topOffset) : VisualLine{blockAt(topRow()), 0};
+}
+
+TextView::VisualLine TextView::moveLines(VisualLine from, std::int64_t delta) const
+{
+    if (!m_wordWrap) {
+        // One line per row.
+        const std::uint64_t row = from.block.firstRow;
+        const auto steps = static_cast<std::uint64_t>(delta < 0 ? -delta : delta);
+        const std::uint64_t target = delta < 0 ? (row > steps ? row - steps : 0) : std::min(rowCount() - 1, row + steps);
+        return target == row ? from : VisualLine{blockAt(target), 0};
+    }
+    while (delta > 0) {
+        const std::int64_t last = lineCount(from.block) - 1;
+        if (from.line + delta <= last) {
+            from.line += static_cast<int>(delta);
+            return from;
+        }
+        delta -= last - from.line + 1;
+        const std::vector<Block> next = blocksFrom(from.block.firstRow + from.block.rowCount, 1);
+        if (next.empty()) {
+            from.line = static_cast<int>(last);
+            return from;
+        }
+        from = {next.front(), 0};
+    }
+    while (delta < 0) {
+        if (from.line + delta >= 0) {
+            from.line += static_cast<int>(delta);
+            return from;
+        }
+        delta += from.line + 1;
+        if (from.block.firstRow == 0) {
+            from.line = 0;
+            return from;
+        }
+        const Block previous = blockAt(from.block.firstRow - 1);
+        from = {previous, lineCount(previous) - 1};
+    }
+    return from;
+}
+
+std::optional<int> TextView::linesFromTop(const VisualLine& line, int limit) const
+{
+    const VisualLine top = topLine();
+    if (!m_wordWrap) {
+        const std::uint64_t row = line.block.firstRow;
+        const std::uint64_t topRow = top.block.firstRow;
+        if (row < topRow || row - topRow > static_cast<std::uint64_t>(limit))
+            return std::nullopt;
+        return static_cast<int>(row - topRow);
+    }
+    // Lines from the top line to the start of `block`.
+    int lines = -top.line;
+    Block block = top.block;
+    while (block.firstRow < line.block.firstRow) {
+        lines += lineCount(block);
+        if (lines > limit)
+            return std::nullopt;
+        const std::vector<Block> next = blocksFrom(block.firstRow + block.rowCount, 1);
+        if (next.empty())
+            return std::nullopt;
+        block = next.front();
+    }
+    if (block.firstRow != line.block.firstRow) // above the top
+        return std::nullopt;
+    lines += line.line;
+    if (lines < 0 || lines > limit)
+        return std::nullopt;
+    return lines;
+}
+
+std::uint64_t TextView::lineStart(const VisualLine& line) const
+{
+    const BlockLayout& layout = layoutFor(line.block);
+    return line.block.span.start + layout.decoded.byteAt(layout.layout.lineAt(line.line).textStart());
 }
 
 // Navigation ---------------------------------------------------------------------------------
@@ -365,94 +687,119 @@ std::uint64_t TextView::cursorRowIndex() const
     return rowCount() == 0 ? 0 : m_document->index().rowIndexAt(m_cursor);
 }
 
-bool TextView::isLastRow(const core::Row& row) const
+bool TextView::isLastBlock(const Block& block) const
 {
-    return row.end >= documentEnd();
+    return block.span.end >= documentEnd();
 }
 
-std::uint64_t TextView::lastCaretOffset(const core::Row& row) const
+std::uint64_t TextView::lastCaretOffset(const Block& block) const
 {
-    const bool split = row.end == row.contentEnd && !isLastRow(row);
+    const core::Row& span = block.span;
+    const bool split = span.end == span.contentEnd && !isLastBlock(block);
     if (!split)
-        return row.contentEnd;
-    // The split point itself belongs to the next row, so stop before the last character.
-    const RowLayout& layout = layoutFor(row);
+        return span.contentEnd;
+    // The split point itself belongs to the next block, so stop before the last character.
+    const BlockLayout& layout = layoutFor(block);
     const int last = layout.layout.previousCursorPosition(static_cast<int>(layout.decoded.text.size()));
-    return row.start + layout.decoded.byteAt(last);
+    return span.start + layout.decoded.byteAt(last);
 }
 
-std::uint64_t TextView::offsetAtX(const core::Row& row, qreal x) const
+TextView::Caret TextView::lineEndCaret(const VisualLine& line) const
 {
-    const RowLayout& layout = layoutFor(row);
-    const int position = layout.layout.lineAt(0).xToCursor(std::max<qreal>(0, x), QTextLine::CursorBetweenCharacters);
-    return std::min(row.start + layout.decoded.byteAt(position), lastCaretOffset(row));
+    const BlockLayout& layout = layoutFor(line.block);
+    const core::Row& span = line.block.span;
+    if (line.line + 1 >= layout.layout.lineCount()) {
+        // The block's last line ends before the line terminator, or where a split block goes on.
+        const bool split = span.end == span.contentEnd && !isLastBlock(line.block);
+        return split ? Caret{span.end, true} : Caret{span.contentEnd};
+    }
+    // A wrapped line ends where the next one starts, or before the spaces it broke after (which
+    // show nothing).
+    const QTextLine text = layout.layout.lineAt(line.line);
+    int end = text.textStart() + text.textLength();
+    if (!layout.decoded.text.at(end - 1).isSpace())
+        return {span.start + layout.decoded.byteAt(end), true};
+    while (end > text.textStart() && layout.decoded.text.at(end - 1).isSpace())
+        --end;
+    return {span.start + layout.decoded.byteAt(end)};
 }
 
-qreal TextView::xOfOffset(const core::Row& row, std::uint64_t offset) const
+TextView::Caret TextView::caretAtX(const VisualLine& line, qreal x) const
 {
-    const RowLayout& layout = layoutFor(row);
-    offset = std::clamp(offset, row.start, row.contentEnd);
-    const auto position = layout.decoded.positionAt(static_cast<std::uint32_t>(offset - row.start));
-    return layout.layout.lineAt(0).cursorToX(static_cast<int>(position));
+    const BlockLayout& layout = layoutFor(line.block);
+    const QTextLine text = layout.layout.lineAt(line.line);
+    x = std::max<qreal>(0, x);
+    int position = text.xToCursor(x, QTextLine::CursorBetweenCharacters);
+    const Caret end = lineEndCaret(line);
+    // Past the end of a wrapped line, xToCursor() stops before the last character (it takes that
+    // for a space to break at), so pick the nearer side of it here.
+    const auto endPosition =
+        static_cast<int>(layout.decoded.positionAt(static_cast<std::uint32_t>(end.offset - line.block.span.start)));
+    if (position < endPosition && layout.layout.nextCursorPosition(position) >= endPosition &&
+        std::abs(x - text.cursorToX(endPosition)) < std::abs(x - text.cursorToX(position)))
+        position = endPosition;
+    const std::uint64_t offset = line.block.span.start + layout.decoded.byteAt(position);
+    return offset >= end.offset ? end : Caret{offset};
+}
+
+qreal TextView::xOnLine(const VisualLine& line, std::uint64_t offset) const
+{
+    const BlockLayout& layout = layoutFor(line.block);
+    offset = std::clamp(offset, line.block.span.start, line.block.span.contentEnd);
+    const auto position = layout.decoded.positionAt(static_cast<std::uint32_t>(offset - line.block.span.start));
+    return layout.layout.lineAt(line.line).cursorToX(static_cast<int>(position));
 }
 
 std::uint64_t TextView::stepOffset(std::uint64_t offset, bool forward, QTextLayout::CursorMode mode) const
 {
-    const core::LineIndex& index = m_document->index();
-    const std::uint64_t rowIndex = index.rowIndexAt(offset);
-    const core::Row row = index.row(rowIndex);
-    const RowLayout& layout = layoutFor(row);
+    const Block block = blockAt(m_document->index().rowIndexAt(offset));
+    const core::Row& span = block.span;
+    const BlockLayout& layout = layoutFor(block);
     const int size = static_cast<int>(layout.decoded.text.size());
     const int position = static_cast<int>(
-        layout.decoded.positionAt(static_cast<std::uint32_t>(std::min(offset, row.contentEnd) - row.start)));
+        layout.decoded.positionAt(static_cast<std::uint32_t>(std::min(offset, span.contentEnd) - span.start)));
 
     if (forward) {
         if (position < size)
-            return row.start + layout.decoded.byteAt(layout.layout.nextCursorPosition(position, mode));
-        return isLastRow(row) ? std::max(offset, row.contentEnd) : row.end; // over the line terminator
+            return span.start + layout.decoded.byteAt(layout.layout.nextCursorPosition(position, mode));
+        return isLastBlock(block) ? std::max(offset, span.contentEnd) : span.end; // over the line terminator
     }
     if (position > 0)
-        return row.start + layout.decoded.byteAt(layout.layout.previousCursorPosition(position, mode));
-    return rowIndex == 0 ? offset : lastCaretOffset(index.row(rowIndex - 1));
+        return span.start + layout.decoded.byteAt(layout.layout.previousCursorPosition(position, mode));
+    return block.firstRow == 0 ? offset : lastCaretOffset(blockAt(block.firstRow - 1));
 }
 
-void TextView::moveVertically(std::int64_t rows, bool extendSelection)
+void TextView::moveVertically(std::int64_t lines, bool extendSelection)
 {
-    const core::LineIndex& index = m_document->index();
-    const std::uint64_t total = index.rowCount();
-    const std::uint64_t current = cursorRowIndex();
-    const core::Row row = index.row(current);
+    const VisualLine current = caretLine();
     if (!m_desiredX)
-        m_desiredX = xOfOffset(row, m_cursor);
-
-    std::uint64_t target = current;
-    if (rows < 0) {
-        const auto up = static_cast<std::uint64_t>(-rows);
-        if (current == 0) {
-            moveCursor(row.start, extendSelection, true);
-            return;
-        }
-        target = current > up ? current - up : 0;
-    } else {
-        if (current + 1 >= total) {
-            moveCursor(lastCaretOffset(row), extendSelection, true);
-            return;
-        }
-        target = std::min(total - 1, current + static_cast<std::uint64_t>(rows));
+        m_desiredX = xOnLine(current, m_cursor);
+    const VisualLine target = moveLines(current, lines);
+    if (target == current) {
+        // Already on the first or the last line: go to its start or end.
+        moveCursor(lines < 0 ? Caret{lineStart(current)} : lineEndCaret(current), extendSelection, true);
+        return;
     }
-    moveCursor(offsetAtX(index.row(target), *m_desiredX), extendSelection, true);
+    moveCursor(caretAtX(target, *m_desiredX), extendSelection, true);
 }
 
 void TextView::moveCursor(std::uint64_t offset, bool extendSelection, bool keepDesiredX)
 {
+    moveCursor(Caret{offset}, extendSelection, keepDesiredX);
+}
+
+void TextView::moveCursor(const Caret& caret, bool extendSelection, bool keepDesiredX)
+{
     if (!keepDesiredX)
         m_desiredX.reset();
-    setCursorAndAnchor(offset, extendSelection ? m_anchor : offset);
+    setCursorAndAnchor(caret.offset, extendSelection ? m_anchor : caret.offset);
+    m_caretAtLineEnd = caret.atLineEnd;
     ensureCursorVisible();
 }
 
 void TextView::setCursorAndAnchor(std::uint64_t cursor, std::uint64_t anchor)
 {
+    m_caretAtLineEnd = false;
     const std::uint64_t oldCursor = m_cursor;
     const std::uint64_t oldStart = selectionStart();
     const std::uint64_t oldEnd = selectionEnd();
@@ -469,14 +816,17 @@ void TextView::ensureCursorVisible()
 {
     if (rowCount() == 0)
         return;
-    const std::uint64_t row = cursorRowIndex();
-    const auto visible = static_cast<std::uint64_t>(visibleRows());
-    if (row < topRow())
-        setTopRow(row);
-    else if (row >= topRow() + visible)
-        setTopRow(row - visible + 1);
+    const VisualLine caret = caretLine();
+    const int visible = visibleRows();
+    if (!linesFromTop(caret, visible - 1)) {
+        // Above the view it goes on the top line, below it on the bottom one.
+        const bool above = m_wordWrap ? lineStart(caret) < lineStart(topLine()) : caret.block.firstRow < topRow();
+        scrollToLine(above ? caret : moveLines(caret, -(visible - 1)));
+    }
+    if (m_wordWrap)
+        return; // nothing to scroll sideways
 
-    const qreal caretX = textLeft() + xOfOffset(m_document->index().row(row), m_cursor);
+    const qreal caretX = textLeft() + xOnLine(caret, m_cursor);
     if (m_maxRowWidth > m_maxRowWidthInRange)
         updateHorizontalRange();
     QScrollBar* horizontal = horizontalScrollBar();
@@ -498,24 +848,37 @@ std::optional<std::uint64_t> TextView::cursorColumn() const
         return 0;
     const core::LineIndex& index = m_document->index();
     const std::uint64_t rowIndex = cursorRowIndex();
-    const core::Row row = index.row(rowIndex);
+    const Block block = blockAt(rowIndex);
 
-    std::uint64_t first = rowIndex;
-    if (row.continuation) {
-        const auto lineStart = index.rowIndexOfLine(row.line);
+    // The rows of the line before the caret's block, which are text up to the block's start.
+    std::uint64_t column = 0;
+    if (block.span.continuation) {
+        const auto lineStart = index.rowIndexOfLine(block.span.line);
         if (!lineStart || rowIndex - *lineStart > kMaxColumnScanRows)
             return std::nullopt;
-        first = *lineStart;
+        const std::uint64_t start = index.row(*lineStart).start;
+        const QString before = m_document->decoder()
+                                   .decode(m_document->bytes().subspan(start, static_cast<std::size_t>(block.span.start - start)))
+                                   .text;
+        column = countCharacters(before, before.size());
     }
-    std::uint64_t column = 0;
-    for (const core::Row& before : index.rows(first, static_cast<std::size_t>(rowIndex - first))) {
-        const RowLayout& layout = layoutFor(before);
-        column += countCharacters(layout.decoded.text, layout.decoded.text.size());
-    }
-    const RowLayout& layout = layoutFor(row);
-    const auto position =
-        layout.decoded.positionAt(static_cast<std::uint32_t>(std::min(m_cursor, row.contentEnd) - row.start));
+    const BlockLayout& layout = layoutFor(block);
+    const auto position = layout.decoded.positionAt(
+        static_cast<std::uint32_t>(std::min(m_cursor, block.span.contentEnd) - block.span.start));
     return column + countCharacters(layout.decoded.text, position);
+}
+
+QRect TextView::cursorRect() const
+{
+    if (rowCount() == 0)
+        return {};
+    const VisualLine caret = caretLine();
+    const std::optional<int> line = linesFromTop(caret, visibleRows());
+    if (!line)
+        return {};
+    const qreal scrollX = m_wordWrap ? 0 : horizontalScrollBar()->value();
+    const qreal x = textLeft() - scrollX + xOnLine(caret, m_cursor);
+    return QRect(static_cast<int>(std::floor(x)), *line * m_lineHeight, kCaretWidth, m_lineHeight);
 }
 
 QString TextView::selectedText() const
@@ -554,66 +917,104 @@ void TextView::paintEvent(QPaintEvent* event)
     if (rowCount() == 0)
         return;
 
-    const core::LineIndex& index = m_document->index();
-    const auto rows = index.rows(topRow(), static_cast<std::size_t>(height / m_lineHeight + 1));
-    const std::uint64_t cursorRow = cursorRowIndex();
+    const VisualLine top = topLine();
+    const VisualLine caret = caretLine();
     const bool focused = hasFocus();
     const std::uint64_t selStart = selectionStart();
     const std::uint64_t selEnd = selectionEnd();
     const QColor& selectionBackground = focused ? m_colors.selection : m_colors.inactiveSelection;
     const QColor& selectionForeground = focused ? m_colors.selectionText : m_colors.inactiveSelectionText;
-    const qreal scrollX = horizontalScrollBar()->value();
+    const qreal scrollX = m_wordWrap ? 0 : horizontalScrollBar()->value();
     const QRect textArea(gutter, 0, width - gutter, height);
     painter.setFont(font());
 
-    for (std::size_t i = 0; i < rows.size(); ++i) {
-        const core::Row& row = rows[i];
-        const bool isCursorRow = topRow() + i == cursorRow;
-        const int top = static_cast<int>(i) * m_lineHeight;
+    // Paints a block whose first line is at y; returns its height.
+    const auto paintBlock = [&](const Block& block, int y) {
+        const core::Row& span = block.span;
+        const BlockLayout& layout = layoutFor(block);
+        const int lines = layout.layout.lineCount();
+        const QPointF origin(textLeft() - scrollX, y);
+        const bool isCaretBlock = block.firstRow == caret.block.firstRow;
 
-        if (isCursorRow && !hasSelection())
-            painter.fillRect(QRect(gutter, top, width - gutter, m_lineHeight), m_colors.currentLine);
-        if (!row.continuation) {
-            painter.setPen(isCursorRow ? m_colors.text : m_colors.dim);
-            painter.drawText(QRectF(0, top, gutter - m_charWidth, m_lineHeight), Qt::AlignRight | Qt::AlignVCenter,
-                             QString::number(row.line + 1));
+        if (isCaretBlock && !hasSelection())
+            painter.fillRect(QRect(gutter, y + caret.line * m_lineHeight, width - gutter, m_lineHeight),
+                             m_colors.currentLine);
+        if (!span.continuation) {
+            painter.setPen(isCaretBlock ? m_colors.text : m_colors.dim);
+            painter.drawText(QRectF(0, y, gutter - m_charWidth, m_lineHeight), Qt::AlignRight | Qt::AlignVCenter,
+                             QString::number(span.line + 1));
         }
-
-        const RowLayout& layout = layoutFor(row);
-        const QTextLine line = layout.layout.lineAt(0);
-        const QPointF origin(textLeft() - scrollX, top + m_ascent - line.ascent());
 
         painter.save();
         painter.setClipRect(textArea);
         QList<QTextLayout::FormatRange> selections;
-        if (selStart < selEnd && selStart <= row.contentEnd && selEnd > row.start) {
-            const auto from = layout.decoded.positionAt(static_cast<std::uint32_t>(std::max(selStart, row.start) - row.start));
-            const auto to = layout.decoded.positionAt(static_cast<std::uint32_t>(std::min(selEnd, row.contentEnd) - row.start));
+        if (selStart < selEnd && selStart <= span.contentEnd && selEnd > span.start) {
+            const auto from = layout.decoded.positionAt(static_cast<std::uint32_t>(std::max(selStart, span.start) - span.start));
+            const auto to = layout.decoded.positionAt(static_cast<std::uint32_t>(std::min(selEnd, span.contentEnd) - span.start));
             if (to > from) {
                 QTextLayout::FormatRange range;
                 range.start = static_cast<int>(from);
                 range.length = static_cast<int>(to - from);
-                range.format.setBackground(selectionBackground);
                 range.format.setForeground(selectionForeground);
                 selections.append(range);
+                // The background is painted here rather than by the layout, which would leave
+                // gaps between lines: it fills only each line's own height, not the line pitch.
+                const int firstLine = lineAtPosition(layout.layout, range.start).lineNumber();
+                const int lastLine = lineAtPosition(layout.layout, range.start + range.length).lineNumber();
+                for (int i = firstLine; i <= lastLine; ++i) {
+                    const QTextLine line = layout.layout.lineAt(i);
+                    const int a = std::max(range.start, line.textStart());
+                    const int b = std::min(range.start + range.length, line.textStart() + line.textLength());
+                    if (a >= b)
+                        continue;
+                    const qreal x1 = line.cursorToX(a);
+                    const qreal x2 = line.cursorToX(b);
+                    painter.fillRect(QRectF(origin.x() + std::min(x1, x2), y + i * m_lineHeight, std::abs(x2 - x1),
+                                            m_lineHeight),
+                                     selectionBackground);
+                }
             }
             // A selected line terminator shows as a narrow block after the text.
-            if (selEnd > row.contentEnd && row.end > row.contentEnd)
-                painter.fillRect(QRectF(origin.x() + line.naturalTextWidth(), top, m_charWidth / 2, m_lineHeight),
+            if (selEnd > span.contentEnd && span.end > span.contentEnd) {
+                const QTextLine last = layout.layout.lineAt(lines - 1);
+                painter.fillRect(QRectF(origin.x() + last.naturalTextWidth(), y + (lines - 1) * m_lineHeight,
+                                        m_charWidth / 2, m_lineHeight),
                                  selectionBackground);
+            }
         }
         painter.setPen(m_colors.text);
-        layout.layout.draw(&painter, origin, selections);
-        if (isCursorRow && focused) {
-            const auto position =
-                layout.decoded.positionAt(static_cast<std::uint32_t>(std::min(m_cursor, row.contentEnd) - row.start));
-            layout.layout.drawCursor(&painter, origin, static_cast<int>(position), kCaretWidth);
+        layout.layout.draw(&painter, origin, selections, textArea); // skips lines outside the view
+        if (isCaretBlock && focused) {
+            const QTextLine line = layout.layout.lineAt(caret.line);
+            const auto position = layout.decoded.positionAt(
+                static_cast<std::uint32_t>(std::clamp(m_cursor, span.start, span.contentEnd) - span.start));
+            painter.fillRect(QRectF(origin.x() + line.cursorToX(static_cast<int>(position)), origin.y() + line.y(),
+                                    kCaretWidth, line.height()),
+                             m_colors.text);
         }
         painter.restore();
+        return lines * m_lineHeight;
+    };
+
+    // Every block takes at least one line, so a screenful of blocks is always enough.
+    int y = -top.line * m_lineHeight;
+    std::uint64_t next = top.block.firstRow;
+    std::size_t count = static_cast<std::size_t>(height / m_lineHeight + 1);
+    while (y < height) {
+        const std::vector<Block> blocks = blocksFrom(next, count);
+        if (blocks.empty())
+            break;
+        for (const Block& block : blocks) {
+            y += paintBlock(block, y);
+            next = block.firstRow + block.rowCount;
+            if (y >= height)
+                break;
+        }
+        count = static_cast<std::size_t>(std::max(0, height - y) / m_lineHeight + 1);
     }
 
     // Rows laid out for the first time may be wider than the scroll range allows for.
-    if (m_maxRowWidth > m_maxRowWidthInRange)
+    if (!m_wordWrap && m_maxRowWidth > m_maxRowWidthInRange)
         QMetaObject::invokeMethod(this, &TextView::updateHorizontalRange, Qt::QueuedConnection);
 }
 
@@ -622,7 +1023,7 @@ void TextView::paintEvent(QPaintEvent* event)
 void TextView::resizeEvent(QResizeEvent* event)
 {
     QAbstractScrollArea::resizeEvent(event);
-    updateScrollBars();
+    updateScrollBars(); // with word wrap, also re-wraps for the new width
 }
 
 void TextView::changeEvent(QEvent* event)
@@ -637,6 +1038,7 @@ void TextView::changeEvent(QEvent* event)
     } else if (event->type() == QEvent::PaletteChange) {
         updateColors();
         resetHighlighting(); // the colour theme follows the palette
+        updateScrollBars();
         viewport()->update();
     }
 }
@@ -659,7 +1061,6 @@ void TextView::keyPressEvent(QKeyEvent* event)
     const bool extend = event->modifiers() & Qt::ShiftModifier;
     const bool ctrl = event->modifiers() & Qt::ControlModifier;
     const auto mode = ctrl ? QTextLayout::SkipWords : QTextLayout::SkipCharacters;
-    const core::LineIndex& index = m_document->index();
 
     switch (event->key()) {
     case Qt::Key_Left:
@@ -680,23 +1081,19 @@ void TextView::keyPressEvent(QKeyEvent* event)
     case Qt::Key_Down:
         moveVertically(1, extend);
         break;
-    case Qt::Key_PageUp: {
-        const int page = visibleRows();
-        setTopRow(topRow() > static_cast<std::uint64_t>(page) ? topRow() - static_cast<std::uint64_t>(page) : 0);
-        moveVertically(-page, extend);
+    case Qt::Key_PageUp:
+        scrollLines(-visibleRows());
+        moveVertically(-visibleRows(), extend);
         break;
-    }
-    case Qt::Key_PageDown: {
-        const int page = visibleRows();
-        setTopRow(topRow() + static_cast<std::uint64_t>(page));
-        moveVertically(page, extend);
+    case Qt::Key_PageDown:
+        scrollLines(visibleRows());
+        moveVertically(visibleRows(), extend);
         break;
-    }
     case Qt::Key_Home:
-        moveCursor(ctrl ? m_document->textStart() : index.row(cursorRowIndex()).start, extend);
+        moveCursor(ctrl ? m_document->textStart() : lineStart(caretLine()), extend);
         break;
     case Qt::Key_End:
-        moveCursor(ctrl ? documentEnd() : lastCaretOffset(index.row(cursorRowIndex())), extend);
+        moveCursor(ctrl ? Caret{documentEnd()} : lineEndCaret(caretLine()), extend);
         break;
     default:
         QAbstractScrollArea::keyPressEvent(event);
@@ -704,21 +1101,13 @@ void TextView::keyPressEvent(QKeyEvent* event)
     }
 }
 
-std::uint64_t TextView::offsetAt(const QPoint& pos) const
+TextView::Caret TextView::caretAt(const QPoint& pos) const
 {
     if (rowCount() == 0)
-        return m_document ? m_document->textStart() : 0;
-    const auto rowDelta = static_cast<std::int64_t>(std::floor(pos.y() / static_cast<qreal>(m_lineHeight)));
-    std::uint64_t rowIndex = 0;
-    if (rowDelta < 0) {
-        const auto up = static_cast<std::uint64_t>(-rowDelta);
-        rowIndex = topRow() > up ? topRow() - up : 0;
-    } else {
-        rowIndex = topRow() + static_cast<std::uint64_t>(rowDelta);
-    }
-    rowIndex = std::min(rowIndex, rowCount() - 1);
-    const qreal x = pos.x() + horizontalScrollBar()->value() - textLeft();
-    return offsetAtX(m_document->index().row(rowIndex), x);
+        return {m_document ? m_document->textStart() : 0};
+    const auto lines = static_cast<std::int64_t>(std::floor(pos.y() / static_cast<qreal>(m_lineHeight)));
+    const qreal scrollX = m_wordWrap ? 0 : horizontalScrollBar()->value();
+    return caretAtX(moveLines(topLine(), lines), pos.x() + scrollX - textLeft());
 }
 
 void TextView::mousePressEvent(QMouseEvent* event)
@@ -728,12 +1117,13 @@ void TextView::mousePressEvent(QMouseEvent* event)
         return;
     }
     const QPoint pos = event->position().toPoint();
-    const std::uint64_t offset = offsetAt(pos);
+    const Caret caret = caretAt(pos);
+    const std::uint64_t offset = caret.offset;
 
     if (event->button() == Qt::RightButton) {
         // Keep the selection when right-clicking inside it, so the context menu can act on it.
         if (!hasSelection() || offset < selectionStart() || offset > selectionEnd())
-            moveCursor(offset, false);
+            moveCursor(caret, false);
         return;
     }
     if (event->button() != Qt::LeftButton) {
@@ -743,16 +1133,16 @@ void TextView::mousePressEvent(QMouseEvent* event)
 
     const bool extend = event->modifiers() & Qt::ShiftModifier;
     if (pos.x() < gutterWidth()) {
-        // A click on a line number selects the whole row, terminator included.
-        const core::Row row = m_document->index().row(m_document->index().rowIndexAt(offset));
+        // A click on a line number selects the whole line as shown, terminator included.
+        const core::Row span = blockAt(m_document->index().rowIndexAt(offset)).span;
         if (extend) {
-            moveCursor(row.end, true);
+            moveCursor(span.end, true);
         } else {
-            setCursorAndAnchor(row.end, row.start);
+            setCursorAndAnchor(span.end, span.start);
             ensureCursorVisible();
         }
     } else {
-        moveCursor(offset, extend);
+        moveCursor(caret, extend);
     }
     m_dragging = true;
     m_lastDragPos = pos;
@@ -776,30 +1166,32 @@ void TextView::mouseMoveEvent(QMouseEvent* event)
 
 void TextView::mouseReleaseEvent(QMouseEvent* event)
 {
-    if (event->button() == Qt::LeftButton) {
-        m_dragging = false;
-        m_autoScrollTimer.stop();
+    if (event->button() != Qt::LeftButton) {
+        QAbstractScrollArea::mouseReleaseEvent(event);
+        return;
     }
-    QAbstractScrollArea::mouseReleaseEvent(event);
+    m_dragging = false;
+    m_autoScrollTimer.stop();
 }
 
 void TextView::mouseDoubleClickEvent(QMouseEvent* event)
 {
     if (event->button() == Qt::LeftButton && rowCount() > 0 && event->position().x() >= gutterWidth())
-        selectWordAt(offsetAt(event->position().toPoint()));
+        selectWordAt(caretAt(event->position().toPoint()).offset);
     else
         QAbstractScrollArea::mouseDoubleClickEvent(event);
 }
 
 void TextView::selectWordAt(std::uint64_t offset)
 {
-    const core::Row row = m_document->index().row(m_document->index().rowIndexAt(offset));
-    const RowLayout& layout = layoutFor(row);
+    const Block block = blockAt(m_document->index().rowIndexAt(offset));
+    const core::Row& span = block.span;
+    const BlockLayout& layout = layoutFor(block);
     const QString& text = layout.decoded.text;
     if (text.isEmpty())
         return;
     const auto position = std::min<qsizetype>(
-        layout.decoded.positionAt(static_cast<std::uint32_t>(std::min(offset, row.contentEnd) - row.start)),
+        layout.decoded.positionAt(static_cast<std::uint32_t>(std::min(offset, span.contentEnd) - span.start)),
         text.size() - 1);
 
     QTextBoundaryFinder finder(QTextBoundaryFinder::Word, text);
@@ -810,7 +1202,7 @@ void TextView::selectWordAt(std::uint64_t offset)
     start = std::max<qsizetype>(0, start);
     end = end < 0 ? text.size() : end;
 
-    setCursorAndAnchor(row.start + layout.decoded.byteAt(end), row.start + layout.decoded.byteAt(start));
+    setCursorAndAnchor(span.start + layout.decoded.byteAt(end), span.start + layout.decoded.byteAt(start));
     ensureCursorVisible();
 }
 
@@ -822,18 +1214,18 @@ void TextView::timerEvent(QTimerEvent* event)
     }
     // Scroll faster the further the pointer is outside the view.
     const int y = m_lastDragPos.y();
-    if (y < 0) {
-        const auto rows = static_cast<std::uint64_t>(1 + -y / m_lineHeight);
-        setTopRow(topRow() > rows ? topRow() - rows : 0);
-    } else if (y >= viewport()->height()) {
-        setTopRow(topRow() + static_cast<std::uint64_t>(1 + (y - viewport()->height()) / m_lineHeight));
-    }
+    if (y < 0)
+        scrollLines(-(1 + -y / m_lineHeight));
+    else if (y >= viewport()->height())
+        scrollLines(1 + (y - viewport()->height()) / m_lineHeight);
     dragTo(m_lastDragPos);
 }
 
 void TextView::dragTo(const QPoint& pos)
 {
-    setCursorAndAnchor(offsetAt(pos), m_anchor);
+    const Caret caret = caretAt(pos);
+    setCursorAndAnchor(caret.offset, m_anchor);
+    m_caretAtLineEnd = caret.atLineEnd;
 }
 
 void TextView::wheelEvent(QWheelEvent* event)
@@ -855,10 +1247,8 @@ void TextView::wheelEvent(QWheelEvent* event)
     m_wheelRemainder += delta;
     const int steps = m_wheelRemainder / kWheelStep;
     m_wheelRemainder -= steps * kWheelStep;
-    if (steps != 0) {
-        const auto rows = static_cast<std::uint64_t>(std::abs(steps) * QApplication::wheelScrollLines());
-        setTopRow(steps > 0 ? (topRow() > rows ? topRow() - rows : 0) : topRow() + rows);
-    }
+    if (steps != 0)
+        scrollLines(-static_cast<std::int64_t>(steps) * QApplication::wheelScrollLines());
     event->accept();
 }
 
