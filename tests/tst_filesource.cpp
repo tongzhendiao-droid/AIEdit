@@ -1,4 +1,5 @@
 #include "core/FileSource.h"
+#include "core/MappingGuard.h"
 
 #include <QTemporaryDir>
 #include <QTest>
@@ -7,6 +8,7 @@
 
 #ifndef _WIN32
 #include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 using namespace aiedit::core;
@@ -31,6 +33,9 @@ private slots:
     void opensEmptyFile();
     void reportsMissingFile();
     void rejectsDirectory();
+#ifndef Q_OS_WIN
+    void survivesTruncation();
+#endif
 #ifdef Q_OS_LINUX
     void readsProcFileWithZeroSize();
     void rejectsFifo();
@@ -103,6 +108,29 @@ void TestFileSource::rejectsFifo()
     std::error_code ec;
     QVERIFY(!FileSource::open(path, ec));
     QCOMPARE(ec, FileError::NotRegularFile);
+}
+#endif
+
+#ifndef Q_OS_WIN
+void TestFileSource::survivesTruncation()
+{
+    // What logrotate's copytruncate does to an open log: the file shrinks under the mapping.
+    // Reading past the new end would raise SIGBUS and end the process; it reads zeros instead.
+    const auto page = static_cast<std::size_t>(::sysconf(_SC_PAGESIZE));
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const auto path = writeFile(dir, "rotated.log", std::string(4 * page, 'x'));
+    std::error_code ec;
+    const auto source = FileSource::open(path, ec);
+    QVERIFY(source && source->isMapped());
+
+    std::filesystem::resize_file(path, page / 2);
+    const std::uint64_t caught = truncatedReadsCaught();
+    const auto bytes = source->bytes();
+    QCOMPARE(bytes[0], std::uint8_t('x')); // before the new end: as it was
+    QCOMPARE(bytes[2 * page], std::uint8_t(0));
+    QCOMPARE(bytes[4 * page - 1], std::uint8_t(0));
+    QVERIFY(truncatedReadsCaught() > caught);
 }
 #endif
 

@@ -503,7 +503,12 @@ void TestTextView::reloadsAfterTruncationAndDeletion()
     ui::DocumentView doc(source, core::detectFileType(source->bytes()), core::utf8Codec());
     doc.textView()->setCursorOffset(9000);
 
+    doc.setViewMode(ui::DocumentView::ViewMode::Split);
+
     std::ofstream(path, std::ios::binary | std::ios::trunc) << "fresh\n"; // like copytruncate + new entry
+    // Painting before the reload reads where the file no longer is: zeros, not a crash (SIGBUS).
+    QVERIFY(!doc.hexView()->grab().isNull());
+    QVERIFY(!doc.textView()->grab().isNull());
     QTRY_COMPARE(doc.source()->size(), 6u);
     QVERIFY(doc.textView()->cursorOffset() <= 6u);
     QVERIFY(doc.hexView()->cursorOffset() < 6u);

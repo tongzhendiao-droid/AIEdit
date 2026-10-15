@@ -25,8 +25,8 @@ std::error_code make_error_code(FileError e);
 // Files that report size 0 but still have content (/proc, /sys) or that live on file
 // systems without mmap support are read into memory instead, up to kMaxReadSize.
 //
-// Known limitation: if another process truncates a mapped file, touching the pages past
-// the new end raises SIGBUS on POSIX. Reloading on change is planned (see DESIGN.md).
+// If another process truncates a mapped file, the bytes past its new end read as zeros (see
+// MappingGuard) until the file is opened again.
 class FileSource
 {
 public:

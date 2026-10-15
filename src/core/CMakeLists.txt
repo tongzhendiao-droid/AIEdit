@@ -4,6 +4,7 @@ add_library(aiedit_core STATIC
     FileSummary.cpp FileSummary.h
     FileType.cpp FileType.h
     LineIndex.cpp LineIndex.h
+    MappingGuard.cpp MappingGuard.h
     Offset.cpp Offset.h
     Search.cpp Search.h
     Sse.cpp Sse.h

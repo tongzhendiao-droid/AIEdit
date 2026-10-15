@@ -1,5 +1,7 @@
 #include "core/FileSource.h"
 
+#include "core/MappingGuard.h"
+
 #include <cerrno>
 #include <cstdint>
 #include <string>
@@ -237,6 +239,7 @@ std::unique_ptr<FileSource> FileSource::open(const std::filesystem::path& path, 
         // The mapping stays valid after the descriptor is closed.
         void* base = ::mmap(nullptr, static_cast<std::size_t>(size), PROT_READ, MAP_PRIVATE, fd, 0);
         if (base != MAP_FAILED) {
+            guardMapping(base, static_cast<std::size_t>(size)); // the file may be truncated under us
             source->m_mapping = base;
             source->m_data = static_cast<const std::uint8_t*>(base);
             source->m_size = size;
@@ -258,8 +261,10 @@ std::unique_ptr<FileSource> FileSource::open(const std::filesystem::path& path, 
 
 FileSource::~FileSource()
 {
-    if (m_mapping)
+    if (m_mapping) {
+        unguardMapping(m_mapping);
         ::munmap(m_mapping, static_cast<std::size_t>(m_size));
+    }
 }
 
 #endif
