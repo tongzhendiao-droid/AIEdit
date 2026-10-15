@@ -67,6 +67,10 @@ public:
 
     // The first visible row; with word wrap on, the row in which the first line on screen starts.
     std::uint64_t topRow() const { return m_rows.topRow(); }
+    // Where the first line on screen starts, and scrolling so that the line holding an offset is
+    // the first one (to come back to a reading position).
+    std::uint64_t firstVisibleOffset() const;
+    void scrollToOffset(std::uint64_t offset);
     // Lines that fit on screen.
     int visibleRows() const;
     // Read-only by default. `reason` is what the status bar says when typing is refused.
@@ -108,6 +112,9 @@ public slots:
     void redo();
     // Replaces the selection, or inserts at the caret, as typing does.
     void insertText(const QString& text);
+    // Replaces the selection with text as a step of its own (Find and Replace). False if the
+    // document cannot be edited or its codec cannot write the text.
+    bool replaceSelectedText(const QString& text);
 
 signals:
     void cursorMoved(std::uint64_t offset);
@@ -252,7 +259,7 @@ private:
     // screen, and a caret there shows at the end of the last line, so the edit goes there too.
     std::uint64_t editOffset(std::uint64_t offset) const;
     void replaceSelection(const QString& text, core::EditBuffer::Merge merge);
-    void replaceRange(std::uint64_t start, std::uint64_t end, const QString& text, core::EditBuffer::Merge merge);
+    bool replaceRange(std::uint64_t start, std::uint64_t end, const QString& text, core::EditBuffer::Merge merge);
     void deleteBackward(bool word);
     void deleteForward(bool word);
     void insertLineBreak();

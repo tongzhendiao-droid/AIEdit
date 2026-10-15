@@ -99,6 +99,31 @@ QString lineEndingName(const core::LineEndings& endings)
     return QStringLiteral("LF");
 }
 
+// How many files are remembered, and how many of them the File menu lists.
+constexpr qsizetype kMaxRememberedFiles = 50;
+constexpr qsizetype kRecentFilesInMenu = 10;
+
+QVariantMap toVariant(const DocumentView::State& state)
+{
+    return {{QStringLiteral("path"), state.path},
+            {QStringLiteral("cursor"), static_cast<qulonglong>(state.cursor)},
+            {QStringLiteral("top"), static_cast<qulonglong>(state.top)},
+            {QStringLiteral("mode"), static_cast<int>(state.mode)},
+            {QStringLiteral("codec"), state.codec}};
+}
+
+DocumentView::State stateFromVariant(const QVariant& value)
+{
+    const QVariantMap map = value.toMap();
+    DocumentView::State state;
+    state.path = map.value(QStringLiteral("path")).toString();
+    state.cursor = map.value(QStringLiteral("cursor")).toULongLong();
+    state.top = map.value(QStringLiteral("top")).toULongLong();
+    state.mode = static_cast<DocumentView::ViewMode>(std::clamp(map.value(QStringLiteral("mode")).toInt(), 0, 2));
+    state.codec = map.value(QStringLiteral("codec")).toString();
+    return state;
+}
+
 } // namespace
 
 std::string_view MainWindow::preferredLegacyCodec()
@@ -239,7 +264,7 @@ void MainWindow::createWidgets()
     m_codecButton = new QToolButton;
     m_codecButton->setAutoRaise(true);
     m_codecButton->setPopupMode(QToolButton::InstantPopup);
-    m_codecButton->setToolTip(tr("Text encoding. Click to show the file in another encoding."));
+    m_codecButton->setToolTip(tr("Text encoding. Click to read the file in another encoding, or to save it in one."));
     m_syntaxButton = new QToolButton;
     m_syntaxButton->setAutoRaise(true);
     m_syntaxButton->setPopupMode(QToolButton::InstantPopup);
@@ -248,14 +273,32 @@ void MainWindow::createWidgets()
     // Hundreds of definitions: build the menu the first time it opens.
     connect(syntaxMenu, &QMenu::aboutToShow, this, &MainWindow::populateSyntaxMenu);
     m_syntaxButton->setMenu(syntaxMenu);
-    m_lineEndingLabel = new QLabel;
+    m_lineEndingButton = new QToolButton;
+    m_lineEndingButton->setAutoRaise(true);
+    m_lineEndingButton->setPopupMode(QToolButton::InstantPopup);
+    m_lineEndingButton->setToolTip(tr("Line endings. Click to give every line the same one."));
+    auto* lineEndingMenu = new QMenu(this);
+    const std::pair<QString, QString> lineEndings[] = {
+        {tr("Convert to LF (Linux, macOS)"), QStringLiteral("\n")},
+        {tr("Convert to CRLF (Windows)"), QStringLiteral("\r\n")},
+        {tr("Convert to CR (classic Mac OS)"), QStringLiteral("\r")},
+    };
+    for (const auto& [text, terminator] : lineEndings)
+        lineEndingMenu->addAction(text, this, [this, terminator] { convertLineEndings(terminator); });
+    // Only documents that can be edited can be converted.
+    connect(lineEndingMenu, &QMenu::aboutToShow, this, [this, lineEndingMenu] {
+        const DocumentView* doc = currentDocument();
+        for (QAction* action : lineEndingMenu->actions())
+            action->setEnabled(doc && doc->isEditable());
+    });
+    m_lineEndingButton->setMenu(lineEndingMenu);
     m_linesLabel = new QLabel;
     m_positionLabel = new QLabel;
     m_selectionLabel = new QLabel;
     statusBar()->addPermanentWidget(m_selectionLabel);
     statusBar()->addPermanentWidget(m_positionLabel);
     statusBar()->addPermanentWidget(m_linesLabel);
-    statusBar()->addPermanentWidget(m_lineEndingLabel);
+    statusBar()->addPermanentWidget(m_lineEndingButton);
     statusBar()->addPermanentWidget(m_syntaxButton);
     statusBar()->addPermanentWidget(m_codecButton);
     statusBar()->addPermanentWidget(m_sizeLabel);
@@ -376,6 +419,12 @@ void MainWindow::createActions()
         if (DocumentView* doc = currentDocument())
             doc->findNext(true);
     });
+    m_replaceAction = new QAction(tr("R&eplace…"), this);
+    m_replaceAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_H));
+    connect(m_replaceAction, &QAction::triggered, this, [this] {
+        if (DocumentView* doc = currentDocument())
+            doc->showFindBar(true);
+    });
     m_findPreviousAction = new QAction(tr("Find Pre&vious"), this);
     m_findPreviousAction->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F3));
     connect(m_findPreviousAction, &QAction::triggered, this, [this] {
@@ -455,6 +504,8 @@ void MainWindow::createMenus()
     QMenu* file = menuBar()->addMenu(tr("&File"));
     file->addAction(m_newAction);
     file->addAction(m_openAction);
+    m_recentMenu = file->addMenu(tr("Recen&t Files"));
+    connect(m_recentMenu, &QMenu::aboutToShow, this, &MainWindow::populateRecentMenu);
     file->addAction(m_saveAction);
     file->addAction(m_saveAsAction);
     file->addAction(m_reloadAction);
@@ -479,6 +530,7 @@ void MainWindow::createMenus()
     edit->addAction(m_findAction);
     edit->addAction(m_findNextAction);
     edit->addAction(m_findPreviousAction);
+    edit->addAction(m_replaceAction);
     edit->addAction(m_goToAction);
 
     QMenu* view = menuBar()->addMenu(tr("&View"));
@@ -519,8 +571,9 @@ void MainWindow::createMenus()
 
 void MainWindow::createCodecMenu()
 {
-    // Grouped by script; every codec here exists in core::knownCodecs().
-    const std::pair<QString, std::initializer_list<std::string_view>> groups[] = {
+    // Grouped by script; every codec here exists in core::knownCodecs(). (A vector, not an
+    // initializer_list: inside a pair, that would outlive the array it points to.)
+    const std::pair<QString, std::vector<std::string_view>> groups[] = {
         {tr("Unicode"), {"UTF-8", "UTF-16LE", "UTF-16BE", "UTF-32LE", "UTF-32BE"}},
         {tr("Chinese"), {"GB18030", "Big5"}},
         {tr("Japanese"), {"Shift_JIS", "EUC-JP"}},
@@ -534,17 +587,32 @@ void MainWindow::createCodecMenu()
     };
 
     auto* menu = new QMenu(this);
+    auto* saveMenu = new QMenu(tr("Save with Encoding"), menu);
     m_codecGroup = new QActionGroup(this);
     for (const auto& [title, names] : groups) {
         menu->addSection(title);
+        saveMenu->addSection(title);
         for (const std::string_view name : names) {
             const core::TextCodec* codec = core::findCodec(name);
             QAction* action = menu->addAction(codecName(*codec));
             action->setCheckable(true);
             m_codecGroup->addAction(action);
             connect(action, &QAction::triggered, this, [this, codec] { setCodec(*codec); });
+            QAction* save = saveMenu->addAction(codecName(*codec));
+            save->setData(QString::fromLatin1(codec->name.data()));
+            connect(save, &QAction::triggered, this, [this, codec] { saveWithCodec(*codec); });
         }
     }
+    menu->addSeparator();
+    menu->addMenu(saveMenu);
+    // Saving needs an editable document with a file, in a codec other than its own.
+    connect(saveMenu, &QMenu::aboutToShow, this, [this, saveMenu] {
+        const DocumentView* doc = currentDocument();
+        const bool possible = doc && doc->isEditable() && !doc->isUntitled();
+        const QString current = doc ? QString::fromLatin1(doc->textDocument()->codec().name.data()) : QString();
+        for (QAction* action : saveMenu->actions())
+            action->setEnabled(possible && action->data().toString() != current);
+    });
     m_codecButton->setMenu(menu);
 }
 
@@ -580,6 +648,11 @@ void MainWindow::readSettings()
     m_inspector->setBigEndian(settings.value(QStringLiteral("inspector/bigEndian"), false).toBool());
     setBytesPerRow(settings.value(QStringLiteral("view/bytesPerRow"), 16).toInt());
     setWordWrap(settings.value(QStringLiteral("view/wordWrap"), true).toBool());
+    for (const QVariant& value : settings.value(QStringLiteral("files/recent")).toList()) {
+        DocumentView::State state = stateFromVariant(value);
+        if (!state.path.isEmpty())
+            m_recentFiles.append(std::move(state));
+    }
 }
 
 void MainWindow::writeSettings() const
@@ -602,6 +675,16 @@ void MainWindow::closeEvent(QCloseEvent* event)
             return;
         }
     }
+    QStringList open;
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        rememberDocument(document(i));
+        if (!document(i)->isUntitled())
+            open << document(i)->filePath();
+    }
+    QSettings settings;
+    settings.setValue(QStringLiteral("session/open"), open);
+    const DocumentView* current = currentDocument();
+    settings.setValue(QStringLiteral("session/current"), current ? current->filePath() : QString());
     writeSettings();
     event->accept();
 }
@@ -659,9 +742,105 @@ bool MainWindow::openFile(const QString& path)
 
     const core::FileTypeInfo type = core::detectFileType(source->bytes());
     const core::TextCodec& codec = core::defaultCodec(type, source->bytes(), preferredLegacyCodec());
-    addDocument(new DocumentView(source, type, codec));
+    auto* doc = new DocumentView(source, type, codec);
+    addDocument(doc);
+    for (const DocumentView::State& state : std::as_const(m_recentFiles)) {
+        if (state.path == doc->filePath()) {
+            doc->restoreState(state);
+            break;
+        }
+    }
+    moveToFrontOfRecent(doc->filePath());
     m_lastDirectory = QFileInfo(filePath).absolutePath();
     return true;
+}
+
+void MainWindow::restoreSession()
+{
+    const QSettings settings;
+    for (const QString& path : settings.value(QStringLiteral("session/open")).toStringList()) {
+        if (QFileInfo::exists(path)) // files gone since are left out, without asking
+            openFile(path);
+    }
+    const QString current = settings.value(QStringLiteral("session/current")).toString();
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        if (document(i)->filePath() == current)
+            m_tabs->setCurrentIndex(i);
+    }
+}
+
+void MainWindow::rememberDocument(const DocumentView* doc)
+{
+    if (!doc || doc->isUntitled())
+        return;
+    const DocumentView::State state = doc->state();
+    m_recentFiles.removeIf([&state](const DocumentView::State& s) { return s.path == state.path; });
+    m_recentFiles.prepend(state);
+    if (m_recentFiles.size() > kMaxRememberedFiles)
+        m_recentFiles.resize(kMaxRememberedFiles);
+    saveRecentFiles();
+}
+
+void MainWindow::moveToFrontOfRecent(const QString& path)
+{
+    DocumentView::State state;
+    state.path = path;
+    for (qsizetype i = 0; i < m_recentFiles.size(); ++i) {
+        if (m_recentFiles[i].path == path) {
+            state = m_recentFiles.takeAt(i);
+            break;
+        }
+    }
+    m_recentFiles.prepend(state);
+    if (m_recentFiles.size() > kMaxRememberedFiles)
+        m_recentFiles.resize(kMaxRememberedFiles);
+    saveRecentFiles();
+}
+
+void MainWindow::saveRecentFiles() const
+{
+    QVariantList list;
+    for (const DocumentView::State& state : m_recentFiles)
+        list << toVariant(state);
+    QSettings().setValue(QStringLiteral("files/recent"), list);
+}
+
+void MainWindow::populateRecentMenu()
+{
+    m_recentMenu->clear();
+    const QString home = QDir::homePath();
+    for (qsizetype i = 0; i < std::min(m_recentFiles.size(), kRecentFilesInMenu); ++i) {
+        const QString path = m_recentFiles[i].path;
+        const QFileInfo info(path);
+        QString folder = QDir::toNativeSeparators(info.absolutePath());
+        if (folder.startsWith(QDir::toNativeSeparators(home)))
+            folder.replace(0, QDir::toNativeSeparators(home).size(), QStringLiteral("~"));
+        // 1 to 9, then 0, as the keys to pick them.
+        const QString key = i < 9 ? QString::number(i + 1) : QStringLiteral("0");
+        QString name = info.fileName();
+        name.replace(QLatin1Char('&'), QStringLiteral("&&"));
+        QAction* action = m_recentMenu->addAction(QStringLiteral("&%1  %2  (%3)").arg(key, name, folder));
+        action->setToolTip(QDir::toNativeSeparators(path));
+        connect(action, &QAction::triggered, this, [this, path] {
+            if (!QFileInfo::exists(path)) {
+                m_recentFiles.removeIf([&path](const DocumentView::State& s) { return s.path == path; });
+                saveRecentFiles();
+                statusBar()->showMessage(tr("%1 no longer exists").arg(QDir::toNativeSeparators(path)),
+                                         kStatusTimeoutMs);
+                return;
+            }
+            openFile(path);
+        });
+    }
+    if (m_recentFiles.isEmpty()) {
+        m_recentMenu->addAction(tr("No Recent Files"))->setEnabled(false);
+        return;
+    }
+    m_recentMenu->addSeparator();
+    m_recentMenu->addAction(tr("&Clear List"), this, [this] {
+        m_recentFiles.clear();
+        saveRecentFiles();
+    });
 }
 
 void MainWindow::newDocument()
@@ -720,6 +899,7 @@ void MainWindow::closeTab(int index)
     QWidget* widget = m_tabs->widget(index);
     if (!widget || !confirmClose(document(index)))
         return;
+    rememberDocument(document(index));
     m_tabs->removeTab(index);
     widget->deleteLater();
     if (m_tabs->count() == 0)
@@ -754,6 +934,7 @@ bool MainWindow::saveDocumentAs(DocumentView* doc)
         return false;
     }
     m_lastDirectory = QFileInfo(path).absolutePath();
+    moveToFrontOfRecent(doc->filePath());
     statusBar()->showMessage(tr("Saved %1").arg(QFileInfo(path).fileName()), kStatusTimeoutMs);
     return true;
 }
@@ -845,7 +1026,7 @@ void MainWindow::updateActions()
     DocumentView* doc = currentDocument();
     const bool hasDocument = doc != nullptr;
     for (QAction* action : {m_closeAction, m_saveAction, m_saveAsAction, m_copyOffsetAction, m_goToAction, m_findAction,
-                            m_findNextAction, m_findPreviousAction, m_aiAskAction, m_aiIdentifyAction}) {
+                            m_findNextAction, m_findPreviousAction, m_replaceAction, m_aiAskAction, m_aiIdentifyAction}) {
         action->setEnabled(hasDocument);
     }
     // A new document has no file on disk to reload or follow yet.
@@ -859,6 +1040,54 @@ void MainWindow::setViewMode(DocumentView::ViewMode mode)
 {
     if (DocumentView* doc = currentDocument())
         doc->setViewMode(mode);
+}
+
+void MainWindow::saveWithCodec(const core::TextCodec& codec)
+{
+    DocumentView* doc = currentDocument();
+    if (!doc)
+        return;
+    QString error;
+    DocumentView::Conversion result = doc->saveWithCodec(codec, false, &error);
+    if (result == DocumentView::Conversion::Unreadable) {
+        const auto answer = QMessageBox::question(
+            this, tr("Save with Encoding"),
+            tr("Some bytes in %1 are not valid %2. Saved in %3, each becomes the replacement character �. Save anyway?")
+                .arg(doc->title(), codecName(doc->textDocument()->codec()), codecName(codec)),
+            QMessageBox::Save | QMessageBox::Cancel, QMessageBox::Cancel);
+        if (answer != QMessageBox::Save)
+            return;
+        result = doc->saveWithCodec(codec, true, &error);
+    }
+    switch (result) {
+    case DocumentView::Conversion::Saved:
+        statusBar()->showMessage(tr("Saved %1 in %2").arg(doc->title(), codecName(codec)), kStatusTimeoutMs);
+        break;
+    case DocumentView::Conversion::Unwritable:
+        QMessageBox::warning(this, tr("Save with Encoding"),
+                             tr("%1 cannot hold some of the characters in %2; nothing was changed.")
+                                 .arg(codecName(codec), doc->title()));
+        break;
+    case DocumentView::Conversion::Failed:
+        QMessageBox::warning(this, tr("Cannot Save"),
+                             tr("Cannot save %1:\n%2").arg(QDir::toNativeSeparators(doc->filePath()), error));
+        break;
+    case DocumentView::Conversion::Unreadable:
+        break;
+    }
+}
+
+void MainWindow::convertLineEndings(const QString& terminator)
+{
+    DocumentView* doc = currentDocument();
+    if (!doc)
+        return;
+    const QString name = terminator == QStringLiteral("\r\n") ? QStringLiteral("CRLF")
+                         : terminator == QStringLiteral("\r")  ? QStringLiteral("CR")
+                                                                : QStringLiteral("LF");
+    statusBar()->showMessage(doc->convertLineEndings(terminator) ? tr("Every line now ends with %1").arg(name)
+                                                                 : tr("Every line already ends with %1").arg(name),
+                             kStatusTimeoutMs);
 }
 
 void MainWindow::setCodec(const core::TextCodec& codec)
@@ -1051,7 +1280,7 @@ void MainWindow::updateTextStatus()
     const bool textual = doc && (doc->fileType().kind != core::ContentKind::Binary || doc->isTextActive());
     m_codecButton->setVisible(doc != nullptr);
     m_syntaxButton->setVisible(textual && isSyntaxHighlightingAvailable());
-    m_lineEndingLabel->setVisible(textual);
+    m_lineEndingButton->setVisible(textual);
     m_linesLabel->setVisible(textual);
     if (!doc)
         return;
@@ -1061,7 +1290,7 @@ void MainWindow::updateTextStatus()
     m_codecButton->setText(codec);
     for (QAction* action : m_codecGroup->actions())
         action->setChecked(action->text() == codec);
-    m_lineEndingLabel->setText(lineEndingName(text->lineEndings()));
+    m_lineEndingButton->setText(lineEndingName(text->lineEndings()));
     m_syntaxButton->setText(doc->syntax().isEmpty() ? tr("Plain Text") : translatedSyntaxName(doc->syntax()));
 
     const core::LineIndex& index = text->index();

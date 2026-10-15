@@ -97,6 +97,44 @@ void TextDocument::replaceBytes(std::uint64_t start, std::uint64_t end, std::spa
     applyEdit(start, end - start, bytes.size(), wasModified);
 }
 
+bool TextDocument::convertLineEndings(const QString& terminator)
+{
+    const std::optional<QByteArray> encoded = encode(terminator);
+    if (!encoded)
+        return false;
+    if (!m_index->isComplete()) { // just opened and still indexing in the background
+        stopIndexing();
+        startIndexing(true);
+    }
+
+    // One change from the first terminator that differs to the last, keeping the text between.
+    const auto data = bytes();
+    const std::span<const std::uint8_t> target(reinterpret_cast<const std::uint8_t*>(encoded->constData()),
+                                               static_cast<std::size_t>(encoded->size()));
+    std::vector<std::uint8_t> replacement;
+    std::optional<std::uint64_t> start;
+    std::uint64_t end = 0;
+    constexpr std::size_t kRowsAtOnce = 4096;
+    for (std::uint64_t first = 0; first < m_index->rowCount(); first += kRowsAtOnce) {
+        for (const core::Row& row : m_index->rows(first, kRowsAtOnce)) {
+            const auto current = data.subspan(row.contentEnd, static_cast<std::size_t>(row.end - row.contentEnd));
+            if (current.empty() || std::equal(current.begin(), current.end(), target.begin(), target.end()))
+                continue;
+            if (!start)
+                start = end = row.contentEnd;
+            replacement.insert(replacement.end(), data.begin() + static_cast<std::ptrdiff_t>(end),
+                               data.begin() + static_cast<std::ptrdiff_t>(row.contentEnd));
+            replacement.insert(replacement.end(), target.begin(), target.end());
+            end = row.end;
+        }
+    }
+    if (!start)
+        return false;
+    breakUndoMerge();
+    replaceBytes(*start, end, replacement);
+    return true;
+}
+
 bool TextDocument::canUndo() const
 {
     return m_edits && m_edits->canUndo();

@@ -2,6 +2,17 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN">
 <context>
+    <name>Replace</name>
+    <message>
+        <source>The match changed; search again</source>
+        <translation>匹配已经变了，请重新查找</translation>
+    </message>
+    <message>
+        <source>The file is still being read; try again in a moment</source>
+        <translation>文件还在读取中，请稍后再试</translation>
+    </message>
+</context>
+<context>
     <name>SearchJob</name>
     <message>
         <source>Enter something to search for.</source>
@@ -383,6 +394,16 @@
 <context>
     <name>aiedit::ui::DocumentView</name>
     <message>
+        <source>Nothing to replace</source>
+        <translation>没有可替换的内容</translation>
+    </message>
+    <message numerus="yes">
+        <source>Replaced %n time(s)</source>
+        <translation>
+            <numerusform>已替换 %n 处</numerusform>
+        </translation>
+    </message>
+    <message>
         <source>%1 changed on disk; your unsaved edits are kept</source>
         <translation>%1 在磁盘上被修改了；你未保存的修改仍然保留</translation>
     </message>
@@ -450,12 +471,36 @@
         <translation>关闭（Esc）</translation>
     </message>
     <message>
+        <source>Replace</source>
+        <translation>替换</translation>
+    </message>
+    <message>
+        <source>Replace this match and find the next (Enter)</source>
+        <translation>替换这一处，并查找下一处（Enter）</translation>
+    </message>
+    <message>
+        <source>Replace All</source>
+        <translation>全部替换</translation>
+    </message>
+    <message>
+        <source>Replace every match in the file, as one step to undo</source>
+        <translation>替换文件中的每一处，可以一步撤销</translation>
+    </message>
+    <message>
         <source>Find:</source>
         <translation>查找：</translation>
     </message>
     <message>
+        <source>Replace:</source>
+        <translation>替换：</translation>
+    </message>
+    <message>
         <source>Searching… %1%</source>
         <translation>正在查找… %1%</translation>
+    </message>
+    <message>
+        <source>Bytes are not replaced in hex mode</source>
+        <translation>十六进制模式下不替换字节</translation>
     </message>
     <message>
         <source>Searching…</source>
@@ -480,6 +525,14 @@
     <message>
         <source>Text to find</source>
         <translation>要查找的文本</translation>
+    </message>
+    <message>
+        <source>Replace with: $1 or \1 for groups, \n for a line break</source>
+        <translation>替换为：$1 或 \1 表示分组，\n 表示换行</translation>
+    </message>
+    <message>
+        <source>Replace with</source>
+        <translation>替换为</translation>
     </message>
 </context>
 <context>
@@ -564,12 +617,28 @@
         <translation>AI 助手</translation>
     </message>
     <message>
-        <source>Text encoding. Click to show the file in another encoding.</source>
-        <translation>文本编码。点击可换用其他编码显示文件。</translation>
+        <source>Text encoding. Click to read the file in another encoding, or to save it in one.</source>
+        <translation>文本编码。点击可以换一种编码来读，或者以另一种编码保存。</translation>
     </message>
     <message>
         <source>Syntax highlighting. Click to choose a language.</source>
         <translation>语法高亮。点击可选择语言。</translation>
+    </message>
+    <message>
+        <source>Line endings. Click to give every line the same one.</source>
+        <translation>换行符。点击可以把所有行统一成同一种。</translation>
+    </message>
+    <message>
+        <source>Convert to LF (Linux, macOS)</source>
+        <translation>转换为 LF（Linux、macOS）</translation>
+    </message>
+    <message>
+        <source>Convert to CRLF (Windows)</source>
+        <translation>转换为 CRLF（Windows）</translation>
+    </message>
+    <message>
+        <source>Convert to CR (classic Mac OS)</source>
+        <translation>转换为 CR（经典 Mac OS）</translation>
     </message>
     <message>
         <source>&amp;New</source>
@@ -676,6 +745,10 @@
         <translation>查找下一个(&amp;N)</translation>
     </message>
     <message>
+        <source>R&amp;eplace…</source>
+        <translation>替换(&amp;E)…</translation>
+    </message>
+    <message>
         <source>Find Pre&amp;vious</source>
         <translation>查找上一个(&amp;V)</translation>
     </message>
@@ -752,6 +825,10 @@
         <translation>文件(&amp;F)</translation>
     </message>
     <message>
+        <source>Recen&amp;t Files</source>
+        <translation>最近打开(&amp;T)</translation>
+    </message>
+    <message>
         <source>&amp;Edit</source>
         <translation>编辑(&amp;E)</translation>
     </message>
@@ -812,6 +889,10 @@
         <translation>阿拉伯文</translation>
     </message>
     <message>
+        <source>Save with Encoding</source>
+        <translation>以其他编码保存</translation>
+    </message>
+    <message>
         <source>Plain Text</source>
         <translation>纯文本</translation>
     </message>
@@ -824,6 +905,18 @@
 %2</source>
         <translation>无法打开 %1：
 %2</translation>
+    </message>
+    <message>
+        <source>%1 no longer exists</source>
+        <translation>%1 已经不存在了</translation>
+    </message>
+    <message>
+        <source>No Recent Files</source>
+        <translation>没有最近打开的文件</translation>
+    </message>
+    <message>
+        <source>&amp;Clear List</source>
+        <translation>清除列表(&amp;C)</translation>
     </message>
     <message>
         <source>Untitled %1</source>
@@ -862,6 +955,26 @@
     <message>
         <source>%1[*] — AIEdit</source>
         <translation>%1[*] — AIEdit</translation>
+    </message>
+    <message>
+        <source>Some bytes in %1 are not valid %2. Saved in %3, each becomes the replacement character �. Save anyway?</source>
+        <translation>%1 里有一些字节不是有效的 %2。以 %3 保存时，它们都会变成替换字符 �。仍要保存吗？</translation>
+    </message>
+    <message>
+        <source>Saved %1 in %2</source>
+        <translation>已用 %2 保存 %1</translation>
+    </message>
+    <message>
+        <source>%1 cannot hold some of the characters in %2; nothing was changed.</source>
+        <translation>%1 无法表示 %2 中的某些字符，文件没有改动。</translation>
+    </message>
+    <message>
+        <source>Every line now ends with %1</source>
+        <translation>所有行的换行符已统一为 %1</translation>
+    </message>
+    <message>
+        <source>Every line already ends with %1</source>
+        <translation>所有行的换行符本来就是 %1</translation>
     </message>
     <message>
         <source>Font size: %1 pt</source>

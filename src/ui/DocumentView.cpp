@@ -7,6 +7,7 @@
 #include "ui/FindBar.h"
 #include "ui/HexView.h"
 #include "ui/Paths.h"
+#include "ui/Replace.h"
 #include "ui/SyntaxHighlighting.h"
 #include "ui/TextDocument.h"
 #include "ui/TextView.h"
@@ -18,6 +19,8 @@
 #include <QLocale>
 #include <QPointer>
 #include <QSaveFile>
+#include <QStringDecoder>
+#include <QStringEncoder>
 #include <QScopedValueRollback>
 #include <QSplitter>
 #include <QTimer>
@@ -107,6 +110,8 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
     connect(m_findBar, &FindBar::searchRequested, this, &DocumentView::findNext);
     connect(m_findBar, &FindBar::matchFound, this, &DocumentView::selectMatch);
     connect(m_findBar, &FindBar::closeRequested, this, &DocumentView::closeFindBar);
+    connect(m_findBar, &FindBar::replaceRequested, this, &DocumentView::replaceCurrent);
+    connect(m_findBar, &FindBar::replaceAllRequested, this, &DocumentView::replaceAll);
     // A search runs against the index of one codec; a new codec makes it meaningless.
     connect(m_textDocument, &TextDocument::codecChanged, m_findBar, &FindBar::cancel);
 
@@ -227,11 +232,51 @@ void DocumentView::setContextActions(const QList<QAction*>& textActions, const Q
 
 void DocumentView::setCodec(const core::TextCodec& codec)
 {
+    m_codecChosen = true;
     m_textDocument->setCodec(codec);
     emit stateChanged();
 }
 
-void DocumentView::showFindBar()
+DocumentView::State DocumentView::state() const
+{
+    if (m_pendingState)
+        return *m_pendingState; // not even there yet
+    State state;
+    state.path = filePath();
+    state.cursor = cursorOffset();
+    state.top = m_textView->firstVisibleOffset();
+    state.mode = m_viewMode;
+    if (m_codecChosen)
+        state.codec = QString::fromLatin1(m_textDocument->codec().name.data());
+    return state;
+}
+
+void DocumentView::restoreState(const State& state)
+{
+    if (const core::TextCodec* codec = core::findCodec(state.codec.toStdString());
+        codec && codec->name != m_textDocument->codec().name)
+        setCodec(*codec);
+    setViewMode(state.mode);
+    const auto apply = [this, state] {
+        m_pendingState.reset();
+        if (isTextActive()) {
+            m_textView->setCursorOffset(state.cursor);
+            m_textView->scrollToOffset(state.top);
+        } else {
+            m_hexView->setCursorOffset(std::min(state.cursor, m_source->size() > 0 ? m_source->size() - 1 : 0));
+        }
+    };
+    // In a large file still being indexed, wait until the index gets there.
+    const core::LineIndex& index = m_textDocument->index();
+    if (index.isComplete() || std::max(state.cursor, state.top) < index.indexedBytes()) {
+        apply();
+    } else {
+        m_pendingState = state;
+        connect(m_textDocument, &TextDocument::indexFinished, this, apply, Qt::SingleShotConnection);
+    }
+}
+
+void DocumentView::showFindBar(bool replace)
 {
     // Seed the query with a short selection, as text or as hex bytes.
     if (isTextActive() && m_textView->hasSelection()) {
@@ -245,7 +290,66 @@ void DocumentView::showFindBar()
         m_findBar->setQuery(m_hexView->selectionAsHex());
         m_findBar->setMode(SearchMode::Hex);
     }
-    m_findBar->activate();
+    m_findBar->activate(replace);
+}
+
+SearchContext DocumentView::searchContext() const
+{
+    return {m_source, m_textDocument->sharedIndex(), m_textDocument->codec()};
+}
+
+void DocumentView::replaceCurrent()
+{
+    if (!isEditable() || m_findBar->mode() == SearchMode::Hex)
+        return;
+    if (m_findBar->query().isEmpty()) {
+        showFindBar(true);
+        return;
+    }
+    ReplaceRequest request{m_findBar->mode(), m_findBar->query(), m_findBar->caseSensitive(),
+                           m_findBar->replacement(), m_textDocument->lineTerminator()};
+    // Only what the search found and is still selected; otherwise this finds the first match.
+    const std::uint64_t start = m_textView->selectionStart();
+    const std::uint64_t end = m_textView->selectionEnd();
+    if (m_lastMatch && *m_lastMatch == std::pair(start, end) && end > start) {
+        QString error;
+        const std::optional<QString> text = replacementFor(request, searchContext(), start, end, &error);
+        if (!text) {
+            m_findBar->showMessage(error, true);
+            return;
+        }
+        if (!m_textView->replaceSelectedText(*text))
+            return; // the status bar says why
+    }
+    findNext(true);
+}
+
+void DocumentView::replaceAll()
+{
+    if (!isEditable() || m_findBar->mode() == SearchMode::Hex)
+        return;
+    if (m_findBar->query().isEmpty()) {
+        showFindBar(true);
+        return;
+    }
+    m_findBar->cancel();
+    const ReplaceRequest request{m_findBar->mode(), m_findBar->query(), m_findBar->caseSensitive(),
+                                 m_findBar->replacement(), m_textDocument->lineTerminator()};
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    const ReplaceAllResult result = ui::replaceAll(request, searchContext());
+    QGuiApplication::restoreOverrideCursor();
+    if (!result.error.isEmpty()) {
+        m_findBar->showMessage(result.error, true);
+        return;
+    }
+    if (result.count == 0) {
+        m_findBar->showMessage(tr("Nothing to replace"), true);
+        return;
+    }
+    m_textDocument->breakUndoMerge();
+    m_textDocument->replaceBytes(result.start, result.end, result.bytes);
+    m_textView->setCursorOffset(result.start); // at the first replacement
+    m_findBar->showMessage(tr("Replaced %n time(s)", nullptr, static_cast<int>(result.count)));
 }
 
 void DocumentView::findNext(bool forward)
@@ -274,7 +378,7 @@ void DocumentView::findNext(bool forward)
     request.caseSensitive = m_findBar->caseSensitive();
     request.forward = forward;
     request.from = forward ? end : start;
-    m_findBar->start(request, {m_source, m_textDocument->sharedIndex(), m_textDocument->codec()});
+    m_findBar->start(request, searchContext());
 }
 
 void DocumentView::selectMatch(std::uint64_t start, std::uint64_t end)
@@ -467,6 +571,7 @@ void DocumentView::updateEditable()
         reason = tr("Files larger than %1 can only be viewed here")
                      .arg(QLocale().formattedDataSize(static_cast<qint64>(core::EditBuffer::kMaxEditableSize)));
     m_textView->setReadOnly(!reason.isEmpty(), reason);
+    m_findBar->setReplaceAvailable(reason.isEmpty(), reason);
 }
 
 void DocumentView::documentEdited()
@@ -485,6 +590,11 @@ void DocumentView::documentEdited()
 
 bool DocumentView::writeTo(const QString& path, QString* error)
 {
+    return writeBytes(path, m_source->bytes(), error);
+}
+
+bool DocumentView::writeBytes(const QString& path, std::span<const std::uint8_t> bytes, QString* error)
+{
     // QSaveFile writes a temporary file and renames it over the target, so a failure halfway
     // leaves the old file as it was. It keeps the file's permissions and follows symlinks; where
     // the folder is not writable but the file is, it writes the file in place.
@@ -493,7 +603,6 @@ bool DocumentView::writeTo(const QString& path, QString* error)
     const bool watched = m_watcher.files().contains(path);
     if (watched)
         m_watcher.removePath(path); // our own write is no change on disk to react to
-    const auto bytes = m_source->bytes();
     const bool ok = file.open(QIODevice::WriteOnly) &&
                     file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<qint64>(bytes.size())) ==
                         static_cast<qint64>(bytes.size()) &&
@@ -551,6 +660,65 @@ bool DocumentView::saveAs(const QString& path, QString* error)
     emit sourceChanged();
     emit stateChanged();
     return true;
+}
+
+bool DocumentView::convertLineEndings(const QString& terminator)
+{
+    if (!isEditable())
+        return false;
+    // The caret keeps its line; offsets after the first change move.
+    const std::uint64_t line = m_textView->cursorLine();
+    if (!m_textDocument->convertLineEndings(terminator))
+        return false;
+    if (const auto row = m_textDocument->index().rowIndexOfLine(line))
+        m_textView->setCursorOffset(m_textDocument->index().row(*row).start);
+    return true;
+}
+
+DocumentView::Conversion DocumentView::saveWithCodec(const core::TextCodec& codec, bool replaceUnreadable,
+                                                     QString* error)
+{
+    // The text as it reads now (unsaved edits included), without its old byte order mark.
+    const auto bytes = m_source->bytes().subspan(static_cast<std::size_t>(m_textDocument->textStart()));
+    QStringDecoder decoder(m_textDocument->codec().name.data());
+    const QString text =
+        decoder.decode(QByteArrayView(reinterpret_cast<const char*>(bytes.data()), static_cast<qsizetype>(bytes.size())));
+    if (decoder.hasError() && !replaceUnreadable)
+        return Conversion::Unreadable;
+
+    // UTF-16 and UTF-32 need their byte order mark to be recognised; UTF-8 and the rest do not.
+    const bool wide = codec.scheme == core::CharScheme::Utf16LE || codec.scheme == core::CharScheme::Utf16BE ||
+                      codec.scheme == core::CharScheme::Utf32LE || codec.scheme == core::CharScheme::Utf32BE;
+    QStringEncoder encoder(codec.name.data(), wide ? QStringConverter::Flag::WriteBom : QStringConverter::Flag::Default);
+    const QByteArray converted = encoder.encode(text);
+    if (encoder.hasError())
+        return Conversion::Unwritable;
+    if (!writeBytes(filePath(), {reinterpret_cast<const std::uint8_t*>(converted.constData()),
+                                 static_cast<std::size_t>(converted.size())},
+                    error))
+        return Conversion::Failed;
+
+    m_codecChosen = true;
+    // Show the file as written, in its new codec; the undo history goes with the old bytes.
+    std::error_code ec;
+    std::shared_ptr<const core::FileSource> source = core::FileSource::open(toPath(filePath()), ec);
+    if (!source) {
+        if (error)
+            *error = QString::fromLocal8Bit(ec.message());
+        return Conversion::Failed;
+    }
+    m_findBar->cancel();
+    m_lastMatch.reset();
+    m_source = std::move(source);
+    {
+        const QScopedValueRollback guard(m_syncing, true);
+        m_textDocument->setCodec(codec);
+        m_textDocument->setSource(m_source);
+        m_hexView->replaceSource(m_source);
+    }
+    emit sourceChanged();
+    emit stateChanged();
+    return Conversion::Saved;
 }
 
 void DocumentView::cut()

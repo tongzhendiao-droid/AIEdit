@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <utility>
 
 class QAction;
@@ -23,6 +24,7 @@ namespace aiedit::ui {
 
 struct AiContext;
 struct FieldMark;
+struct SearchContext;
 class FindBar;
 class HexView;
 class TextDocument;
@@ -72,6 +74,7 @@ public:
     // Right-click actions for the text and the hex view (the AI actions).
     void setContextActions(const QList<QAction*>& textActions, const QList<QAction*>& hexActions);
 
+    // The user's choice: it is remembered with the file (see State).
     void setCodec(const core::TextCodec& codec);
     // Syntax highlighting definition name; empty for plain text.
     QString syntax() const;
@@ -89,6 +92,33 @@ public:
     // reason in `error`, if that failed.
     bool save(QString* error = nullptr);
     bool saveAs(const QString& path, QString* error = nullptr);
+    // Ends every line with `terminator` ("\n", "\r\n" or "\r"), as one edit to undo. False if
+    // every line ended so already, or the document cannot be edited.
+    bool convertLineEndings(const QString& terminator);
+
+    enum class Conversion
+    {
+        Saved,
+        Unreadable, // bytes that are not valid in the current codec would become U+FFFD
+        Unwritable, // the new codec cannot hold some of the characters
+        Failed,     // writing the file failed
+    };
+    // Writes the text in another codec (UTF-16 and UTF-32 with a byte order mark) and shows the
+    // file in that codec from then on. Unreadable bytes stop it unless `replaceUnreadable`.
+    Conversion saveWithCodec(const core::TextCodec& codec, bool replaceUnreadable, QString* error = nullptr);
+
+    // What is remembered of a file between sessions, to come back to where it was left.
+    struct State
+    {
+        QString path;
+        std::uint64_t cursor = 0;
+        std::uint64_t top = 0; // where the first line on screen started: the reading position
+        ViewMode mode = ViewMode::Text;
+        QString codec; // empty unless chosen by the user; otherwise the file's is detected again
+    };
+    State state() const;
+    // Puts it back; positions the index has not reached yet are applied once it has.
+    void restoreState(const State& state);
 
     // Follow mode (like tail -f): after every reload, jump to the end of the file.
     bool isFollowing() const { return m_following; }
@@ -101,10 +131,14 @@ public slots:
     void paste();
     void undo();
     void redo();
-    // Shows the find bar, seeded with a short selection.
-    void showFindBar();
+    // Shows the find bar, seeded with a short selection; with `replace`, its replace row too.
+    void showFindBar(bool replace = false);
     // Finds the next or previous match of the find bar's query from the caret or selection.
     void findNext(bool forward = true);
+    // Replaces the match found last, if it is still selected, then finds the next one.
+    void replaceCurrent();
+    // Replaces every match in the document, as one step to undo.
+    void replaceAll();
     // Re-reads the file from disk, keeping the caret, view mode and codec. This also happens on
     // its own, shortly after the file changes.
     bool reload();
@@ -138,6 +172,8 @@ private:
     void updateEditable();
     void documentEdited();
     bool writeTo(const QString& path, QString* error);
+    bool writeBytes(const QString& path, std::span<const std::uint8_t> bytes, QString* error);
+    SearchContext searchContext() const;
 
     std::shared_ptr<const core::FileSource> m_source;
     core::FileTypeInfo m_fileType;
@@ -152,6 +188,8 @@ private:
     bool m_syncing = false;
     bool m_splitSizesPending = false; // sized once the splitter has its real width
     bool m_following = false;
+    bool m_codecChosen = false; // by the user, rather than detected
+    std::optional<State> m_pendingState; // waiting for the index to get there
     QString m_untitledTitle;
     QFileSystemWatcher m_watcher;
     QTimer m_reloadTimer; // coalesces bursts of change notifications

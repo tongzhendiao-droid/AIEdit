@@ -67,6 +67,9 @@ public:
     std::optional<QByteArray> encode(const QString& text) const;
     // What Enter inserts: the line terminator the file uses.
     QString lineTerminator() const;
+    // Ends every line with `terminator` ("\n", "\r\n" or "\r"), as one edit. False if every
+    // line ended so already.
+    bool convertLineEndings(const QString& terminator);
 
     const TextDecoder& decoder() const { return *m_decoder; }
     // Replaced by setCodec(); do not keep references across codecChanged().

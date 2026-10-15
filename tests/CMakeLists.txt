@@ -21,6 +21,8 @@ target_compile_definitions(tst_hexview PRIVATE AIEDIT_QM_DIR="${CMAKE_BINARY_DIR
 add_dependencies(tst_hexview aiedit)
 aiedit_add_test(tst_textview aiedit_ui)
 aiedit_add_test(tst_editing aiedit_ui)
+aiedit_add_test(tst_replace aiedit_ui)
+aiedit_add_test(tst_session aiedit_ui)
 aiedit_add_test(tst_searchjob aiedit_ui)
 aiedit_add_test(tst_chatclient aiedit_ui)
 aiedit_add_test(tst_aitools aiedit_ui)
