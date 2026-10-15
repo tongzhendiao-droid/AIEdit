@@ -425,6 +425,13 @@ void MainWindow::createActions()
         if (DocumentView* doc = currentDocument())
             doc->showFindBar(true);
     });
+    m_filterAction = new QAction(tr("Fi&lter Lines…"), this);
+    m_filterAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_L));
+    m_filterAction->setToolTip(tr("Show only the lines that match a rule, written by hand or by the AI"));
+    connect(m_filterAction, &QAction::triggered, this, [this] {
+        if (DocumentView* doc = currentDocument())
+            doc->showFilterPanel();
+    });
     m_findPreviousAction = new QAction(tr("Find Pre&vious"), this);
     m_findPreviousAction->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F3));
     connect(m_findPreviousAction, &QAction::triggered, this, [this] {
@@ -531,6 +538,7 @@ void MainWindow::createMenus()
     edit->addAction(m_findNextAction);
     edit->addAction(m_findPreviousAction);
     edit->addAction(m_replaceAction);
+    edit->addAction(m_filterAction);
     edit->addAction(m_goToAction);
 
     QMenu* view = menuBar()->addMenu(tr("&View"));
@@ -877,6 +885,7 @@ void MainWindow::addDocument(DocumentView* doc)
             updateTextStatus();
     });
     connect(doc, &DocumentView::zoomRequested, this, &MainWindow::zoomBy);
+    connect(doc, &DocumentView::aiSettingsRequested, this, &MainWindow::showAiSettings);
     connect(doc, &DocumentView::statusMessage, this,
             [this](const QString& message) { statusBar()->showMessage(message, kStatusTimeoutMs); });
 
@@ -1026,7 +1035,8 @@ void MainWindow::updateActions()
     DocumentView* doc = currentDocument();
     const bool hasDocument = doc != nullptr;
     for (QAction* action : {m_closeAction, m_saveAction, m_saveAsAction, m_copyOffsetAction, m_goToAction, m_findAction,
-                            m_findNextAction, m_findPreviousAction, m_replaceAction, m_aiAskAction, m_aiIdentifyAction}) {
+                            m_findNextAction, m_findPreviousAction, m_replaceAction, m_filterAction, m_aiAskAction,
+                            m_aiIdentifyAction}) {
         action->setEnabled(hasDocument);
     }
     // A new document has no file on disk to reload or follow yet.

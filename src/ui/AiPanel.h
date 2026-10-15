@@ -141,4 +141,7 @@ private:
     QLabel* m_status = nullptr;
 };
 
+// Shows the exact JSON a request posts, before it is sent.
+void showRequestPreview(QWidget* parent, const AiSettings& settings, const QByteArray& body);
+
 } // namespace aiedit::ui

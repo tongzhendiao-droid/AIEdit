@@ -2,6 +2,33 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN">
 <context>
+    <name>LogFilter</name>
+    <message>
+        <source>the regular expression is empty</source>
+        <translation>正则表达式是空的</translation>
+    </message>
+    <message>
+        <source>invalid regular expression: %1</source>
+        <translation>正则表达式有误：%1</translation>
+    </message>
+    <message>
+        <source>the expression has no group named %1</source>
+        <translation>表达式里没有名为 %1 的分组</translation>
+    </message>
+    <message>
+        <source>unknown comparison %1</source>
+        <translation>不认识的比较符 %1</translation>
+    </message>
+    <message>
+        <source>The rule has no conditions yet</source>
+        <translation>规则里还没有条件</translation>
+    </message>
+    <message>
+        <source>Condition %1: %2</source>
+        <translation>第 %1 个条件：%2</translation>
+    </message>
+</context>
+<context>
     <name>Replace</name>
     <message>
         <source>The match changed; search again</source>
@@ -441,6 +468,185 @@
     </message>
 </context>
 <context>
+    <name>aiedit::ui::FilterPanel</name>
+    <message>
+        <source>Include</source>
+        <translation>包含</translation>
+    </message>
+    <message>
+        <source>Exclude</source>
+        <translation>排除</translation>
+    </message>
+    <message>
+        <source>Include shows the lines that match; Exclude hides them</source>
+        <translation>包含：显示匹配的行；排除：隐藏匹配的行</translation>
+    </message>
+    <message>
+        <source>Regular expression, e.g. ERROR|FATAL</source>
+        <translation>正则表达式，如 ERROR|FATAL</translation>
+    </message>
+    <message>
+        <source>Match case</source>
+        <translation>区分大小写</translation>
+    </message>
+    <message>
+        <source>Number test, e.g. ms &gt; 1000</source>
+        <translation>数值条件，如 ms &gt; 1000</translation>
+    </message>
+    <message>
+        <source>Compares a number the expression captures with a value. For took (?&lt;ms&gt;\d+)ms, write ms &gt; 1000; also &gt;=, &lt;, &lt;=, == and !=</source>
+        <translation>把表达式捕获的数字和一个值比较。比如表达式是 took (?&lt;ms&gt;\d+)ms，就写 ms &gt; 1000；还可以用 &gt;=、&lt;、&lt;=、== 和 !=</translation>
+    </message>
+    <message>
+        <source>Remove this condition</source>
+        <translation>删除这个条件</translation>
+    </message>
+    <message>
+        <source>write the number test as a group, a comparison and a value, e.g. ms &gt; 1000</source>
+        <translation>数值条件要写成“分组 比较符 数值”，如 ms &gt; 1000</translation>
+    </message>
+    <message>
+        <source>AI:</source>
+        <translation>AI：</translation>
+    </message>
+    <message>
+        <source>Describe the lines to show, e.g. errors that took over a second, without the heartbeats</source>
+        <translation>描述想看哪些行，例如：耗时超过一秒的错误，不要心跳</translation>
+    </message>
+    <message>
+        <source>Let the AI write the conditions below from your description (Enter)</source>
+        <translation>让 AI 根据你的描述写出下面的条件（回车）</translation>
+    </message>
+    <message>
+        <source>Preview</source>
+        <translation>预览</translation>
+    </message>
+    <message>
+        <source>Show exactly what will be sent</source>
+        <translation>查看将要发送的完整内容</translation>
+    </message>
+    <message>
+        <source>Close (Esc)</source>
+        <translation>关闭（Esc）</translation>
+    </message>
+    <message>
+        <source>Add Condition</source>
+        <translation>添加条件</translation>
+    </message>
+    <message>
+        <source>Any include is enough</source>
+        <translation>满足任一包含条件即可</translation>
+    </message>
+    <message>
+        <source>Show the lines that match at least one Include condition, instead of all of them</source>
+        <translation>只要匹配任意一个“包含”条件就显示，不必全部匹配</translation>
+    </message>
+    <message>
+        <source>Condition %1: %2</source>
+        <translation>第 %1 个条件：%2</translation>
+    </message>
+    <message>
+        <source>Filtering… %1% · %2 matching lines so far</source>
+        <translation>正在过滤… %1% · 已找到 %2 行</translation>
+    </message>
+    <message>
+        <source>Showing the first %1 matching lines; narrow the rule to see the rest</source>
+        <translation>只显示前 %1 个匹配行；收紧规则才能看到其余的</translation>
+    </message>
+    <message>
+        <source>%1 of %2 lines match</source>
+        <translation>%2 行中有 %1 行匹配</translation>
+    </message>
+    <message>
+        <source>Stopped.</source>
+        <translation>已停止。</translation>
+    </message>
+    <message>
+        <source>Describe the lines you want to see first.</source>
+        <translation>请先描述想看哪些行。</translation>
+    </message>
+    <message>
+        <source>Asking %1 for a rule…</source>
+        <translation>正在请 %1 写规则…</translation>
+    </message>
+    <message>
+        <source>The AI wrote the rule below (%1). It runs here, on the whole file.</source>
+        <translation>AI 写好了下面的规则（%1），它在本机对整个文件运行。</translation>
+    </message>
+    <message>
+        <source>no description</source>
+        <translation>无说明</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>停止</translation>
+    </message>
+    <message>
+        <source>Write Rule</source>
+        <translation>写规则</translation>
+    </message>
+    <message>
+        <source>The AI can write the rule from a description once it is set up: &lt;a href=&quot;settings&quot;&gt;open the AI settings&lt;/a&gt;.</source>
+        <translation>设置好 AI 服务后，它可以根据描述写规则：&lt;a href=&quot;settings&quot;&gt;打开 AI 设置&lt;/a&gt;。</translation>
+    </message>
+    <message>
+        <source>Sends your description and up to %1 sample lines to %2. The rule then runs on this computer; the rest of the file is not sent.</source>
+        <translation>会把你的描述和最多 %1 行样例发给 %2。规则在本机运行，文件的其余部分不会发送。</translation>
+    </message>
+    <message>
+        <source>(your description)</source>
+        <translation>（你的描述）</translation>
+    </message>
+</context>
+<context>
+    <name>aiedit::ui::FilterResultsView</name>
+    <message>
+        <source>Copied the first %L1 of %L2 selected lines</source>
+        <translation>已复制选中的 %L2 行中的前 %L1 行</translation>
+    </message>
+    <message numerus="yes">
+        <source>Copied %n line(s)</source>
+        <translation>
+            <numerusform>已复制 %n 行</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>&amp;Copy Lines</source>
+        <translation>复制行(&amp;C)</translation>
+    </message>
+    <message>
+        <source>Select &amp;All</source>
+        <translation>全选(&amp;A)</translation>
+    </message>
+</context>
+<context>
+    <name>aiedit::ui::FilterRuleWriter</name>
+    <message>
+        <source>The AI answered without a rule.</source>
+        <translation>AI 的回答里没有规则。</translation>
+    </message>
+    <message>
+        <source>the answer holds no rule</source>
+        <translation>回答里没有规则</translation>
+    </message>
+    <message>
+        <source>the rule is not valid JSON (%1)</source>
+        <translation>规则不是有效的 JSON（%1）</translation>
+    </message>
+    <message>
+        <source>Set up the AI service first.</source>
+        <translation>请先设置 AI 服务。</translation>
+    </message>
+    <message>
+        <source>the answer was cut off</source>
+        <translation>回答被截断了</translation>
+    </message>
+    <message>
+        <source>The AI did not write a usable rule: %1</source>
+        <translation>AI 没能写出可用的规则：%1</translation>
+    </message>
+</context>
+<context>
     <name>aiedit::ui::FindBar</name>
     <message>
         <source>Text</source>
@@ -747,6 +953,14 @@
     <message>
         <source>R&amp;eplace…</source>
         <translation>替换(&amp;E)…</translation>
+    </message>
+    <message>
+        <source>Fi&amp;lter Lines…</source>
+        <translation>过滤行(&amp;L)…</translation>
+    </message>
+    <message>
+        <source>Show only the lines that match a rule, written by hand or by the AI</source>
+        <translation>只显示符合规则的行；规则可以手写，也可以让 AI 写</translation>
     </message>
     <message>
         <source>Find Pre&amp;vious</source>

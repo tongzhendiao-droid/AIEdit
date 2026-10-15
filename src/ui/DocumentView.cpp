@@ -4,6 +4,7 @@
 #include "core/FileSource.h"
 #include "core/FileSummary.h"
 #include "ui/AiPanel.h"
+#include "ui/FilterPanel.h"
 #include "ui/FindBar.h"
 #include "ui/HexView.h"
 #include "ui/Paths.h"
@@ -115,10 +116,14 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
     // A search runs against the index of one codec; a new codec makes it meaningless.
     connect(m_textDocument, &TextDocument::codecChanged, m_findBar, &FindBar::cancel);
 
+    m_documentSplitter = new QSplitter(Qt::Vertical, this);
+    m_documentSplitter->setChildrenCollapsible(false);
+    m_documentSplitter->addWidget(m_splitter);
+
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
-    layout->addWidget(m_splitter);
+    layout->addWidget(m_documentSplitter);
     layout->addWidget(m_findBar);
 
     connect(m_textView, &TextView::cursorMoved, this, &DocumentView::syncFromText);
@@ -142,7 +147,13 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
 
     m_reloadTimer.setSingleShot(true);
     m_reloadTimer.setInterval(kReloadDelayMs);
-    connect(&m_reloadTimer, &QTimer::timeout, this, &DocumentView::reload);
+    // Edits made while a reload waited are kept: fileChanged() says so instead of reloading.
+    connect(&m_reloadTimer, &QTimer::timeout, this, [this] {
+        if (isModified())
+            fileChanged();
+        else
+            reload();
+    });
     if (!isUntitled())
         m_watcher.addPath(filePath());
     connect(&m_watcher, &QFileSystemWatcher::fileChanged, this, &DocumentView::fileChanged);
@@ -395,6 +406,49 @@ void DocumentView::closeFindBar()
     m_findBar->cancel();
     m_findBar->hide();
     (isTextActive() ? static_cast<QWidget*>(m_textView) : m_hexView)->setFocus();
+}
+
+bool DocumentView::isFilterPanelVisible() const
+{
+    return m_filterPanel && m_filterPanel->isVisible();
+}
+
+void DocumentView::showFilterPanel()
+{
+    if (!m_filterPanel) {
+        m_filterPanel = new FilterPanel(m_textDocument);
+        m_filterPanel->setResultsFont(m_textView->font());
+        connect(m_filterPanel, &FilterPanel::lineSelected, this,
+                [this](std::uint64_t line) { goToFilteredLine(line, false); });
+        connect(m_filterPanel, &FilterPanel::lineActivated, this,
+                [this](std::uint64_t line) { goToFilteredLine(line, true); });
+        connect(m_filterPanel, &FilterPanel::closeRequested, this, &DocumentView::closeFilterPanel);
+        connect(m_filterPanel, &FilterPanel::aiSettingsRequested, this, &DocumentView::aiSettingsRequested);
+        connect(m_filterPanel, &FilterPanel::statusMessage, this, &DocumentView::statusMessage);
+        m_documentSplitter->addWidget(m_filterPanel);
+        // Half each: the conditions take some of the panel, and the results need rows.
+        const int height = std::max(m_documentSplitter->height(), 400);
+        m_documentSplitter->setSizes({height / 2, height - height / 2});
+    }
+    m_filterPanel->show();
+    m_filterPanel->focusEditor();
+}
+
+void DocumentView::closeFilterPanel()
+{
+    if (!m_filterPanel)
+        return;
+    const bool hadFocus = m_filterPanel->isAncestorOf(QApplication::focusWidget());
+    m_filterPanel->hide();
+    if (hadFocus)
+        (isTextActive() ? static_cast<QWidget*>(m_textView) : m_hexView)->setFocus();
+}
+
+void DocumentView::goToFilteredLine(std::uint64_t line, bool focus)
+{
+    m_textView->goToLine(line); // the hex view follows the caret
+    if (focus)
+        (isTextActive() ? static_cast<QWidget*>(m_textView) : m_hexView)->setFocus();
 }
 
 void DocumentView::fileChanged()
@@ -791,6 +845,8 @@ void DocumentView::resizeEvent(QResizeEvent* event)
 
 bool DocumentView::eventFilter(QObject* watched, QEvent* event)
 {
+    if (event->type() == QEvent::FontChange && watched == m_textView && m_filterPanel)
+        m_filterPanel->setResultsFont(m_textView->font()); // zoomed: the results follow
     if (event->type() == QEvent::FocusIn && m_viewMode == ViewMode::Split) {
         const bool text = watched == m_textView;
         if (text != m_textFocusedLast) {

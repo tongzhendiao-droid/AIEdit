@@ -3,6 +3,7 @@
 #include "core/FileSource.h"
 #include "core/FileSummary.h"
 #include "core/Offset.h"
+#include "ui/LogFilter.h"
 #include "ui/SearchJob.h"
 #include "ui/TextDecoder.h"
 
@@ -24,6 +25,8 @@ constexpr qsizetype kMaxLineChars = 1000;
 constexpr qsizetype kMaxResultChars = 24000;
 constexpr int kDefaultSearchResults = 20;
 constexpr int kMaxSearchResults = 100;
+constexpr int kDefaultFilterLines = 20;
+constexpr int kMaxFilterLines = 100;
 constexpr qsizetype kSnippetChars = 160;
 constexpr qsizetype kSnippetLead = 40;
 constexpr qsizetype kMaxMarks = 500;
@@ -160,6 +163,54 @@ QJsonArray tools::definitions()
                    property(QStringLiteral("integer"), QStringLiteral("Byte offset to search from, to continue "
                                                                       "after earlier results. Default 0."))}},
                  {QStringLiteral("query")}),
+        function(
+            QStringLiteral("filter_lines"),
+            QStringLiteral("Run a line filter over the whole open text file, on the user's machine, and get how many "
+                           "lines pass and the first of them. Use it to count or collect log lines (errors, slow "
+                           "requests, one user's activity) instead of reading the file. A line passes if it matches "
+                           "the include conditions (all of them, or any with match \"any\") and no exclude "
+                           "condition; regexes are tested against one line at a time and ignore case unless "
+                           "case_sensitive. A condition can also compare a number captured by a named group, e.g. "
+                           "regex \"took (?<ms>\\d+)ms\" with field \"ms\", op \">\" and value 1000."),
+            {{QStringLiteral("conditions"),
+              QJsonObject{
+                  {QStringLiteral("type"), QStringLiteral("array")},
+                  {QStringLiteral("items"),
+                   QJsonObject{
+                       {QStringLiteral("type"), QStringLiteral("object")},
+                       {QStringLiteral("properties"),
+                        QJsonObject{
+                            {QStringLiteral("type"),
+                             QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+                                         {QStringLiteral("enum"),
+                                          QJsonArray{QStringLiteral("include"), QStringLiteral("exclude")}}}},
+                            {QStringLiteral("regex"),
+                             property(QStringLiteral("string"), QStringLiteral("PCRE pattern, found anywhere in "
+                                                                               "the line unless anchored."))},
+                            {QStringLiteral("case_sensitive"),
+                             property(QStringLiteral("boolean"), QStringLiteral("Default false."))},
+                            {QStringLiteral("field"),
+                             property(QStringLiteral("string"), QStringLiteral("A named group of the regex whose "
+                                                                               "number is compared."))},
+                            {QStringLiteral("op"),
+                             QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+                                         {QStringLiteral("enum"),
+                                          QJsonArray{QStringLiteral(">"), QStringLiteral(">="), QStringLiteral("<"),
+                                                     QStringLiteral("<="), QStringLiteral("=="),
+                                                     QStringLiteral("!=")}}}},
+                            {QStringLiteral("value"),
+                             property(QStringLiteral("number"), QStringLiteral("What the number is compared "
+                                                                               "with."))}}},
+                       {QStringLiteral("required"), QJsonArray{QStringLiteral("type"), QStringLiteral("regex")}}}}}},
+             {QStringLiteral("match"),
+              QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+                          {QStringLiteral("enum"), QJsonArray{QStringLiteral("all"), QStringLiteral("any")}},
+                          {QStringLiteral("description"),
+                           QStringLiteral("Whether a line must match all include conditions (default) or any.")}}},
+             {QStringLiteral("max_lines"),
+              property(QStringLiteral("integer"),
+                       QStringLiteral("Lines to list, at most 100. Default 20; 0 only counts."))}},
+            {QStringLiteral("conditions")}),
         function(QStringLiteral("mark_fields"),
                  QStringLiteral("Highlight the fields of a binary structure in the hex view so that the user sees "
                                 "them, with names and meanings on hover. Use it after working out a structure "
@@ -314,6 +365,48 @@ QString tools::search(const ToolTarget& target, const QJsonObject& arguments, co
                       .arg(matches.join(QLatin1Char('\n'))));
 }
 
+QString tools::filterLines(const ToolTarget& target, const QJsonObject& arguments, const std::atomic<bool>& cancelled)
+{
+    QString error;
+    const std::optional<FilterRule> rule = FilterRule::fromJson(arguments, &error);
+    if (!rule)
+        return QStringLiteral("Error: ") + error;
+    const std::size_t maxLines = static_cast<std::size_t>(
+        std::clamp(arguments.value(QStringLiteral("max_lines")).toInt(kDefaultFilterLines), 0, kMaxFilterLines));
+
+    std::uint64_t count = 0;
+    std::vector<FilterMatch> listed;
+    FilterHooks hooks;
+    hooks.cancelled = [&cancelled] { return cancelled.load(); };
+    hooks.found = [&](std::vector<FilterMatch>&& batch) {
+        count += batch.size();
+        for (std::size_t i = 0; i < batch.size() && listed.size() < maxLines; ++i)
+            listed.push_back(batch[i]);
+    };
+    ui::filterLines(*rule, {target.source, target.index, target.codec}, 0, hooks);
+    if (cancelled)
+        return QStringLiteral("Cancelled.");
+
+    QString text = QStringLiteral("%1 of %2 lines pass").arg(count).arg(target.index->lineCount());
+    if (!listed.empty())
+        text += listed.size() < count ? QStringLiteral("; the first %1:").arg(listed.size()) : QStringLiteral(":");
+    const auto data = target.source->bytes();
+    const core::LineIndex& index = *target.index;
+    const TextDecoder decoder(target.codec);
+    for (const FilterMatch& match : listed) {
+        const core::Row row =
+            core::LineIndex::readRow(data, match.start, match.line, false, index.scheme(), index.lineBreak());
+        QString content = decoder.decodePlain(data.subspan(row.start, row.contentEnd - row.start));
+        const bool goesOn = row.end == row.contentEnd && row.end < data.size(); // a very long line
+        if (content.size() > kMaxLineChars || goesOn) {
+            content.truncate(kMaxLineChars);
+            content += QStringLiteral(" …[line truncated]");
+        }
+        text += QStringLiteral("\n%1: %2").arg(match.line + 1).arg(content);
+    }
+    return capped(text);
+}
+
 QString tools::markFields(const ToolTarget& target, const QJsonObject& arguments)
 {
     if (!target.markFields)
@@ -373,12 +466,15 @@ void ToolRunner::run(const ToolCall& call, const ToolTarget& target, std::functi
     }
     const QJsonObject arguments = document.object();
 
-    if (call.name == QLatin1String("search")) {
-        // Searching a big file takes a while; the target owns everything the search reads.
+    if (call.name == QLatin1String("search") || call.name == QLatin1String("filter_lines")) {
+        // These read the whole file, which takes a while; the target owns everything they read.
         m_cancelled = std::make_shared<std::atomic<bool>>(false);
         m_done = std::move(done);
-        m_watcher.setFuture(QtConcurrent::run(
-            [target, arguments, cancelled = m_cancelled] { return tools::search(target, arguments, *cancelled); }));
+        const bool filter = call.name == QLatin1String("filter_lines");
+        m_watcher.setFuture(QtConcurrent::run([target, arguments, filter, cancelled = m_cancelled] {
+            return filter ? tools::filterLines(target, arguments, *cancelled)
+                          : tools::search(target, arguments, *cancelled);
+        }));
         return;
     }
 

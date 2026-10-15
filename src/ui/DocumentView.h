@@ -25,6 +25,7 @@ namespace aiedit::ui {
 struct AiContext;
 struct FieldMark;
 struct SearchContext;
+class FilterPanel;
 class FindBar;
 class HexView;
 class TextDocument;
@@ -63,6 +64,9 @@ public:
     TextView* textView() const { return m_textView; }
     TextDocument* textDocument() const { return m_textDocument; }
     FindBar* findBar() const { return m_findBar; }
+    // The log filter under the document; created when first shown.
+    FilterPanel* filterPanel() const { return m_filterPanel; }
+    bool isFilterPanelVisible() const;
 
     ViewMode viewMode() const { return m_viewMode; }
     void setViewMode(ViewMode mode);
@@ -139,6 +143,8 @@ public slots:
     void replaceCurrent();
     // Replaces every match in the document, as one step to undo.
     void replaceAll();
+    // Shows the panel that filters the lines of the document, and puts the cursor in it.
+    void showFilterPanel();
     // Re-reads the file from disk, keeping the caret, view mode and codec. This also happens on
     // its own, shortly after the file changes.
     bool reload();
@@ -155,6 +161,7 @@ signals:
     void indexProgressed();
     void zoomRequested(int steps);
     void statusMessage(const QString& message);
+    void aiSettingsRequested();
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -167,6 +174,8 @@ private:
     void applySplitSizes();
     void selectMatch(std::uint64_t start, std::uint64_t end);
     void closeFindBar();
+    void closeFilterPanel();
+    void goToFilteredLine(std::uint64_t line, bool focus);
     void fileChanged();
     void moveToEnd();
     void updateEditable();
@@ -178,10 +187,12 @@ private:
     std::shared_ptr<const core::FileSource> m_source;
     core::FileTypeInfo m_fileType;
     TextDocument* m_textDocument = nullptr;
+    QSplitter* m_documentSplitter = nullptr; // the views above, the filter panel below
     QSplitter* m_splitter = nullptr;
     TextView* m_textView = nullptr;
     HexView* m_hexView = nullptr;
     FindBar* m_findBar = nullptr;
+    FilterPanel* m_filterPanel = nullptr;
     std::optional<std::pair<std::uint64_t, std::uint64_t>> m_lastMatch;
     ViewMode m_viewMode = ViewMode::Hex;
     bool m_textFocusedLast = true;

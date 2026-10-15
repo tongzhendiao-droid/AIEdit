@@ -44,6 +44,8 @@ QString fileInfo(const ToolTarget& target);
 QString readBytes(const ToolTarget& target, const QJsonObject& arguments);
 QString readLines(const ToolTarget& target, const QJsonObject& arguments);
 QString search(const ToolTarget& target, const QJsonObject& arguments, const std::atomic<bool>& cancelled);
+// Runs a line filter (see LogFilter) over the whole file: how many lines pass, and the first ones.
+QString filterLines(const ToolTarget& target, const QJsonObject& arguments, const std::atomic<bool>& cancelled);
 QString markFields(const ToolTarget& target, const QJsonObject& arguments);
 
 } // namespace tools
