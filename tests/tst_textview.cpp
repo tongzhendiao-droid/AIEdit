@@ -12,6 +12,7 @@
 #include <QMenu>
 #include <QScrollBar>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -40,6 +41,8 @@ class TestTextView : public QObject
     Q_OBJECT
 
 private slots:
+    // Settings and backups go to a test location, away from the user's own.
+    void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
     void init();
 
     void decodesUtf8WithByteMap();

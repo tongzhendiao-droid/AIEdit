@@ -1,8 +1,11 @@
 #pragma once
 
+#include "ui/BackupStore.h"
 #include "ui/DocumentView.h"
 
+#include <QHash>
 #include <QMainWindow>
+#include <QTimer>
 
 #include <string_view>
 #include <system_error>
@@ -36,8 +39,11 @@ public:
     // Opens the file in a new tab, or switches to its tab if it is already open.
     // On failure the user is told why and false is returned.
     bool openFile(const QString& path);
-    // Opens the files that were open when AIEdit last closed, as they were left.
-    void restoreSession();
+    // Brings back the unsaved changes that windows which have ended left behind, and with
+    // `reopenTabs` also the other files that were open when AIEdit last closed, as they were.
+    void restoreSession(bool reopenTabs = true);
+    // Backs up unsaved changes now rather than shortly, and waits until they are written.
+    void flushBackups();
 
     int documentCount() const;
     DocumentView* document(int index) const;
@@ -71,6 +77,13 @@ private:
     bool saveDocumentAs(DocumentView* doc);
     // Asks what to do with unsaved edits before a document goes away; false to keep it.
     bool confirmClose(DocumentView* doc);
+    // Unsaved changes are backed up shortly after they are made (see BackupStore).
+    void noteBackupChange(DocumentView* doc);
+    void writeBackups();
+    void dropBackup(DocumentView* doc);
+    QJsonObject backupMeta(const DocumentView* doc, int order) const;
+    // A document with the changes of a backup, opened from its file or as a new document.
+    DocumentView* restoreBackup(const BackupStore::Entry& entry, QStringList* changedOnDisk, QStringList* gone);
     void updateDocumentTitle(DocumentView* doc);
     // Recent files: what is remembered of each, most recent first.
     void rememberDocument(const DocumentView* doc);
@@ -174,6 +187,19 @@ private:
     int m_pointSize = 10;
     QString m_lastDirectory;
     QString m_lastGoTo;
+
+    struct BackupInfo
+    {
+        QString id;
+        bool dirty = false;   // changed since the last backup
+        bool written = false; // a backup is on disk
+        // The file when the first unsaved change was made, to tell later changes on disk.
+        qint64 baseSize = -1;
+        qint64 baseModified = 0;
+    };
+    BackupStore m_backups;
+    QTimer m_backupTimer;
+    QHash<const DocumentView*, BackupInfo> m_backupInfo;
 };
 
 } // namespace aiedit::ui

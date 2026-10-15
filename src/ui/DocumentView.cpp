@@ -615,6 +615,11 @@ bool DocumentView::isModified() const
     return m_textDocument->isModified();
 }
 
+void DocumentView::restoreContent(std::span<const std::uint8_t> bytes)
+{
+    m_textDocument->replaceBytes(0, m_textDocument->bytes().size(), bytes);
+}
+
 void DocumentView::updateEditable()
 {
     // Decided when the file is opened or reloaded; edits may then make it larger.

@@ -13,6 +13,7 @@
 #include <QInputMethodEvent>
 #include <QMessageBox>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
@@ -69,6 +70,8 @@ class TestEditing : public QObject
     Q_OBJECT
 
 private slots:
+    // Settings and backups go to a test location, away from the user's own.
+    void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
     void init();
 
     void typingUndoAndRedo();

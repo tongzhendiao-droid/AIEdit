@@ -1120,6 +1120,20 @@
         <translation>无法打开 %1：
 %2</translation>
     </message>
+    <message numerus="yes">
+        <source>Unsaved changes are back in %n document(s)</source>
+        <translation>
+            <numerusform>%n 个文档的未保存修改已恢复</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 changed on disk since; saving writes over that</source>
+        <translation>%1 在磁盘上已被改过；保存会覆盖那些改动</translation>
+    </message>
+    <message>
+        <source>%1 no longer exists; its changes are in a new document</source>
+        <translation>%1 已经不存在；它的修改放在一个新文档里</translation>
+    </message>
     <message>
         <source>%1 no longer exists</source>
         <translation>%1 已经不存在了</translation>

@@ -9,6 +9,7 @@
 #include "ui/TextDocument.h"
 #include "ui/TextView.h"
 
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -48,6 +49,8 @@ class TestReplace : public QObject
     Q_OBJECT
 
 private slots:
+    // Settings and backups go to a test location, away from the user's own.
+    void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
     void init();
 
     void replacesAllAsOneStep();

@@ -28,6 +28,7 @@
 #include <QFontDatabase>
 #include <QIcon>
 #include <QInputDialog>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLocale>
 #include <QMenu>
@@ -35,6 +36,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QStackedWidget>
@@ -42,6 +44,7 @@
 #include <QTabBar>
 #include <QTabWidget>
 #include <QToolButton>
+#include <QUuid>
 
 #include <algorithm>
 
@@ -52,6 +55,9 @@ namespace {
 constexpr int kMinPointSize = 6;
 constexpr int kMaxPointSize = 48;
 constexpr int kStatusTimeoutMs = 4000;
+constexpr int kNoticeTimeoutMs = 15000; // for what should not go unnoticed
+// Unsaved changes are on disk at most this long after they are made.
+constexpr int kBackupDelayMs = 5000;
 constexpr int kBytesPerRowChoices[] = {8, 16, 32};
 
 QString hexOffset(std::uint64_t offset)
@@ -179,6 +185,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     currentTabChanged();
     connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this,
             [this] { updateEditActions(currentDocument()); });
+    m_backupTimer.setSingleShot(true);
+    m_backupTimer.setInterval(kBackupDelayMs);
+    connect(&m_backupTimer, &QTimer::timeout, this, &MainWindow::writeBackups);
 }
 
 MainWindow::~MainWindow() = default;
@@ -677,22 +686,52 @@ void MainWindow::writeSettings() const
 
 void MainWindow::closeEvent(QCloseEvent* event)
 {
+    // Unsaved changes are not asked about: they stay in their backups and come back next time,
+    // as in Notepad++. Only a document whose backup cannot be written gets the question.
+    m_backupTimer.stop();
+    QSet<const DocumentView*> kept;
     for (int i = 0; i < m_tabs->count(); ++i) {
-        if (!confirmClose(document(i))) {
+        DocumentView* doc = document(i);
+        if (!doc->isModified())
+            continue;
+        BackupInfo& backup = m_backupInfo[doc];
+        if (m_backups.writeNow(backup.id, backupMeta(doc, i), doc->textDocument()->bytes())) {
+            backup.written = true;
+            backup.dirty = false;
+            kept.insert(doc);
+            continue;
+        }
+        if (!confirmClose(doc)) {
             event->ignore();
             return;
         }
+        if (backup.written) // an older backup must not bring back what was just given up
+            m_backups.remove(backup.id);
+        backup.written = false;
     }
-    QStringList open;
+
+    // The tabs to reopen, in order; a new document left empty is not among them.
+    QVariantList tabs;
+    int current = -1;
     for (int i = 0; i < m_tabs->count(); ++i) {
-        rememberDocument(document(i));
-        if (!document(i)->isUntitled())
-            open << document(i)->filePath();
+        const DocumentView* doc = document(i);
+        rememberDocument(doc);
+        QVariantMap tab;
+        if (!doc->isUntitled())
+            tab.insert(QStringLiteral("path"), doc->filePath());
+        if (kept.contains(doc))
+            tab.insert(QStringLiteral("backup"), m_backupInfo.value(doc).id);
+        if (tab.isEmpty())
+            continue;
+        if (doc == currentDocument())
+            current = static_cast<int>(tabs.size());
+        tabs << tab;
     }
     QSettings settings;
-    settings.setValue(QStringLiteral("session/open"), open);
-    const DocumentView* current = currentDocument();
-    settings.setValue(QStringLiteral("session/current"), current ? current->filePath() : QString());
+    settings.setValue(QStringLiteral("session/tabs"), tabs);
+    settings.setValue(QStringLiteral("session/currentTab"), current);
+    settings.remove(QStringLiteral("session/open")); // as M5 kept it
+    settings.remove(QStringLiteral("session/current"));
     writeSettings();
     event->accept();
 }
@@ -763,18 +802,219 @@ bool MainWindow::openFile(const QString& path)
     return true;
 }
 
-void MainWindow::restoreSession()
+void MainWindow::restoreSession(bool reopenTabs)
 {
-    const QSettings settings;
-    for (const QString& path : settings.value(QStringLiteral("session/open")).toStringList()) {
-        if (QFileInfo::exists(path)) // files gone since are left out, without asking
-            openFile(path);
+    QList<BackupStore::Entry> orphans = m_backups.takeOrphans();
+    QList<DocumentView*> restored;
+    QStringList changedOnDisk;
+    QStringList gone;
+    const auto bringBack = [&](const BackupStore::Entry& entry) {
+        if (DocumentView* doc = restoreBackup(entry, &changedOnDisk, &gone))
+            restored << doc;
+    };
+
+    int current = -1;
+    if (reopenTabs) {
+        const QSettings settings;
+        QVariantList tabs = settings.value(QStringLiteral("session/tabs")).toList();
+        int currentTab = settings.value(QStringLiteral("session/currentTab"), -1).toInt();
+        if (!settings.contains(QStringLiteral("session/tabs"))) { // as M5 kept it: paths only
+            const QStringList paths = settings.value(QStringLiteral("session/open")).toStringList();
+            for (const QString& path : paths)
+                tabs << QVariantMap{{QStringLiteral("path"), path}};
+            const QString currentPath = settings.value(QStringLiteral("session/current")).toString();
+            currentTab = static_cast<int>(paths.indexOf(currentPath));
+        }
+        for (qsizetype i = 0; i < tabs.size(); ++i) {
+            const QVariantMap tab = tabs[i].toMap();
+            const QString id = tab.value(QStringLiteral("backup")).toString();
+            const QString path = tab.value(QStringLiteral("path")).toString();
+            const auto backup = std::find_if(orphans.begin(), orphans.end(),
+                                             [&id](const BackupStore::Entry& entry) { return entry.id == id; });
+            if (!id.isEmpty() && backup != orphans.end()) {
+                bringBack(*backup);
+                orphans.erase(backup);
+            } else if (!path.isEmpty() && QFileInfo::exists(path)) { // files gone since are left out
+                openFile(path);
+            } else {
+                continue;
+            }
+            if (i == currentTab)
+                current = m_tabs->currentIndex();
+        }
     }
-    const QString current = settings.value(QStringLiteral("session/current")).toString();
+    // Left by a crash, by another window, or by a start with files to open: they come back too.
+    for (const BackupStore::Entry& entry : std::as_const(orphans))
+        bringBack(entry);
+
+    // What came back is backed up here before the old copies go; if that fails, they stay for
+    // another try.
+    bool safe = true;
+    for (DocumentView* doc : std::as_const(restored)) {
+        BackupInfo& backup = m_backupInfo[doc];
+        backup.written = m_backups.writeNow(backup.id, backupMeta(doc, m_tabs->indexOf(doc)),
+                                            doc->textDocument()->bytes());
+        backup.dirty = !backup.written;
+        safe = safe && backup.written;
+    }
+    if (safe)
+        m_backups.discardTaken();
+    if (current >= 0)
+        m_tabs->setCurrentIndex(current);
+
+    QStringList notes;
+    if (!restored.isEmpty())
+        notes << tr("Unsaved changes are back in %n document(s)", "", static_cast<int>(restored.size()));
+    if (!changedOnDisk.isEmpty())
+        notes << tr("%1 changed on disk since; saving writes over that")
+                     .arg(changedOnDisk.join(QStringLiteral(", ")));
+    if (!gone.isEmpty())
+        notes << tr("%1 no longer exists; its changes are in a new document")
+                     .arg(gone.join(QStringLiteral(", ")));
+    if (!notes.isEmpty())
+        statusBar()->showMessage(notes.join(QStringLiteral(". ")), kNoticeTimeoutMs);
+}
+
+DocumentView* MainWindow::restoreBackup(const BackupStore::Entry& entry, QStringList* changedOnDisk,
+                                        QStringList* gone)
+{
+    QFile file(entry.contentPath);
+    if (!file.open(QIODevice::ReadOnly))
+        return nullptr;
+    const QByteArray content = file.readAll();
+    const QJsonObject& meta = entry.meta;
+    const QString path = meta.value(QStringLiteral("path")).toString();
+    const core::TextCodec* codec = core::findCodec(meta.value(QStringLiteral("codec")).toString().toStdString());
+    if (!codec)
+        codec = &core::utf8Codec();
+
+    // The file it was made on, if it is still there and can still be edited here.
+    DocumentView* doc = nullptr;
+    if (!path.isEmpty()) {
+        std::error_code ec;
+        if (std::shared_ptr<const core::FileSource> source = core::FileSource::open(toPath(path), ec)) {
+            auto* candidate = new DocumentView(source, core::detectFileType(source->bytes()), *codec);
+            if (candidate->isEditable())
+                doc = candidate;
+            else
+                delete candidate;
+        }
+    }
+    const qint64 baseSize = meta.value(QStringLiteral("baseSize")).toInteger(-1);
+    const qint64 baseModified = meta.value(QStringLiteral("baseModified")).toInteger();
+    if (doc) {
+        const QFileInfo info(path);
+        if (baseSize >= 0 && (info.size() != baseSize || info.lastModified().toMSecsSinceEpoch() != baseModified))
+            *changedOnDisk << info.fileName();
+    } else {
+        // A new document, or one whose file is gone: its changes go to a new document.
+        std::shared_ptr<const core::FileSource> empty =
+            core::FileSource::fromBytes({}, std::make_shared<const std::vector<std::uint8_t>>());
+        doc = new DocumentView(empty, core::detectFileType(empty->bytes()), *codec);
+        QString title = meta.value(QStringLiteral("title")).toString();
+        if (!path.isEmpty()) {
+            title = QFileInfo(path).fileName();
+            *gone << title;
+        }
+        if (title.isEmpty())
+            title = tr("Untitled %1").arg(++m_untitledCount);
+        // Later new documents count on from the restored ones.
+        const QString pattern = tr("Untitled %1");
+        const qsizetype number = pattern.indexOf(QStringLiteral("%1"));
+        const QRegularExpression untitled(QLatin1Char('^') + QRegularExpression::escape(pattern.left(number)) +
+                                          QStringLiteral("(\\d+)") +
+                                          QRegularExpression::escape(pattern.mid(number + 2)) + QLatin1Char('$'));
+        if (const QRegularExpressionMatch match = untitled.match(title); number >= 0 && match.hasMatch())
+            m_untitledCount = std::max(m_untitledCount, match.captured(1).toInt());
+        doc->setUntitledTitle(title);
+    }
+
+    BackupInfo& backup = m_backupInfo[doc];
+    backup.id = entry.id;
+    if (!doc->isUntitled()) {
+        backup.baseSize = baseSize;
+        backup.baseModified = baseModified;
+    }
+    addDocument(doc);
+    doc->restoreContent({reinterpret_cast<const std::uint8_t*>(content.constData()),
+                         static_cast<std::size_t>(content.size())});
+    if (meta.value(QStringLiteral("codecChosen")).toBool())
+        doc->setCodec(*codec);
+    DocumentView::State state;
+    state.path = doc->filePath();
+    state.cursor = static_cast<std::uint64_t>(meta.value(QStringLiteral("cursor")).toInteger());
+    state.top = static_cast<std::uint64_t>(meta.value(QStringLiteral("top")).toInteger());
+    const int mode = std::clamp(meta.value(QStringLiteral("mode")).toInt(), 0, 2);
+    state.mode = static_cast<DocumentView::ViewMode>(mode);
+    doc->restoreState(state);
+    return doc;
+}
+
+void MainWindow::noteBackupChange(DocumentView* doc)
+{
+    BackupInfo& backup = m_backupInfo[doc];
+    if (!doc->isModified()) {
+        // Saved, undone to what is saved, or reloaded: nothing to keep any more.
+        if (backup.written)
+            m_backups.remove(backup.id);
+        backup.written = false;
+        backup.dirty = false;
+        backup.baseSize = -1;
+        return;
+    }
+    if (backup.baseSize < 0 && !doc->isUntitled()) {
+        const QFileInfo file(doc->filePath());
+        backup.baseSize = file.size();
+        backup.baseModified = file.lastModified().toMSecsSinceEpoch();
+    }
+    backup.dirty = true;
+    if (!m_backupTimer.isActive())
+        m_backupTimer.start(); // not restarted by every keystroke, so typing on does not delay it
+}
+
+void MainWindow::writeBackups()
+{
+    m_backupTimer.stop();
     for (int i = 0; i < m_tabs->count(); ++i) {
-        if (document(i)->filePath() == current)
-            m_tabs->setCurrentIndex(i);
+        DocumentView* doc = document(i);
+        BackupInfo& backup = m_backupInfo[doc];
+        if (!backup.dirty || !doc->isModified())
+            continue;
+        // The snapshot cannot change under the writer: every edit makes a new one.
+        m_backups.write(backup.id, backupMeta(doc, i), doc->textDocument()->source());
+        backup.dirty = false;
+        backup.written = true;
     }
+}
+
+void MainWindow::flushBackups()
+{
+    writeBackups();
+    m_backups.flush();
+}
+
+void MainWindow::dropBackup(DocumentView* doc)
+{
+    // Closed after the question: saved, or the changes were given up.
+    const BackupInfo backup = m_backupInfo.take(doc);
+    if (backup.written)
+        m_backups.remove(backup.id);
+}
+
+QJsonObject MainWindow::backupMeta(const DocumentView* doc, int order) const
+{
+    const DocumentView::State state = doc->state();
+    const BackupInfo backup = m_backupInfo.value(doc);
+    return {{QStringLiteral("path"), doc->isUntitled() ? QString() : doc->filePath()},
+            {QStringLiteral("title"), doc->title()},
+            {QStringLiteral("codec"), QString::fromLatin1(doc->textDocument()->codec().name.data())},
+            {QStringLiteral("codecChosen"), !state.codec.isEmpty()},
+            {QStringLiteral("cursor"), static_cast<qint64>(state.cursor)},
+            {QStringLiteral("top"), static_cast<qint64>(state.top)},
+            {QStringLiteral("mode"), static_cast<int>(state.mode)},
+            {QStringLiteral("baseSize"), backup.baseSize},
+            {QStringLiteral("baseModified"), backup.baseModified},
+            {QStringLiteral("order"), order}};
 }
 
 void MainWindow::rememberDocument(const DocumentView* doc)
@@ -867,6 +1107,11 @@ void MainWindow::addDocument(DocumentView* doc)
                            {m_aiExplainAction, m_aiSummarizeAction, m_aiAskAction, m_aiIdentifyAction});
     connect(doc, &DocumentView::stateChanged, this, [this, doc] { documentStateChanged(doc); });
     connect(doc, &DocumentView::modificationChanged, this, [this, doc] { updateDocumentTitle(doc); });
+    BackupInfo& backup = m_backupInfo[doc];
+    if (backup.id.isEmpty())
+        backup.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    connect(doc, &DocumentView::modificationChanged, this, [this, doc] { noteBackupChange(doc); });
+    connect(doc, &DocumentView::sourceChanged, this, [this, doc] { noteBackupChange(doc); });
     connect(doc, &DocumentView::pathChanged, this, [this, doc] {
         updateDocumentTitle(doc);
         if (doc == currentDocument()) {
@@ -909,6 +1154,7 @@ void MainWindow::closeTab(int index)
     if (!widget || !confirmClose(document(index)))
         return;
     rememberDocument(document(index));
+    dropBackup(document(index));
     m_tabs->removeTab(index);
     widget->deleteLater();
     if (m_tabs->count() == 0)
@@ -931,8 +1177,11 @@ bool MainWindow::saveDocument(DocumentView* doc)
 
 bool MainWindow::saveDocumentAs(DocumentView* doc)
 {
-    const QString suggestion =
-        doc->isUntitled() ? QDir(m_lastDirectory).filePath(doc->title() + QStringLiteral(".txt")) : doc->filePath();
+    // A new document is named after its title; one recovered from a file that is gone has
+    // the file's name, extension included.
+    const QString title = doc->title();
+    const QString name = title.contains(QLatin1Char('.')) ? title : title + QStringLiteral(".txt");
+    const QString suggestion = doc->isUntitled() ? QDir(m_lastDirectory).filePath(name) : doc->filePath();
     const QString path = QFileDialog::getSaveFileName(this, tr("Save As"), suggestion);
     if (path.isEmpty())
         return false;

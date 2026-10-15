@@ -92,6 +92,9 @@ public:
 
     bool isEditable() const;
     bool isModified() const;
+    // Replaces the whole text with bytes kept from an earlier session, as one edit: undoing it
+    // goes back to the file as it is on disk.
+    void restoreContent(std::span<const std::uint8_t> bytes);
     // Writes the document to its file, or to another (which it then shows). False, with the
     // reason in `error`, if that failed.
     bool save(QString* error = nullptr);

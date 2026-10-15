@@ -3,6 +3,7 @@ qt_add_library(aiedit_ui STATIC
     AiSettings.cpp AiSettings.h
     AiSettingsDialog.cpp AiSettingsDialog.h
     AiTools.cpp AiTools.h
+    BackupStore.cpp BackupStore.h
     ChatClient.cpp ChatClient.h
     DataInspector.cpp DataInspector.h
     DocumentView.cpp DocumentView.h
