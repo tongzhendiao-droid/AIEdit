@@ -793,6 +793,125 @@
     </message>
 </context>
 <context>
+    <name>aiedit::ui::FindInFilesPanel</name>
+    <message>
+        <source>not %1</source>
+        <translation>不含 %1</translation>
+    </message>
+    <message>
+        <source> or </source>
+        <translation> 或 </translation>
+    </message>
+    <message>
+        <source>What to find in the files</source>
+        <translation>要在文件里找什么</translation>
+    </message>
+    <message>
+        <source>Text</source>
+        <translation>文本</translation>
+    </message>
+    <message>
+        <source>Regex</source>
+        <translation>正则</translation>
+    </message>
+    <message>
+        <source>Filter Rule</source>
+        <translation>过滤规则</translation>
+    </message>
+    <message>
+        <source>The rule the filter panel ran last (Edit &gt; Filter Lines)</source>
+        <translation>过滤面板最近一次运行的规则（编辑 &gt; 过滤行）</translation>
+    </message>
+    <message>
+        <source>Match case</source>
+        <translation>区分大小写</translation>
+    </message>
+    <message>
+        <source>The folder to search in</source>
+        <translation>要查找的文件夹</translation>
+    </message>
+    <message>
+        <source>Choose the folder</source>
+        <translation>选择文件夹</translation>
+    </message>
+    <message>
+        <source>Which files, e.g. *.log; *.txt (all if empty)</source>
+        <translation>哪些文件，如 *.log; *.txt（空着表示全部）</translation>
+    </message>
+    <message>
+        <source>Subfolders</source>
+        <translation>包括子文件夹</translation>
+    </message>
+    <message>
+        <source>Find:</source>
+        <translation>查找：</translation>
+    </message>
+    <message>
+        <source>In:</source>
+        <translation>位置：</translation>
+    </message>
+    <message numerus="yes">
+        <source>Searching… %n file(s) so far</source>
+        <translation>
+            <numerusform>正在查找… 已查 %n 个文件</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>No filter rule yet: run one in Edit &gt; Filter Lines</source>
+        <translation>还没有过滤规则：先在「编辑 &gt; 过滤行」里运行一条</translation>
+    </message>
+    <message>
+        <source>Search in Folder</source>
+        <translation>在文件夹里查找</translation>
+    </message>
+    <message>
+        <source>Choose a folder to search in</source>
+        <translation>请选择要查找的文件夹</translation>
+    </message>
+    <message>
+        <source>There is no filter rule yet: run one in Edit &gt; Filter Lines first</source>
+        <translation>还没有过滤规则：请先在「编辑 &gt; 过滤行」里运行一条</translation>
+    </message>
+    <message>
+        <source>Type what to find</source>
+        <translation>请输入要查找的内容</translation>
+    </message>
+    <message>
+        <source>Searching…</source>
+        <translation>正在查找…</translation>
+    </message>
+    <message numerus="yes">
+        <source>Stopped: %1 matches in %n file(s)</source>
+        <translation>
+            <numerusform>已停止：在 %n 个文件里找到 %1 处</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>No matches in %n file(s)</source>
+        <translation>
+            <numerusform>查了 %n 个文件，没有找到</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Showing the first %1 matches; narrow the search to see the rest</source>
+        <translation>只显示前 %1 处；缩小查找范围才能看到其余的</translation>
+    </message>
+    <message numerus="yes">
+        <source>%1 matches in %2 of %n file(s)</source>
+        <translation>
+            <numerusform>查了 %n 个文件，其中 %2 个里共找到 %1 处</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>停止</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation>查找</translation>
+    </message>
+</context>
+<context>
     <name>aiedit::ui::HexView</name>
     <message numerus="yes">
         <source>%n byte(s)</source>
@@ -872,6 +991,10 @@
     <message>
         <source>AI Assistant</source>
         <translation>AI 助手</translation>
+    </message>
+    <message>
+        <source>Find in Files</source>
+        <translation>在文件夹里查找</translation>
     </message>
     <message>
         <source>Text encoding. Click to read the file in another encoding, or to save it in one.</source>
@@ -1044,6 +1167,14 @@
     <message>
         <source>Show only the lines that match a rule, written by hand or by the AI</source>
         <translation>只显示符合规则的行；规则可以手写，也可以让 AI 写</translation>
+    </message>
+    <message>
+        <source>Find in F&amp;iles…</source>
+        <translation>在文件夹里查找(&amp;I)…</translation>
+    </message>
+    <message>
+        <source>Search every file in a folder, such as all the logs of a program</source>
+        <translation>在一个文件夹的所有文件里查找，比如一个程序的全部日志</translation>
     </message>
     <message>
         <source>Find Pre&amp;vious</source>

@@ -8,10 +8,12 @@ qt_add_library(aiedit_ui STATIC
     DataInspector.cpp DataInspector.h
     DocumentView.cpp DocumentView.h
     FieldMark.h
+    FileSearch.cpp FileSearch.h
     FilterPanel.cpp FilterPanel.h
     FilterResultsView.cpp FilterResultsView.h
     FilterRuleWriter.cpp FilterRuleWriter.h
     FindBar.cpp FindBar.h
+    FindInFilesPanel.cpp FindInFilesPanel.h
     HexView.cpp HexView.h
     LineOperations.cpp LineOperations.h
     LogFilter.cpp LogFilter.h

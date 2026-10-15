@@ -7,6 +7,7 @@
 #include "ui/AiPanel.h"
 #include "ui/AiSettingsDialog.h"
 #include "ui/DataInspector.h"
+#include "ui/FindInFilesPanel.h"
 #include "ui/HexView.h"
 #include "ui/Paths.h"
 #include "ui/SyntaxHighlighting.h"
@@ -269,6 +270,15 @@ void MainWindow::createWidgets()
     tabifyDockWidget(m_inspectorDock, m_aiDock);
     m_aiDock->raise();
 
+    m_findInFiles = new FindInFilesPanel;
+    m_findInFiles->setLegacyCodec(preferredLegacyCodec());
+    connect(m_findInFiles, &FindInFilesPanel::openRequested, this, &MainWindow::openAtLine);
+    m_findInFilesDock = new QDockWidget(tr("Find in Files"), this);
+    m_findInFilesDock->setObjectName(QStringLiteral("findInFilesDock"));
+    m_findInFilesDock->setWidget(m_findInFiles);
+    addDockWidget(Qt::BottomDockWidgetArea, m_findInFilesDock);
+    m_findInFilesDock->hide();
+
     m_typeLabel = new QLabel;
     m_sizeLabel = new QLabel;
     m_codecButton = new QToolButton;
@@ -358,7 +368,8 @@ void MainWindow::createActions()
 
     m_followAction = new QAction(tr("&Follow End of File"), this);
     m_followAction->setCheckable(true);
-    m_followAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
+    // T for tail -f; Ctrl+Shift+F is Find in Files, as in most editors.
+    m_followAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T));
     m_followAction->setToolTip(tr("Keep showing the end of the file as it grows, like tail -f"));
     connect(m_followAction, &QAction::toggled, this, [this](bool on) {
         if (DocumentView* doc = currentDocument())
@@ -454,6 +465,10 @@ void MainWindow::createActions()
         if (DocumentView* doc = currentDocument())
             doc->showFilterPanel();
     });
+    m_findInFilesAction = new QAction(tr("Find in F&iles…"), this);
+    m_findInFilesAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
+    m_findInFilesAction->setToolTip(tr("Search every file in a folder, such as all the logs of a program"));
+    connect(m_findInFilesAction, &QAction::triggered, this, &MainWindow::showFindInFiles);
     m_findPreviousAction = new QAction(tr("Find Pre&vious"), this);
     m_findPreviousAction->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F3));
     connect(m_findPreviousAction, &QAction::triggered, this, [this] {
@@ -568,6 +583,7 @@ void MainWindow::createMenus()
     edit->addAction(m_findNextAction);
     edit->addAction(m_findPreviousAction);
     edit->addAction(m_replaceAction);
+    edit->addAction(m_findInFilesAction);
     edit->addAction(m_filterAction);
     edit->addAction(m_goToAction);
 
@@ -1559,6 +1575,45 @@ void MainWindow::showAiSettings()
         return;
     dialog.settings().save();
     m_aiPanel->settingsChanged();
+}
+
+void MainWindow::showFindInFiles()
+{
+    if (!m_findInFilesDock->isVisible()) {
+        // Where the file being read is, and what is selected in it, as a start.
+        if (const DocumentView* doc = currentDocument()) {
+            if (!doc->isUntitled())
+                m_findInFiles->setFolder(QFileInfo(doc->filePath()).absolutePath());
+            if (doc->isTextActive()) {
+                const QString selected = doc->textView()->selectedText();
+                if (!selected.isEmpty() && selected.size() <= 256 && !selected.contains(QLatin1Char('\n')))
+                    m_findInFiles->setQuery(selected);
+            }
+        }
+        if (m_findInFiles->folder().isEmpty())
+            m_findInFiles->setFolder(m_lastDirectory);
+    }
+    m_findInFilesDock->show();
+    m_findInFilesDock->raise();
+    m_findInFiles->focusQuery();
+}
+
+void MainWindow::openAtLine(const QString& path, std::uint64_t line, std::uint64_t offset)
+{
+    if (!openFile(path))
+        return;
+    DocumentView* doc = currentDocument();
+    if (doc->viewMode() == DocumentView::ViewMode::Hex)
+        doc->setViewMode(DocumentView::ViewMode::Text);
+    // In a large file still being indexed, the line may not be there yet: then its offset is,
+    // and the document goes there once it is indexed.
+    if (!doc->textView()->goToLine(line)) {
+        DocumentView::State state = doc->state();
+        state.cursor = offset;
+        state.top = offset;
+        doc->restoreState(state);
+    }
+    doc->textView()->setFocus();
 }
 
 void MainWindow::showAbout()

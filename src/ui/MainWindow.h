@@ -27,6 +27,7 @@ namespace aiedit::ui {
 
 class AiPanel;
 class DataInspector;
+class FindInFilesPanel;
 
 class MainWindow : public QMainWindow
 {
@@ -109,6 +110,10 @@ private:
     void showAbout();
     void showAiSettings();
     void runAiAction(void (AiPanel::*action)());
+    // Find in Files, in the current document's folder at first.
+    void showFindInFiles();
+    // Opens a result of Find in Files at its line.
+    void openAtLine(const QString& path, std::uint64_t line, std::uint64_t offset);
 
     void documentStateChanged(DocumentView* doc);
     // What the Edit menu can do now: copying needs a selection, pasting text on the clipboard.
@@ -127,6 +132,8 @@ private:
     DataInspector* m_inspector = nullptr;
     QDockWidget* m_aiDock = nullptr;
     AiPanel* m_aiPanel = nullptr;
+    QDockWidget* m_findInFilesDock = nullptr;
+    FindInFilesPanel* m_findInFiles = nullptr;
 
     QLabel* m_typeLabel = nullptr;
     QLabel* m_sizeLabel = nullptr;
@@ -162,6 +169,7 @@ private:
     QAction* m_findPreviousAction = nullptr;
     QAction* m_replaceAction = nullptr;
     QAction* m_filterAction = nullptr;
+    QAction* m_findInFilesAction = nullptr;
     QList<QAction*> m_lineActions; // sorting and cleaning, then moving and copying
     QAction* m_nextTabAction = nullptr;
     QAction* m_previousTabAction = nullptr;
