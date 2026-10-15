@@ -454,6 +454,46 @@
         <source>bytes 0x%1–0x%2 (%3 bytes)</source>
         <translation>字节 0x%1–0x%2（%3 字节）</translation>
     </message>
+    <message numerus="yes">
+        <source>Sorted %n line(s)</source>
+        <translation>
+            <numerusform>已排序 %n 行</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>The lines are in order already</source>
+        <translation>这些行已经是排好序的</translation>
+    </message>
+    <message numerus="yes">
+        <source>Removed %n duplicate line(s)</source>
+        <translation>
+            <numerusform>删除了 %n 个重复行</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>No line appears twice</source>
+        <translation>没有重复的行</translation>
+    </message>
+    <message numerus="yes">
+        <source>Removed %n empty line(s)</source>
+        <translation>
+            <numerusform>删除了 %n 个空行</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>No empty lines</source>
+        <translation>没有空行</translation>
+    </message>
+    <message numerus="yes">
+        <source>Trimmed %n line(s)</source>
+        <translation>
+            <numerusform>去掉了 %n 行的行尾空白</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>No line ends in spaces or tabs</source>
+        <translation>没有以空格或制表符结尾的行</translation>
+    </message>
     <message>
         <source>Binary files can only be viewed here</source>
         <translation>二进制文件只能查看，不能在这里编辑</translation>
@@ -939,6 +979,38 @@
         <translation>全选(&amp;A)</translation>
     </message>
     <message>
+        <source>Sort &amp;Ascending</source>
+        <translation>升序排序(&amp;A)</translation>
+    </message>
+    <message>
+        <source>Sort &amp;Descending</source>
+        <translation>降序排序(&amp;D)</translation>
+    </message>
+    <message>
+        <source>Remove D&amp;uplicate Lines</source>
+        <translation>删除重复行(&amp;U)</translation>
+    </message>
+    <message>
+        <source>Remove &amp;Empty Lines</source>
+        <translation>删除空行(&amp;E)</translation>
+    </message>
+    <message>
+        <source>&amp;Trim Trailing Whitespace</source>
+        <translation>删除行尾空白(&amp;T)</translation>
+    </message>
+    <message>
+        <source>Move Line U&amp;p</source>
+        <translation>上移行(&amp;P)</translation>
+    </message>
+    <message>
+        <source>Move Line Do&amp;wn</source>
+        <translation>下移行(&amp;W)</translation>
+    </message>
+    <message>
+        <source>Dup&amp;licate Line</source>
+        <translation>复制行(&amp;L)</translation>
+    </message>
+    <message>
         <source>&amp;Go To…</source>
         <translation>转到(&amp;G)…</translation>
     </message>
@@ -1045,6 +1117,10 @@
     <message>
         <source>&amp;Edit</source>
         <translation>编辑(&amp;E)</translation>
+    </message>
+    <message>
+        <source>Line Operation&amp;s</source>
+        <translation>行操作(&amp;S)</translation>
     </message>
     <message>
         <source>&amp;View</source>

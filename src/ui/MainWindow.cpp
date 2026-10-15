@@ -410,6 +410,18 @@ void MainWindow::createActions()
     m_copyOffsetAction = documentAction(tr("Copy &Offset"), [](DocumentView* doc) { doc->hexView()->copyOffset(); });
     m_selectAllAction =
         documentAction(tr("Select &All"), [](DocumentView* doc) { doc->selectAll(); }, QKeySequence::SelectAll);
+    const auto lineAction = [&](const QString& text, LineOperation operation, const QKeySequence& shortcut = {}) {
+        m_lineActions << documentAction(
+            text, [operation](DocumentView* doc) { doc->applyLineOperation(operation); }, shortcut);
+    };
+    lineAction(tr("Sort &Ascending"), LineOperation::SortAscending);
+    lineAction(tr("Sort &Descending"), LineOperation::SortDescending);
+    lineAction(tr("Remove D&uplicate Lines"), LineOperation::RemoveDuplicates);
+    lineAction(tr("Remove &Empty Lines"), LineOperation::RemoveEmpty);
+    lineAction(tr("&Trim Trailing Whitespace"), LineOperation::TrimTrailingWhitespace);
+    lineAction(tr("Move Line U&p"), LineOperation::MoveUp, QKeySequence(Qt::ALT | Qt::Key_Up));
+    lineAction(tr("Move Line Do&wn"), LineOperation::MoveDown, QKeySequence(Qt::ALT | Qt::Key_Down));
+    lineAction(tr("Dup&licate Line"), LineOperation::Duplicate, QKeySequence(Qt::CTRL | Qt::Key_D));
 
     m_goToAction = new QAction(tr("&Go To…"), this);
     m_goToAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
@@ -542,6 +554,11 @@ void MainWindow::createMenus()
     edit->addAction(m_copyOffsetAction);
     edit->addSeparator();
     edit->addAction(m_selectAllAction);
+    // On the selected lines, or on all of them.
+    QMenu* lines = edit->addMenu(tr("Line Operation&s"));
+    lines->addActions(m_lineActions.first(5));
+    lines->addSeparator();
+    lines->addActions(m_lineActions.sliced(5));
     edit->addSeparator();
     edit->addAction(m_findAction);
     edit->addAction(m_findNextAction);
@@ -1277,6 +1294,8 @@ void MainWindow::updateEditActions(DocumentView* doc)
     m_redoAction->setEnabled(editing && doc->textDocument()->canRedo());
     m_cutAction->setEnabled(editing && doc->textView()->hasSelection());
     m_pasteAction->setEnabled(editing && clipboard && clipboard->hasText());
+    for (QAction* action : std::as_const(m_lineActions))
+        action->setEnabled(editing);
 }
 
 void MainWindow::updateActions()

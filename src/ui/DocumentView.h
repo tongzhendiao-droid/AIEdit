@@ -2,6 +2,7 @@
 
 #include "core/FileType.h"
 #include "core/TextCodec.h"
+#include "ui/LineOperations.h"
 
 #include <QFileSystemWatcher>
 #include <QTimer>
@@ -95,6 +96,10 @@ public:
     // Replaces the whole text with bytes kept from an earlier session, as one edit: undoing it
     // goes back to the file as it is on disk.
     void restoreContent(std::span<const std::uint8_t> bytes);
+    // Sorts, cleans, moves or copies the selected lines as one edit. Without a selection, sorting
+    // and cleaning take the whole document, moving and copying the caret's line. False if it
+    // changed nothing; either way the status bar hears what happened.
+    bool applyLineOperation(LineOperation operation);
     // Writes the document to its file, or to another (which it then shows). False, with the
     // reason in `error`, if that failed.
     bool save(QString* error = nullptr);

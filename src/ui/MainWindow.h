@@ -158,6 +158,7 @@ private:
     QAction* m_findPreviousAction = nullptr;
     QAction* m_replaceAction = nullptr;
     QAction* m_filterAction = nullptr;
+    QList<QAction*> m_lineActions; // sorting and cleaning, then moving and copying
     QAction* m_nextTabAction = nullptr;
     QAction* m_previousTabAction = nullptr;
     QActionGroup* m_viewModeGroup = nullptr;

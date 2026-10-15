@@ -13,6 +13,7 @@ qt_add_library(aiedit_ui STATIC
     FilterRuleWriter.cpp FilterRuleWriter.h
     FindBar.cpp FindBar.h
     HexView.cpp HexView.h
+    LineOperations.cpp LineOperations.h
     LogFilter.cpp LogFilter.h
     MainWindow.cpp MainWindow.h
     Paths.h
