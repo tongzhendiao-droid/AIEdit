@@ -67,6 +67,10 @@ public:
 
     // The first visible row; with word wrap on, the row in which the first line on screen starts.
     std::uint64_t topRow() const { return m_rows.topRow(); }
+    // Where the first line on screen starts, and scrolling so that the line holding an offset is
+    // the first one (to come back to a reading position).
+    std::uint64_t firstVisibleOffset() const;
+    void scrollToOffset(std::uint64_t offset);
     // Lines that fit on screen.
     int visibleRows() const;
     // Read-only by default. `reason` is what the status bar says when typing is refused.

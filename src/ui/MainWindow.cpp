@@ -99,6 +99,31 @@ QString lineEndingName(const core::LineEndings& endings)
     return QStringLiteral("LF");
 }
 
+// How many files are remembered, and how many of them the File menu lists.
+constexpr qsizetype kMaxRememberedFiles = 50;
+constexpr qsizetype kRecentFilesInMenu = 10;
+
+QVariantMap toVariant(const DocumentView::State& state)
+{
+    return {{QStringLiteral("path"), state.path},
+            {QStringLiteral("cursor"), static_cast<qulonglong>(state.cursor)},
+            {QStringLiteral("top"), static_cast<qulonglong>(state.top)},
+            {QStringLiteral("mode"), static_cast<int>(state.mode)},
+            {QStringLiteral("codec"), state.codec}};
+}
+
+DocumentView::State stateFromVariant(const QVariant& value)
+{
+    const QVariantMap map = value.toMap();
+    DocumentView::State state;
+    state.path = map.value(QStringLiteral("path")).toString();
+    state.cursor = map.value(QStringLiteral("cursor")).toULongLong();
+    state.top = map.value(QStringLiteral("top")).toULongLong();
+    state.mode = static_cast<DocumentView::ViewMode>(std::clamp(map.value(QStringLiteral("mode")).toInt(), 0, 2));
+    state.codec = map.value(QStringLiteral("codec")).toString();
+    return state;
+}
+
 } // namespace
 
 std::string_view MainWindow::preferredLegacyCodec()
@@ -479,6 +504,8 @@ void MainWindow::createMenus()
     QMenu* file = menuBar()->addMenu(tr("&File"));
     file->addAction(m_newAction);
     file->addAction(m_openAction);
+    m_recentMenu = file->addMenu(tr("Recen&t Files"));
+    connect(m_recentMenu, &QMenu::aboutToShow, this, &MainWindow::populateRecentMenu);
     file->addAction(m_saveAction);
     file->addAction(m_saveAsAction);
     file->addAction(m_reloadAction);
@@ -621,6 +648,11 @@ void MainWindow::readSettings()
     m_inspector->setBigEndian(settings.value(QStringLiteral("inspector/bigEndian"), false).toBool());
     setBytesPerRow(settings.value(QStringLiteral("view/bytesPerRow"), 16).toInt());
     setWordWrap(settings.value(QStringLiteral("view/wordWrap"), true).toBool());
+    for (const QVariant& value : settings.value(QStringLiteral("files/recent")).toList()) {
+        DocumentView::State state = stateFromVariant(value);
+        if (!state.path.isEmpty())
+            m_recentFiles.append(std::move(state));
+    }
 }
 
 void MainWindow::writeSettings() const
@@ -643,6 +675,16 @@ void MainWindow::closeEvent(QCloseEvent* event)
             return;
         }
     }
+    QStringList open;
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        rememberDocument(document(i));
+        if (!document(i)->isUntitled())
+            open << document(i)->filePath();
+    }
+    QSettings settings;
+    settings.setValue(QStringLiteral("session/open"), open);
+    const DocumentView* current = currentDocument();
+    settings.setValue(QStringLiteral("session/current"), current ? current->filePath() : QString());
     writeSettings();
     event->accept();
 }
@@ -700,9 +742,105 @@ bool MainWindow::openFile(const QString& path)
 
     const core::FileTypeInfo type = core::detectFileType(source->bytes());
     const core::TextCodec& codec = core::defaultCodec(type, source->bytes(), preferredLegacyCodec());
-    addDocument(new DocumentView(source, type, codec));
+    auto* doc = new DocumentView(source, type, codec);
+    addDocument(doc);
+    for (const DocumentView::State& state : std::as_const(m_recentFiles)) {
+        if (state.path == doc->filePath()) {
+            doc->restoreState(state);
+            break;
+        }
+    }
+    moveToFrontOfRecent(doc->filePath());
     m_lastDirectory = QFileInfo(filePath).absolutePath();
     return true;
+}
+
+void MainWindow::restoreSession()
+{
+    const QSettings settings;
+    for (const QString& path : settings.value(QStringLiteral("session/open")).toStringList()) {
+        if (QFileInfo::exists(path)) // files gone since are left out, without asking
+            openFile(path);
+    }
+    const QString current = settings.value(QStringLiteral("session/current")).toString();
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        if (document(i)->filePath() == current)
+            m_tabs->setCurrentIndex(i);
+    }
+}
+
+void MainWindow::rememberDocument(const DocumentView* doc)
+{
+    if (!doc || doc->isUntitled())
+        return;
+    const DocumentView::State state = doc->state();
+    m_recentFiles.removeIf([&state](const DocumentView::State& s) { return s.path == state.path; });
+    m_recentFiles.prepend(state);
+    if (m_recentFiles.size() > kMaxRememberedFiles)
+        m_recentFiles.resize(kMaxRememberedFiles);
+    saveRecentFiles();
+}
+
+void MainWindow::moveToFrontOfRecent(const QString& path)
+{
+    DocumentView::State state;
+    state.path = path;
+    for (qsizetype i = 0; i < m_recentFiles.size(); ++i) {
+        if (m_recentFiles[i].path == path) {
+            state = m_recentFiles.takeAt(i);
+            break;
+        }
+    }
+    m_recentFiles.prepend(state);
+    if (m_recentFiles.size() > kMaxRememberedFiles)
+        m_recentFiles.resize(kMaxRememberedFiles);
+    saveRecentFiles();
+}
+
+void MainWindow::saveRecentFiles() const
+{
+    QVariantList list;
+    for (const DocumentView::State& state : m_recentFiles)
+        list << toVariant(state);
+    QSettings().setValue(QStringLiteral("files/recent"), list);
+}
+
+void MainWindow::populateRecentMenu()
+{
+    m_recentMenu->clear();
+    const QString home = QDir::homePath();
+    for (qsizetype i = 0; i < std::min(m_recentFiles.size(), kRecentFilesInMenu); ++i) {
+        const QString path = m_recentFiles[i].path;
+        const QFileInfo info(path);
+        QString folder = QDir::toNativeSeparators(info.absolutePath());
+        if (folder.startsWith(QDir::toNativeSeparators(home)))
+            folder.replace(0, QDir::toNativeSeparators(home).size(), QStringLiteral("~"));
+        // 1 to 9, then 0, as the keys to pick them.
+        const QString key = i < 9 ? QString::number(i + 1) : QStringLiteral("0");
+        QString name = info.fileName();
+        name.replace(QLatin1Char('&'), QStringLiteral("&&"));
+        QAction* action = m_recentMenu->addAction(QStringLiteral("&%1  %2  (%3)").arg(key, name, folder));
+        action->setToolTip(QDir::toNativeSeparators(path));
+        connect(action, &QAction::triggered, this, [this, path] {
+            if (!QFileInfo::exists(path)) {
+                m_recentFiles.removeIf([&path](const DocumentView::State& s) { return s.path == path; });
+                saveRecentFiles();
+                statusBar()->showMessage(tr("%1 no longer exists").arg(QDir::toNativeSeparators(path)),
+                                         kStatusTimeoutMs);
+                return;
+            }
+            openFile(path);
+        });
+    }
+    if (m_recentFiles.isEmpty()) {
+        m_recentMenu->addAction(tr("No Recent Files"))->setEnabled(false);
+        return;
+    }
+    m_recentMenu->addSeparator();
+    m_recentMenu->addAction(tr("&Clear List"), this, [this] {
+        m_recentFiles.clear();
+        saveRecentFiles();
+    });
 }
 
 void MainWindow::newDocument()
@@ -761,6 +899,7 @@ void MainWindow::closeTab(int index)
     QWidget* widget = m_tabs->widget(index);
     if (!widget || !confirmClose(document(index)))
         return;
+    rememberDocument(document(index));
     m_tabs->removeTab(index);
     widget->deleteLater();
     if (m_tabs->count() == 0)
@@ -795,6 +934,7 @@ bool MainWindow::saveDocumentAs(DocumentView* doc)
         return false;
     }
     m_lastDirectory = QFileInfo(path).absolutePath();
+    moveToFrontOfRecent(doc->filePath());
     statusBar()->showMessage(tr("Saved %1").arg(QFileInfo(path).fileName()), kStatusTimeoutMs);
     return true;
 }

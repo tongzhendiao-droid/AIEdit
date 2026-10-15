@@ -825,6 +825,10 @@
         <translation>文件(&amp;F)</translation>
     </message>
     <message>
+        <source>Recen&amp;t Files</source>
+        <translation>最近打开(&amp;T)</translation>
+    </message>
+    <message>
         <source>&amp;Edit</source>
         <translation>编辑(&amp;E)</translation>
     </message>
@@ -901,6 +905,18 @@
 %2</source>
         <translation>无法打开 %1：
 %2</translation>
+    </message>
+    <message>
+        <source>%1 no longer exists</source>
+        <translation>%1 已经不存在了</translation>
+    </message>
+    <message>
+        <source>No Recent Files</source>
+        <translation>没有最近打开的文件</translation>
+    </message>
+    <message>
+        <source>&amp;Clear List</source>
+        <translation>清除列表(&amp;C)</translation>
     </message>
     <message>
         <source>Untitled %1</source>

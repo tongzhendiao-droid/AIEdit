@@ -36,6 +36,8 @@ public:
     // Opens the file in a new tab, or switches to its tab if it is already open.
     // On failure the user is told why and false is returned.
     bool openFile(const QString& path);
+    // Opens the files that were open when AIEdit last closed, as they were left.
+    void restoreSession();
 
     int documentCount() const;
     DocumentView* document(int index) const;
@@ -70,6 +72,11 @@ private:
     // Asks what to do with unsaved edits before a document goes away; false to keep it.
     bool confirmClose(DocumentView* doc);
     void updateDocumentTitle(DocumentView* doc);
+    // Recent files: what is remembered of each, most recent first.
+    void rememberDocument(const DocumentView* doc);
+    void moveToFrontOfRecent(const QString& path);
+    void saveRecentFiles() const;
+    void populateRecentMenu();
     void currentTabChanged();
     void goTo();
     void setViewMode(DocumentView::ViewMode mode);
@@ -159,6 +166,8 @@ private:
 
     int m_bytesPerRow = 16;
     int m_untitledCount = 0;
+    QList<DocumentView::State> m_recentFiles;
+    QMenu* m_recentMenu = nullptr;
     bool m_wordWrap = true;
     int m_defaultPointSize = 10;
     int m_pointSize = 10;

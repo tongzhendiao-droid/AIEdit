@@ -232,8 +232,48 @@ void DocumentView::setContextActions(const QList<QAction*>& textActions, const Q
 
 void DocumentView::setCodec(const core::TextCodec& codec)
 {
+    m_codecChosen = true;
     m_textDocument->setCodec(codec);
     emit stateChanged();
+}
+
+DocumentView::State DocumentView::state() const
+{
+    if (m_pendingState)
+        return *m_pendingState; // not even there yet
+    State state;
+    state.path = filePath();
+    state.cursor = cursorOffset();
+    state.top = m_textView->firstVisibleOffset();
+    state.mode = m_viewMode;
+    if (m_codecChosen)
+        state.codec = QString::fromLatin1(m_textDocument->codec().name.data());
+    return state;
+}
+
+void DocumentView::restoreState(const State& state)
+{
+    if (const core::TextCodec* codec = core::findCodec(state.codec.toStdString());
+        codec && codec->name != m_textDocument->codec().name)
+        setCodec(*codec);
+    setViewMode(state.mode);
+    const auto apply = [this, state] {
+        m_pendingState.reset();
+        if (isTextActive()) {
+            m_textView->setCursorOffset(state.cursor);
+            m_textView->scrollToOffset(state.top);
+        } else {
+            m_hexView->setCursorOffset(std::min(state.cursor, m_source->size() > 0 ? m_source->size() - 1 : 0));
+        }
+    };
+    // In a large file still being indexed, wait until the index gets there.
+    const core::LineIndex& index = m_textDocument->index();
+    if (index.isComplete() || std::max(state.cursor, state.top) < index.indexedBytes()) {
+        apply();
+    } else {
+        m_pendingState = state;
+        connect(m_textDocument, &TextDocument::indexFinished, this, apply, Qt::SingleShotConnection);
+    }
 }
 
 void DocumentView::showFindBar(bool replace)
@@ -658,6 +698,7 @@ DocumentView::Conversion DocumentView::saveWithCodec(const core::TextCodec& code
                     error))
         return Conversion::Failed;
 
+    m_codecChosen = true;
     // Show the file as written, in its new codec; the undo history goes with the old bytes.
     std::error_code ec;
     std::shared_ptr<const core::FileSource> source = core::FileSource::open(toPath(filePath()), ec);

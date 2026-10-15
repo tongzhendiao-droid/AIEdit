@@ -74,6 +74,7 @@ public:
     // Right-click actions for the text and the hex view (the AI actions).
     void setContextActions(const QList<QAction*>& textActions, const QList<QAction*>& hexActions);
 
+    // The user's choice: it is remembered with the file (see State).
     void setCodec(const core::TextCodec& codec);
     // Syntax highlighting definition name; empty for plain text.
     QString syntax() const;
@@ -105,6 +106,19 @@ public:
     // Writes the text in another codec (UTF-16 and UTF-32 with a byte order mark) and shows the
     // file in that codec from then on. Unreadable bytes stop it unless `replaceUnreadable`.
     Conversion saveWithCodec(const core::TextCodec& codec, bool replaceUnreadable, QString* error = nullptr);
+
+    // What is remembered of a file between sessions, to come back to where it was left.
+    struct State
+    {
+        QString path;
+        std::uint64_t cursor = 0;
+        std::uint64_t top = 0; // where the first line on screen started: the reading position
+        ViewMode mode = ViewMode::Text;
+        QString codec; // empty unless chosen by the user; otherwise the file's is detected again
+    };
+    State state() const;
+    // Puts it back; positions the index has not reached yet are applied once it has.
+    void restoreState(const State& state);
 
     // Follow mode (like tail -f): after every reload, jump to the end of the file.
     bool isFollowing() const { return m_following; }
@@ -174,6 +188,8 @@ private:
     bool m_syncing = false;
     bool m_splitSizesPending = false; // sized once the splitter has its real width
     bool m_following = false;
+    bool m_codecChosen = false; // by the user, rather than detected
+    std::optional<State> m_pendingState; // waiting for the index to get there
     QString m_untitledTitle;
     QFileSystemWatcher m_watcher;
     QTimer m_reloadTimer; // coalesces bursts of change notifications

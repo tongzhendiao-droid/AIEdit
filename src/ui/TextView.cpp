@@ -328,6 +328,17 @@ void TextView::scrollToLine(const VisualLine& line)
     viewport()->update();
 }
 
+std::uint64_t TextView::firstVisibleOffset() const
+{
+    return rowCount() == 0 ? 0 : lineStart(topLine());
+}
+
+void TextView::scrollToOffset(std::uint64_t offset)
+{
+    if (rowCount() > 0)
+        scrollToLine(visualLineAt(std::min(offset, documentEnd())));
+}
+
 void TextView::scrollLines(std::int64_t delta)
 {
     if (rowCount() == 0 || delta == 0)
