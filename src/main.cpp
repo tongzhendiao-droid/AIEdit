@@ -62,8 +62,8 @@ int main(int argc, char* argv[])
     });
     window.show();
     // Started on its own, it comes back as it was left; given files, it opens just those.
-    if (files.isEmpty() && !parser.isSet(newWindow))
-        window.restoreSession();
+    // Unsaved changes come back either way.
+    window.restoreSession(files.isEmpty() && !parser.isSet(newWindow));
     for (const QString& path : files)
         window.openFile(path);
 

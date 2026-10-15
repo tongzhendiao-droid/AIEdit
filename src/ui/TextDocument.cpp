@@ -102,10 +102,7 @@ bool TextDocument::convertLineEndings(const QString& terminator)
     const std::optional<QByteArray> encoded = encode(terminator);
     if (!encoded)
         return false;
-    if (!m_index->isComplete()) { // just opened and still indexing in the background
-        stopIndexing();
-        startIndexing(true);
-    }
+    indexNow();
 
     // One change from the first terminator that differs to the last, keeping the text between.
     const auto data = bytes();
@@ -133,6 +130,14 @@ bool TextDocument::convertLineEndings(const QString& terminator)
     breakUndoMerge();
     replaceBytes(*start, end, replacement);
     return true;
+}
+
+void TextDocument::indexNow()
+{
+    if (!m_indexer.joinable())
+        return; // indexed already
+    m_indexer.join(); // just opened, and still indexing in the background
+    pollIndexer();    // reports it done
 }
 
 bool TextDocument::canUndo() const

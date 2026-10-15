@@ -3,15 +3,20 @@ qt_add_library(aiedit_ui STATIC
     AiSettings.cpp AiSettings.h
     AiSettingsDialog.cpp AiSettingsDialog.h
     AiTools.cpp AiTools.h
+    BackupStore.cpp BackupStore.h
     ChatClient.cpp ChatClient.h
+    Collation.h
     DataInspector.cpp DataInspector.h
     DocumentView.cpp DocumentView.h
     FieldMark.h
+    FileSearch.cpp FileSearch.h
     FilterPanel.cpp FilterPanel.h
     FilterResultsView.cpp FilterResultsView.h
     FilterRuleWriter.cpp FilterRuleWriter.h
     FindBar.cpp FindBar.h
+    FindInFilesPanel.cpp FindInFilesPanel.h
     HexView.cpp HexView.h
+    LineOperations.cpp LineOperations.h
     LogFilter.cpp LogFilter.h
     MainWindow.cpp MainWindow.h
     Paths.h

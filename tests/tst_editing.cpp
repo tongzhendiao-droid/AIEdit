@@ -13,6 +13,8 @@
 #include <QInputMethodEvent>
 #include <QMessageBox>
 #include <QSignalSpy>
+#include <QStandardPaths>
+#include <QStatusBar>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
@@ -69,6 +71,8 @@ class TestEditing : public QObject
     Q_OBJECT
 
 private slots:
+    // Settings and backups go to a test location, away from the user's own.
+    void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
     void init();
 
     void typingUndoAndRedo();
@@ -93,9 +97,18 @@ private slots:
     void convertsLineEndings();
     void savesInAnotherEncoding();
 
+    void sortsLines();
+    void removesDuplicateAndEmptyLines();
+    void trimsTrailingWhitespace();
+    void movesAndDuplicatesLines();
+    void lineOperationsKeepUnreadableBytes();
+    void lineMenuNeedsEditableText();
+
 private:
     std::filesystem::path pathOf(const char* name) const;
     std::shared_ptr<const core::FileSource> write(const char* name, const std::string& content);
+    std::unique_ptr<ui::DocumentView> documentWith(const char* name, const std::string& content,
+                                                   std::string_view codecName = "UTF-8");
 
     QTemporaryDir m_dir;
 };
@@ -116,6 +129,13 @@ std::shared_ptr<const core::FileSource> TestEditing::write(const char* name, con
     std::ofstream(path, std::ios::binary) << content;
     std::error_code ec;
     return core::FileSource::open(path, ec);
+}
+
+std::unique_ptr<ui::DocumentView> TestEditing::documentWith(const char* name, const std::string& content,
+                                                            std::string_view codecName)
+{
+    const auto source = write(name, content);
+    return std::make_unique<ui::DocumentView>(source, core::detectFileType(source->bytes()), codec(codecName));
 }
 
 void TestEditing::typingUndoAndRedo()
@@ -591,6 +611,118 @@ void TestEditing::savesInAnotherEncoding()
     QCOMPARE(readFile(broken), std::string("a\xFF" "b\n"));
     QCOMPARE(brokenDoc.saveWithCodec(codec("UTF-16LE"), true), ui::DocumentView::Conversion::Saved);
     QCOMPARE(readFile(broken), std::string("\xFF\xFE" "a\0\xFD\xFF" "b\0\n\0", 10));
+}
+
+void TestEditing::sortsLines()
+{
+    const std::string original = "pear\nApple\napple\nitem10\nitem2\nbanana";
+    const auto doc = documentWith("sort.txt", original);
+    QVERIFY(doc->applyLineOperation(ui::LineOperation::SortAscending));
+    // By the locale, case aside (equal lines keep their order), numbers by value. The line
+    // breaks stay where they were, so the file still ends without one.
+    QCOMPARE(contents(*doc->textDocument()), std::string("Apple\napple\nbanana\nitem2\nitem10\npear"));
+    QVERIFY(!doc->applyLineOperation(ui::LineOperation::SortAscending)); // in order already
+    QVERIFY(doc->applyLineOperation(ui::LineOperation::SortDescending));
+    QCOMPARE(contents(*doc->textDocument()), std::string("pear\nitem10\nitem2\nbanana\nApple\napple"));
+    doc->undo();
+    doc->undo();
+    QCOMPARE(contents(*doc->textDocument()), original); // one step each
+
+    // Only the selected lines; a selection ending where a line starts leaves that line out.
+    const auto part = documentWith("part.txt", "z\nc\nb\na\n");
+    part->textView()->select(2, 6);
+    QVERIFY(part->applyLineOperation(ui::LineOperation::SortAscending));
+    QCOMPARE(contents(*part->textDocument()), std::string("z\nb\nc\na\n"));
+    QCOMPARE(part->textView()->selectionStart(), 2u); // still selected
+    QCOMPARE(part->textView()->selectionEnd(), 6u);
+
+    const auto crlf = documentWith("crlf-sort.txt", "b\r\na\r\n");
+    QVERIFY(crlf->applyLineOperation(ui::LineOperation::SortAscending));
+    QCOMPARE(contents(*crlf->textDocument()), std::string("a\r\nb\r\n"));
+}
+
+void TestEditing::removesDuplicateAndEmptyLines()
+{
+    const auto doc = documentWith("dups.txt", "a\nb\na\n\n  \nb\nc");
+    QVERIFY(doc->applyLineOperation(ui::LineOperation::RemoveDuplicates));
+    QCOMPARE(contents(*doc->textDocument()), std::string("a\nb\n\n  \nc")); // the first of each stays
+    QVERIFY(!doc->applyLineOperation(ui::LineOperation::RemoveDuplicates));
+    QVERIFY(doc->applyLineOperation(ui::LineOperation::RemoveEmpty)); // also one of only spaces
+    QCOMPARE(contents(*doc->textDocument()), std::string("a\nb\nc"));
+    QVERIFY(!doc->applyLineOperation(ui::LineOperation::RemoveEmpty));
+}
+
+void TestEditing::trimsTrailingWhitespace()
+{
+    const auto doc = documentWith("trim.txt", "a  \nb\t\n c \nd");
+    QVERIFY(doc->applyLineOperation(ui::LineOperation::TrimTrailingWhitespace));
+    QCOMPARE(contents(*doc->textDocument()), std::string("a\nb\n c\nd")); // leading space kept
+    QVERIFY(!doc->applyLineOperation(ui::LineOperation::TrimTrailingWhitespace));
+
+    // In UTF-16 a space is two bytes.
+    const auto wide = documentWith("wide-trim.txt", std::string("\xFF\xFE" "a\0 \0\n\0", 8), "UTF-16LE");
+    QVERIFY(wide->applyLineOperation(ui::LineOperation::TrimTrailingWhitespace));
+    QCOMPARE(contents(*wide->textDocument()), std::string("\xFF\xFE" "a\0\n\0", 6));
+}
+
+void TestEditing::movesAndDuplicatesLines()
+{
+    const std::string original = "one\ntwo\nthree";
+    const auto doc = documentWith("move.txt", original);
+    TextView* view = doc->textView();
+    view->setCursorOffset(5); // on "two", after the t
+    QVERIFY(doc->applyLineOperation(ui::LineOperation::MoveUp));
+    QCOMPARE(contents(*doc->textDocument()), std::string("two\none\nthree"));
+    QCOMPARE(view->cursorOffset(), 1u); // the caret went along
+    QVERIFY(!doc->applyLineOperation(ui::LineOperation::MoveUp)); // at the top
+    QVERIFY(doc->applyLineOperation(ui::LineOperation::MoveDown));
+    QVERIFY(doc->applyLineOperation(ui::LineOperation::MoveDown));
+    // The last line has no line break: the line moved there does not get one either.
+    QCOMPARE(contents(*doc->textDocument()), std::string("one\nthree\ntwo"));
+    QCOMPARE(view->cursorOffset(), 11u);
+    QVERIFY(!doc->applyLineOperation(ui::LineOperation::MoveDown)); // at the bottom
+
+    QVERIFY(doc->applyLineOperation(ui::LineOperation::Duplicate));
+    QCOMPARE(contents(*doc->textDocument()), std::string("one\nthree\ntwo\ntwo"));
+    QCOMPARE(view->cursorOffset(), 15u); // on the copy
+
+    // Several lines move together, and stay selected.
+    view->select(0, 9);
+    QVERIFY(doc->applyLineOperation(ui::LineOperation::MoveDown));
+    QCOMPARE(contents(*doc->textDocument()), std::string("two\none\nthree\ntwo"));
+    QCOMPARE(view->selectionStart(), 4u);
+    QCOMPARE(view->selectionEnd(), 13u);
+
+    for (int step = 0; step < 5; ++step)
+        doc->undo();
+    QCOMPARE(contents(*doc->textDocument()), original); // one step each
+}
+
+void TestEditing::lineOperationsKeepUnreadableBytes()
+{
+    // Bytes that are not UTF-8 go with their lines, as they are.
+    const auto doc = documentWith("bytes.txt", "b\xFF\na\xFE\n");
+    QVERIFY(doc->isEditable());
+    QVERIFY(doc->applyLineOperation(ui::LineOperation::SortAscending));
+    QCOMPARE(contents(*doc->textDocument()), std::string("a\xFE\nb\xFF\n"));
+}
+
+void TestEditing::lineMenuNeedsEditableText()
+{
+    const auto path = pathOf("menu-lines.txt");
+    std::ofstream(path, std::ios::binary) << "b\na\n";
+    ui::MainWindow window;
+    QVERIFY(window.openFile(ui::toQString(path)));
+    QAction* sort = findAction(window, QStringLiteral("Sort &Ascending"));
+    QAction* moveUp = findAction(window, QStringLiteral("Move Line U&p"));
+    QVERIFY(sort && moveUp && sort->isEnabled());
+    QCOMPARE(moveUp->shortcut(), QKeySequence(Qt::ALT | Qt::Key_Up));
+    sort->trigger();
+    QCOMPARE(contents(*window.currentDocument()->textDocument()), std::string("a\nb\n"));
+    QVERIFY(window.statusBar()->currentMessage().startsWith(QStringLiteral("Sorted 2 line")));
+
+    window.currentDocument()->setViewMode(ui::DocumentView::ViewMode::Hex); // no lines to edit there
+    QVERIFY(!sort->isEnabled() && !moveUp->isEnabled());
 }
 
 QTEST_MAIN(TestEditing)

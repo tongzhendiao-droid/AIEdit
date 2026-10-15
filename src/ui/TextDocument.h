@@ -77,6 +77,9 @@ public:
     // For background work that must keep the index alive across a codec change.
     std::shared_ptr<const core::LineIndex> sharedIndex() const { return m_index; }
     bool isIndexing() const { return m_indexer.joinable(); }
+    // Finishes indexing here and now, for work that needs every line (an editable document is
+    // small enough for that to be quick).
+    void indexNow();
     // Line terminators counted in the first part of the file.
     const core::LineEndings& lineEndings() const { return m_lineEndings; }
     std::uint64_t textStart() const { return m_index->textStart(); }

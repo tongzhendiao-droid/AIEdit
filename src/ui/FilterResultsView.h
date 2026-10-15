@@ -106,6 +106,7 @@ private:
     qreal m_charWidth = 0;
     struct Colors
     {
+        QColor base;
         QColor text;
         QColor dim;
         QColor gutter;

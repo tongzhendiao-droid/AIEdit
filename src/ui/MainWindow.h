@@ -1,8 +1,11 @@
 #pragma once
 
+#include "ui/BackupStore.h"
 #include "ui/DocumentView.h"
 
+#include <QHash>
 #include <QMainWindow>
+#include <QTimer>
 
 #include <string_view>
 #include <system_error>
@@ -24,6 +27,7 @@ namespace aiedit::ui {
 
 class AiPanel;
 class DataInspector;
+class FindInFilesPanel;
 
 class MainWindow : public QMainWindow
 {
@@ -36,8 +40,11 @@ public:
     // Opens the file in a new tab, or switches to its tab if it is already open.
     // On failure the user is told why and false is returned.
     bool openFile(const QString& path);
-    // Opens the files that were open when AIEdit last closed, as they were left.
-    void restoreSession();
+    // Brings back the unsaved changes that windows which have ended left behind, and with
+    // `reopenTabs` also the other files that were open when AIEdit last closed, as they were.
+    void restoreSession(bool reopenTabs = true);
+    // Backs up unsaved changes now rather than shortly, and waits until they are written.
+    void flushBackups();
 
     int documentCount() const;
     DocumentView* document(int index) const;
@@ -58,6 +65,10 @@ private:
     void createMenus();
     void createCodecMenu();
     void populateSyntaxMenu();
+    // Colour schemes and the editor font (View menu).
+    void populateSchemeMenu();
+    void chooseColorScheme(const QString& name);
+    void chooseEditorFont();
     void readSettings();
     void writeSettings() const;
 
@@ -71,6 +82,13 @@ private:
     bool saveDocumentAs(DocumentView* doc);
     // Asks what to do with unsaved edits before a document goes away; false to keep it.
     bool confirmClose(DocumentView* doc);
+    // Unsaved changes are backed up shortly after they are made (see BackupStore).
+    void noteBackupChange(DocumentView* doc);
+    void writeBackups();
+    void dropBackup(DocumentView* doc);
+    QJsonObject backupMeta(const DocumentView* doc, int order) const;
+    // A document with the changes of a backup, opened from its file or as a new document.
+    DocumentView* restoreBackup(const BackupStore::Entry& entry, QStringList* changedOnDisk, QStringList* gone);
     void updateDocumentTitle(DocumentView* doc);
     // Recent files: what is remembered of each, most recent first.
     void rememberDocument(const DocumentView* doc);
@@ -92,6 +110,10 @@ private:
     void showAbout();
     void showAiSettings();
     void runAiAction(void (AiPanel::*action)());
+    // Find in Files, in the current document's folder at first.
+    void showFindInFiles();
+    // Opens a result of Find in Files at its line.
+    void openAtLine(const QString& path, std::uint64_t line, std::uint64_t offset);
 
     void documentStateChanged(DocumentView* doc);
     // What the Edit menu can do now: copying needs a selection, pasting text on the clipboard.
@@ -110,6 +132,8 @@ private:
     DataInspector* m_inspector = nullptr;
     QDockWidget* m_aiDock = nullptr;
     AiPanel* m_aiPanel = nullptr;
+    QDockWidget* m_findInFilesDock = nullptr;
+    FindInFilesPanel* m_findInFiles = nullptr;
 
     QLabel* m_typeLabel = nullptr;
     QLabel* m_sizeLabel = nullptr;
@@ -145,6 +169,8 @@ private:
     QAction* m_findPreviousAction = nullptr;
     QAction* m_replaceAction = nullptr;
     QAction* m_filterAction = nullptr;
+    QAction* m_findInFilesAction = nullptr;
+    QList<QAction*> m_lineActions; // sorting and cleaning, then moving and copying
     QAction* m_nextTabAction = nullptr;
     QAction* m_previousTabAction = nullptr;
     QActionGroup* m_viewModeGroup = nullptr;
@@ -169,11 +195,28 @@ private:
     int m_untitledCount = 0;
     QList<DocumentView::State> m_recentFiles;
     QMenu* m_recentMenu = nullptr;
+    QMenu* m_schemeMenu = nullptr;
+    QActionGroup* m_schemeGroup = nullptr;
+    QAction* m_fontAction = nullptr;
+    QString m_fontFamily; // empty: the system's fixed-width font
     bool m_wordWrap = true;
     int m_defaultPointSize = 10;
     int m_pointSize = 10;
     QString m_lastDirectory;
     QString m_lastGoTo;
+
+    struct BackupInfo
+    {
+        QString id;
+        bool dirty = false;   // changed since the last backup
+        bool written = false; // a backup is on disk
+        // The file when the first unsaved change was made, to tell later changes on disk.
+        qint64 baseSize = -1;
+        qint64 baseModified = 0;
+    };
+    BackupStore m_backups;
+    QTimer m_backupTimer;
+    QHash<const DocumentView*, BackupInfo> m_backupInfo;
 };
 
 } // namespace aiedit::ui

@@ -344,6 +344,17 @@
     </message>
 </context>
 <context>
+    <name>aiedit::ui::ColorScheme</name>
+    <message>
+        <source>Light</source>
+        <translation>浅色</translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation>深色</translation>
+    </message>
+</context>
+<context>
     <name>aiedit::ui::DataInspector</name>
     <message>
         <source>Little-endian</source>
@@ -453,6 +464,46 @@
     <message>
         <source>bytes 0x%1–0x%2 (%3 bytes)</source>
         <translation>字节 0x%1–0x%2（%3 字节）</translation>
+    </message>
+    <message numerus="yes">
+        <source>Sorted %n line(s)</source>
+        <translation>
+            <numerusform>已排序 %n 行</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>The lines are in order already</source>
+        <translation>这些行已经是排好序的</translation>
+    </message>
+    <message numerus="yes">
+        <source>Removed %n duplicate line(s)</source>
+        <translation>
+            <numerusform>删除了 %n 个重复行</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>No line appears twice</source>
+        <translation>没有重复的行</translation>
+    </message>
+    <message numerus="yes">
+        <source>Removed %n empty line(s)</source>
+        <translation>
+            <numerusform>删除了 %n 个空行</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>No empty lines</source>
+        <translation>没有空行</translation>
+    </message>
+    <message numerus="yes">
+        <source>Trimmed %n line(s)</source>
+        <translation>
+            <numerusform>去掉了 %n 行的行尾空白</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>No line ends in spaces or tabs</source>
+        <translation>没有以空格或制表符结尾的行</translation>
     </message>
     <message>
         <source>Binary files can only be viewed here</source>
@@ -742,6 +793,125 @@
     </message>
 </context>
 <context>
+    <name>aiedit::ui::FindInFilesPanel</name>
+    <message>
+        <source>not %1</source>
+        <translation>不含 %1</translation>
+    </message>
+    <message>
+        <source> or </source>
+        <translation> 或 </translation>
+    </message>
+    <message>
+        <source>What to find in the files</source>
+        <translation>要在文件里找什么</translation>
+    </message>
+    <message>
+        <source>Text</source>
+        <translation>文本</translation>
+    </message>
+    <message>
+        <source>Regex</source>
+        <translation>正则</translation>
+    </message>
+    <message>
+        <source>Filter Rule</source>
+        <translation>过滤规则</translation>
+    </message>
+    <message>
+        <source>The rule the filter panel ran last (Edit &gt; Filter Lines)</source>
+        <translation>过滤面板最近一次运行的规则（编辑 &gt; 过滤行）</translation>
+    </message>
+    <message>
+        <source>Match case</source>
+        <translation>区分大小写</translation>
+    </message>
+    <message>
+        <source>The folder to search in</source>
+        <translation>要查找的文件夹</translation>
+    </message>
+    <message>
+        <source>Choose the folder</source>
+        <translation>选择文件夹</translation>
+    </message>
+    <message>
+        <source>Which files, e.g. *.log; *.txt (all if empty)</source>
+        <translation>哪些文件，如 *.log; *.txt（空着表示全部）</translation>
+    </message>
+    <message>
+        <source>Subfolders</source>
+        <translation>包括子文件夹</translation>
+    </message>
+    <message>
+        <source>Find:</source>
+        <translation>查找：</translation>
+    </message>
+    <message>
+        <source>In:</source>
+        <translation>位置：</translation>
+    </message>
+    <message numerus="yes">
+        <source>Searching… %n file(s) so far</source>
+        <translation>
+            <numerusform>正在查找… 已查 %n 个文件</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>No filter rule yet: run one in Edit &gt; Filter Lines</source>
+        <translation>还没有过滤规则：先在「编辑 &gt; 过滤行」里运行一条</translation>
+    </message>
+    <message>
+        <source>Search in Folder</source>
+        <translation>在文件夹里查找</translation>
+    </message>
+    <message>
+        <source>Choose a folder to search in</source>
+        <translation>请选择要查找的文件夹</translation>
+    </message>
+    <message>
+        <source>There is no filter rule yet: run one in Edit &gt; Filter Lines first</source>
+        <translation>还没有过滤规则：请先在「编辑 &gt; 过滤行」里运行一条</translation>
+    </message>
+    <message>
+        <source>Type what to find</source>
+        <translation>请输入要查找的内容</translation>
+    </message>
+    <message>
+        <source>Searching…</source>
+        <translation>正在查找…</translation>
+    </message>
+    <message numerus="yes">
+        <source>Stopped: %1 matches in %n file(s)</source>
+        <translation>
+            <numerusform>已停止：在 %n 个文件里找到 %1 处</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>No matches in %n file(s)</source>
+        <translation>
+            <numerusform>查了 %n 个文件，没有找到</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Showing the first %1 matches; narrow the search to see the rest</source>
+        <translation>只显示前 %1 处；缩小查找范围才能看到其余的</translation>
+    </message>
+    <message numerus="yes">
+        <source>%1 matches in %2 of %n file(s)</source>
+        <translation>
+            <numerusform>查了 %n 个文件，其中 %2 个里共找到 %1 处</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>停止</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation>查找</translation>
+    </message>
+</context>
+<context>
     <name>aiedit::ui::HexView</name>
     <message numerus="yes">
         <source>%n byte(s)</source>
@@ -821,6 +991,10 @@
     <message>
         <source>AI Assistant</source>
         <translation>AI 助手</translation>
+    </message>
+    <message>
+        <source>Find in Files</source>
+        <translation>在文件夹里查找</translation>
     </message>
     <message>
         <source>Text encoding. Click to read the file in another encoding, or to save it in one.</source>
@@ -939,6 +1113,38 @@
         <translation>全选(&amp;A)</translation>
     </message>
     <message>
+        <source>Sort &amp;Ascending</source>
+        <translation>升序排序(&amp;A)</translation>
+    </message>
+    <message>
+        <source>Sort &amp;Descending</source>
+        <translation>降序排序(&amp;D)</translation>
+    </message>
+    <message>
+        <source>Remove D&amp;uplicate Lines</source>
+        <translation>删除重复行(&amp;U)</translation>
+    </message>
+    <message>
+        <source>Remove &amp;Empty Lines</source>
+        <translation>删除空行(&amp;E)</translation>
+    </message>
+    <message>
+        <source>&amp;Trim Trailing Whitespace</source>
+        <translation>删除行尾空白(&amp;T)</translation>
+    </message>
+    <message>
+        <source>Move Line U&amp;p</source>
+        <translation>上移行(&amp;P)</translation>
+    </message>
+    <message>
+        <source>Move Line Do&amp;wn</source>
+        <translation>下移行(&amp;W)</translation>
+    </message>
+    <message>
+        <source>Dup&amp;licate Line</source>
+        <translation>复制行(&amp;L)</translation>
+    </message>
+    <message>
         <source>&amp;Go To…</source>
         <translation>转到(&amp;G)…</translation>
     </message>
@@ -961,6 +1167,14 @@
     <message>
         <source>Show only the lines that match a rule, written by hand or by the AI</source>
         <translation>只显示符合规则的行；规则可以手写，也可以让 AI 写</translation>
+    </message>
+    <message>
+        <source>Find in F&amp;iles…</source>
+        <translation>在文件夹里查找(&amp;I)…</translation>
+    </message>
+    <message>
+        <source>Search every file in a folder, such as all the logs of a program</source>
+        <translation>在一个文件夹的所有文件里查找，比如一个程序的全部日志</translation>
     </message>
     <message>
         <source>Find Pre&amp;vious</source>
@@ -997,6 +1211,14 @@
     <message>
         <source>&amp;Reset Zoom</source>
         <translation>重置缩放(&amp;R)</translation>
+    </message>
+    <message>
+        <source>&amp;Editor Font…</source>
+        <translation>编辑区字体(&amp;E)…</translation>
+    </message>
+    <message>
+        <source>The fixed-width font of the text and hex views</source>
+        <translation>文本和十六进制视图用的等宽字体</translation>
     </message>
     <message>
         <source>%1 Bytes per Row</source>
@@ -1047,12 +1269,20 @@
         <translation>编辑(&amp;E)</translation>
     </message>
     <message>
+        <source>Line Operation&amp;s</source>
+        <translation>行操作(&amp;S)</translation>
+    </message>
+    <message>
         <source>&amp;View</source>
         <translation>视图(&amp;V)</translation>
     </message>
     <message>
         <source>Hex &amp;Layout</source>
         <translation>十六进制布局(&amp;L)</translation>
+    </message>
+    <message>
+        <source>&amp;Color Scheme</source>
+        <translation>配色方案(&amp;C)</translation>
     </message>
     <message>
         <source>&amp;AI</source>
@@ -1111,6 +1341,22 @@
         <translation>纯文本</translation>
     </message>
     <message>
+        <source>Follow the &amp;System</source>
+        <translation>跟随系统(&amp;S)</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <translation>浅色</translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation>深色</translation>
+    </message>
+    <message>
+        <source>Editor Font</source>
+        <translation>编辑区字体</translation>
+    </message>
+    <message>
         <source>Cannot Open File</source>
         <translation>无法打开文件</translation>
     </message>
@@ -1119,6 +1365,20 @@
 %2</source>
         <translation>无法打开 %1：
 %2</translation>
+    </message>
+    <message numerus="yes">
+        <source>Unsaved changes are back in %n document(s)</source>
+        <translation>
+            <numerusform>%n 个文档的未保存修改已恢复</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>%1 changed on disk since; saving writes over that</source>
+        <translation>%1 在磁盘上已被改过；保存会覆盖那些改动</translation>
+    </message>
+    <message>
+        <source>%1 no longer exists; its changes are in a new document</source>
+        <translation>%1 已经不存在；它的修改放在一个新文档里</translation>
     </message>
     <message>
         <source>%1 no longer exists</source>

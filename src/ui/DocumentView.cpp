@@ -615,6 +615,67 @@ bool DocumentView::isModified() const
     return m_textDocument->isModified();
 }
 
+void DocumentView::restoreContent(std::span<const std::uint8_t> bytes)
+{
+    m_textDocument->replaceBytes(0, m_textDocument->bytes().size(), bytes);
+}
+
+bool DocumentView::applyLineOperation(LineOperation operation)
+{
+    if (!isEditable() || !isTextActive())
+        return false;
+    m_textDocument->indexNow();
+    const core::LineIndex& index = m_textDocument->index();
+    if (index.rowCount() == 0)
+        return false;
+    const std::uint64_t start = m_textView->selectionStart();
+    const std::uint64_t end = m_textView->selectionEnd();
+    const bool everyLine = start == end && operation != LineOperation::MoveUp &&
+                           operation != LineOperation::MoveDown && operation != LineOperation::Duplicate;
+    std::uint64_t first = 0;
+    std::uint64_t last = index.lineCount() - 1;
+    if (!everyLine) {
+        first = index.row(index.rowIndexAt(start)).line;
+        const core::Row endRow = index.row(index.rowIndexAt(end));
+        last = endRow.line;
+        // A selection that ends where a line starts does not take that line in.
+        if (end > start && last > first && endRow.start == end && !endRow.continuation)
+            --last;
+    }
+
+    const std::optional<LineEdit> edit = lineOperation(operation, *m_textDocument, first, last, start, end);
+    const auto lines = edit ? static_cast<int>(edit->lines) : 0;
+    switch (operation) {
+    case LineOperation::SortAscending:
+    case LineOperation::SortDescending:
+        emit statusMessage(edit ? tr("Sorted %n line(s)", "", lines) : tr("The lines are in order already"));
+        break;
+    case LineOperation::RemoveDuplicates:
+        emit statusMessage(edit ? tr("Removed %n duplicate line(s)", "", lines) : tr("No line appears twice"));
+        break;
+    case LineOperation::RemoveEmpty:
+        emit statusMessage(edit ? tr("Removed %n empty line(s)", "", lines) : tr("No empty lines"));
+        break;
+    case LineOperation::TrimTrailingWhitespace:
+        emit statusMessage(edit ? tr("Trimmed %n line(s)", "", lines) : tr("No line ends in spaces or tabs"));
+        break;
+    default:
+        break;
+    }
+    if (!edit)
+        return false;
+    m_textDocument->breakUndoMerge(); // one step of its own
+    m_textDocument->replaceBytes(edit->start, edit->end,
+                                 {reinterpret_cast<const std::uint8_t*>(edit->bytes.constData()),
+                                  static_cast<std::size_t>(edit->bytes.size())});
+    m_textDocument->breakUndoMerge();
+    if (edit->selectionStart == edit->selectionEnd)
+        m_textView->setCursorOffset(edit->selectionStart);
+    else
+        m_textView->select(edit->selectionStart, edit->selectionEnd);
+    return true;
+}
+
 void DocumentView::updateEditable()
 {
     // Decided when the file is opened or reloaded; edits may then make it larger.
