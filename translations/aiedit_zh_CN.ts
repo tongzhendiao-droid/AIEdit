@@ -414,6 +414,10 @@
         <source>Files larger than %1 can only be viewed here</source>
         <translation>超过 %1 的文件只能查看，不能在这里编辑</translation>
     </message>
+    <message>
+        <source>It has no file yet; use Save As</source>
+        <translation>它还没有对应的文件，请用「另存为」</translation>
+    </message>
 </context>
 <context>
     <name>aiedit::ui::FindBar</name>
@@ -536,8 +540,20 @@
         <translation>混合换行符</translation>
     </message>
     <message>
-        <source>Drop a file here, or press %1 to open one.</source>
-        <translation>把文件拖到这里，或按 %1 打开文件。</translation>
+        <source>Drop files here to open them</source>
+        <translation>把文件拖到这里即可打开</translation>
+    </message>
+    <message>
+        <source>New File</source>
+        <translation>新建文件</translation>
+    </message>
+    <message>
+        <source>Open File…</source>
+        <translation>打开文件…</translation>
+    </message>
+    <message>
+        <source>New file (%1)</source>
+        <translation>新建文件（%1）</translation>
     </message>
     <message>
         <source>Data Inspector</source>
@@ -554,6 +570,10 @@
     <message>
         <source>Syntax highlighting. Click to choose a language.</source>
         <translation>语法高亮。点击可选择语言。</translation>
+    </message>
+    <message>
+        <source>&amp;New</source>
+        <translation>新建(&amp;N)</translation>
     </message>
     <message>
         <source>&amp;Open…</source>
@@ -804,6 +824,10 @@
 %2</source>
         <translation>无法打开 %1：
 %2</translation>
+    </message>
+    <message>
+        <source>Untitled %1</source>
+        <translation>未命名 %1</translation>
     </message>
     <message>
         <source>Open Files</source>

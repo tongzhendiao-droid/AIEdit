@@ -51,7 +51,12 @@ public:
 
     const std::shared_ptr<const core::FileSource>& source() const { return m_source; }
     const core::FileTypeInfo& fileType() const { return m_fileType; }
+    // Empty for a new document that has not been saved yet.
     QString filePath() const;
+    bool isUntitled() const;
+    // What tabs and questions call it: the file name, or a new document's title until it is saved.
+    QString title() const;
+    void setUntitledTitle(const QString& title) { m_untitledTitle = title; }
     HexView* hexView() const { return m_hexView; }
     TextView* textView() const { return m_textView; }
     TextDocument* textDocument() const { return m_textDocument; }
@@ -147,6 +152,7 @@ private:
     bool m_syncing = false;
     bool m_splitSizesPending = false; // sized once the splitter has its real width
     bool m_following = false;
+    QString m_untitledTitle;
     QFileSystemWatcher m_watcher;
     QTimer m_reloadTimer; // coalesces bursts of change notifications
 };

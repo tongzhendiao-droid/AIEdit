@@ -17,6 +17,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTimer>
+#include <QToolButton>
 
 #include <filesystem>
 #include <fstream>
@@ -42,6 +43,14 @@ std::string readFile(const std::filesystem::path& path)
 {
     std::ifstream in(path, std::ios::binary);
     return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
+QAction* findAction(const QWidget& window, const QString& text)
+{
+    for (QAction* action : window.findChildren<QAction*>())
+        if (action->text() == text)
+            return action;
+    return nullptr;
 }
 
 // Clicks `button` in the message box that opens next.
@@ -79,6 +88,8 @@ private slots:
     void keepsEditsWhenTheFileChangesOnDisk();
     void onlyTextFilesCanBeEdited();
     void asksBeforeClosingUnsavedChanges();
+    void editMenuFollowsSelectionAndClipboard();
+    void newDocumentsAreUntitledUntilSaved();
 
 private:
     std::filesystem::path pathOf(const char* name) const;
@@ -441,6 +452,85 @@ void TestEditing::asksBeforeClosingUnsavedChanges()
     closeTab->trigger();
     QCOMPARE(window.documentCount(), 0);
     QCOMPARE(readFile(path), std::string("more notes\n"));
+}
+
+void TestEditing::editMenuFollowsSelectionAndClipboard()
+{
+    const auto path = pathOf("menu.txt");
+    std::ofstream(path, std::ios::binary) << "some text\n";
+    ui::MainWindow window;
+    QVERIFY(window.openFile(ui::toQString(path)));
+    ui::DocumentView* doc = window.currentDocument();
+    QAction* copy = findAction(window, QStringLiteral("&Copy"));
+    QAction* copyHex = findAction(window, QStringLiteral("Copy as &Hex"));
+    QAction* cut = findAction(window, QStringLiteral("Cu&t"));
+    QAction* paste = findAction(window, QStringLiteral("&Paste"));
+    QAction* undo = findAction(window, QStringLiteral("&Undo"));
+    QVERIFY(copy && copyHex && cut && paste && undo);
+
+    // Nothing selected: nothing to copy or cut.
+    QVERIFY(!copy->isEnabled() && !copyHex->isEnabled() && !cut->isEnabled() && !undo->isEnabled());
+    doc->textView()->select(0, 4);
+    QVERIFY(copy->isEnabled() && copyHex->isEnabled() && cut->isEnabled());
+    doc->textView()->setCursorOffset(2);
+    QVERIFY(!copy->isEnabled() && !cut->isEnabled());
+
+    // Paste follows what the clipboard holds.
+    QGuiApplication::clipboard()->clear();
+    QVERIFY(!paste->isEnabled());
+    QGuiApplication::clipboard()->setText(QStringLiteral("x"));
+    QVERIFY(paste->isEnabled());
+    doc->textView()->insertText(QStringLiteral("!"));
+    QVERIFY(undo->isEnabled());
+
+    // In the hex view the byte at the cursor is selected, so it can be copied; text cannot be
+    // edited there.
+    doc->setViewMode(ui::DocumentView::ViewMode::Hex);
+    QVERIFY(copy->isEnabled());
+    QVERIFY(!paste->isEnabled() && !cut->isEnabled() && !undo->isEnabled());
+}
+
+void TestEditing::newDocumentsAreUntitledUntilSaved()
+{
+    ui::MainWindow window;
+    auto* tabs = window.findChild<QTabWidget*>();
+    QAction* newAction = findAction(window, QStringLiteral("&New"));
+    QAction* reload = findAction(window, QStringLiteral("&Reload"));
+    QAction* selectAll = findAction(window, QStringLiteral("Select &All"));
+    QVERIFY(tabs && newAction && reload && selectAll);
+
+    newAction->trigger();
+    QCOMPARE(window.documentCount(), 1);
+    ui::DocumentView* doc = window.currentDocument();
+    QVERIFY(doc->isUntitled() && doc->isEditable());
+    QCOMPARE(tabs->tabText(0), QStringLiteral("Untitled 1"));
+    QVERIFY(!reload->isEnabled());    // nothing on disk to reload
+    QVERIFY(!selectAll->isEnabled()); // nor anything to select
+
+    QTest::keyClicks(doc->textView(), "hello");
+    QCOMPARE(tabs->tabText(0), QStringLiteral("*Untitled 1"));
+    QVERIFY(selectAll->isEnabled());
+    QString error;
+    QVERIFY(!doc->save(&error)); // it needs a file first
+    const auto path = pathOf("hello.txt");
+    QVERIFY2(doc->saveAs(ui::toQString(path), &error), qPrintable(error));
+    QCOMPARE(readFile(path), std::string("hello"));
+    QVERIFY(!doc->isUntitled());
+    QCOMPARE(tabs->tabText(0), QStringLiteral("hello.txt"));
+    QVERIFY(reload->isEnabled());
+
+    // The + next to the tabs, and a double click beside them, open more new documents.
+    auto* plus = qobject_cast<QToolButton*>(tabs->cornerWidget(Qt::TopRightCorner));
+    QVERIFY(plus);
+    plus->click();
+    QCOMPARE(window.documentCount(), 2);
+    QCOMPARE(tabs->tabText(1), QStringLiteral("Untitled 2"));
+    emit tabs->tabBarDoubleClicked(-1);
+    QCOMPARE(window.documentCount(), 3);
+
+    // An untouched new document closes without asking.
+    emit tabs->tabCloseRequested(2);
+    QCOMPARE(window.documentCount(), 2);
 }
 
 QTEST_MAIN(TestEditing)

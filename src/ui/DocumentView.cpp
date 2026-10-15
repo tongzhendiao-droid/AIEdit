@@ -138,7 +138,8 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
     m_reloadTimer.setSingleShot(true);
     m_reloadTimer.setInterval(kReloadDelayMs);
     connect(&m_reloadTimer, &QTimer::timeout, this, &DocumentView::reload);
-    m_watcher.addPath(filePath());
+    if (!isUntitled())
+        m_watcher.addPath(filePath());
     connect(&m_watcher, &QFileSystemWatcher::fileChanged, this, &DocumentView::fileChanged);
 
     // Text files open as text, everything else as hex.
@@ -161,6 +162,16 @@ DocumentView::~DocumentView()
 QString DocumentView::filePath() const
 {
     return toQString(m_source->path());
+}
+
+bool DocumentView::isUntitled() const
+{
+    return m_source->path().empty();
+}
+
+QString DocumentView::title() const
+{
+    return isUntitled() ? m_untitledTitle : QFileInfo(filePath()).fileName();
 }
 
 void DocumentView::setViewMode(ViewMode mode)
@@ -300,6 +311,8 @@ void DocumentView::fileChanged()
 
 bool DocumentView::reload()
 {
+    if (isUntitled())
+        return false; // nothing on disk yet
     m_reloadTimer.stop();
     const QString path = filePath();
     // Watching stops when a file is replaced (rotation, atomic save); watch the new one.
@@ -353,7 +366,7 @@ void DocumentView::moveToEnd()
 AiContext DocumentView::aiContext()
 {
     AiContext context;
-    context.fileName = QFileInfo(filePath()).fileName();
+    context.fileName = title();
     context.fileDescription = describeForAi(m_fileType, m_textDocument->codec(), m_source->size());
     const auto bytes = m_source->bytes();
     const QLocale locale;
@@ -495,6 +508,11 @@ bool DocumentView::writeTo(const QString& path, QString* error)
 
 bool DocumentView::save(QString* error)
 {
+    if (isUntitled()) {
+        if (error)
+            *error = tr("It has no file yet; use Save As");
+        return false;
+    }
     if (!writeTo(filePath(), error))
         return false;
     m_textDocument->setSaved();
@@ -503,7 +521,7 @@ bool DocumentView::save(QString* error)
 
 bool DocumentView::saveAs(const QString& path, QString* error)
 {
-    if (QFileInfo(path).absoluteFilePath() == QFileInfo(filePath()).absoluteFilePath())
+    if (!isUntitled() && QFileInfo(path).absoluteFilePath() == QFileInfo(filePath()).absoluteFilePath())
         return save(error);
     if (!writeTo(path, error))
         return false;
