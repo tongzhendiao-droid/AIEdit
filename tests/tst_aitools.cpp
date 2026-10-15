@@ -24,6 +24,7 @@ private slots:
     void readLines();
     void searchText();
     void searchHexAndLimits();
+    void filterLines();
     void markFields();
     void runnerDispatchesAndCancels();
 
@@ -120,6 +121,57 @@ void TestAiTools::searchText()
     QVERIFY(tools::search(t, {{QStringLiteral("query"), QStringLiteral("(")}, {QStringLiteral("mode"), QStringLiteral("regex")}},
                           notCancelled)
                 .startsWith(QStringLiteral("Error")));
+}
+
+void TestAiTools::filterLines()
+{
+    std::string log;
+    for (int i = 1; i <= 60; ++i)
+        log += (i % 3 == 0 ? "ERROR request " : "INFO request ") + std::to_string(i) + " took " +
+               std::to_string(i * 50) + "ms\n";
+    const ToolTarget t = target("filter.log", log);
+    const std::atomic<bool> notCancelled{false};
+    const auto condition = [](const QString& type, const QString& regex) {
+        return QJsonObject{{QStringLiteral("type"), type}, {QStringLiteral("regex"), regex}};
+    };
+
+    // Counted over the whole file; the first lines listed with their numbers.
+    QString result = tools::filterLines(
+        t, {{QStringLiteral("conditions"), QJsonArray{condition(QStringLiteral("include"), QStringLiteral("error"))}},
+            {QStringLiteral("max_lines"), 2}},
+        notCancelled);
+    QVERIFY2(result.startsWith(QStringLiteral("20 of 60 lines pass; the first 2:\n3: ERROR request 3 took 150ms\n"
+                                              "6: ERROR request 6 took 300ms")),
+             qPrintable(result));
+
+    // A number compared, an exclusion, and "any".
+    QJsonObject slow = condition(QStringLiteral("include"), QStringLiteral("took (?<ms>\\d+)ms"));
+    slow.insert(QStringLiteral("field"), QStringLiteral("ms"));
+    slow.insert(QStringLiteral("op"), QStringLiteral(">"));
+    slow.insert(QStringLiteral("value"), 2900);
+    result = tools::filterLines(
+        t, {{QStringLiteral("conditions"), QJsonArray{slow, condition(QStringLiteral("exclude"), QStringLiteral("ERROR"))}}},
+        notCancelled);
+    QCOMPARE(result, QStringLiteral("1 of 60 lines pass:\n59: INFO request 59 took 2950ms"));
+    result = tools::filterLines(t,
+                                {{QStringLiteral("conditions"),
+                                  QJsonArray{condition(QStringLiteral("include"), QStringLiteral("request 1 ")),
+                                             condition(QStringLiteral("include"), QStringLiteral("request 2 "))}},
+                                 {QStringLiteral("match"), QStringLiteral("any")},
+                                 {QStringLiteral("max_lines"), 0}},
+                                notCancelled);
+    QCOMPARE(result, QStringLiteral("2 of 60 lines pass"));
+
+    QVERIFY(tools::filterLines(t, {}, notCancelled).startsWith(QStringLiteral("Error: ")));
+    QVERIFY(tools::filterLines(
+                t, {{QStringLiteral("conditions"), QJsonArray{condition(QStringLiteral("include"), QStringLiteral("("))}}},
+                notCancelled)
+                .contains(QStringLiteral("invalid regular expression")));
+    const std::atomic<bool> cancelled{true};
+    QCOMPARE(tools::filterLines(
+                 t, {{QStringLiteral("conditions"), QJsonArray{condition(QStringLiteral("include"), QStringLiteral("x"))}}},
+                 cancelled),
+             QStringLiteral("Cancelled."));
 }
 
 void TestAiTools::searchHexAndLimits()

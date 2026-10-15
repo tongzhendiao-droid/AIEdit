@@ -35,9 +35,9 @@ const QString kSystemPrompt = QStringLiteral(
 
 const QString kToolsPrompt = QStringLiteral(
     "You can call tools that run on the user's machine against the open file: get_file_info, read_bytes, "
-    "read_lines, search and mark_fields. Files can be very large, so search and read only what you need instead "
-    "of reading from the start. When you work out the structure of binary data, call mark_fields so the user can "
-    "see the fields in the hex view.");
+    "read_lines, search, filter_lines and mark_fields. Files can be very large, so search and read only what you "
+    "need instead of reading from the start; to count or collect lines of a log, use filter_lines. When you work "
+    "out the structure of binary data, call mark_fields so the user can see the fields in the hex view.");
 
 QString describeCall(const ToolCall& call)
 {
@@ -476,13 +476,15 @@ void AiPanel::updateState()
 void AiPanel::showPreview()
 {
     const QString typed = m_input->toPlainText().trimmed();
-    const QByteArray body = previewRequest(typed.isEmpty() ? tr("(your question)") : typed);
-    const AiSettings settings = m_settingsProvider();
+    showRequestPreview(this, m_settingsProvider(), previewRequest(typed.isEmpty() ? tr("(your question)") : typed));
+}
 
-    QDialog dialog(this);
-    dialog.setWindowTitle(tr("What Will Be Sent"));
-    auto* intro = new QLabel(tr("A POST request to %1 with the body below. The API key travels in a header "
-                                "and is not shown.")
+void showRequestPreview(QWidget* parent, const AiSettings& settings, const QByteArray& body)
+{
+    QDialog dialog(parent);
+    dialog.setWindowTitle(AiPanel::tr("What Will Be Sent"));
+    auto* intro = new QLabel(AiPanel::tr("A POST request to %1 with the body below. The API key travels in a header "
+                                         "and is not shown.")
                                  .arg(settings.chatUrl().toString()),
                              &dialog);
     intro->setWordWrap(true);
@@ -490,7 +492,7 @@ void AiPanel::showPreview()
                                     &dialog);
     text->setReadOnly(true);
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, &dialog);
-    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     auto* layout = new QVBoxLayout(&dialog);
     layout->addWidget(intro);
     layout->addWidget(text, 1);

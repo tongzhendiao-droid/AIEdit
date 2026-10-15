@@ -1,6 +1,7 @@
 #include "ui/SyntaxHighlighting.h"
 
 #include <QPalette>
+#include <QRegularExpression>
 
 #ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
 #include <KSyntaxHighlighting/AbstractHighlighter>
@@ -111,7 +112,11 @@ QList<SyntaxInfo> availableSyntaxes()
 QString syntaxForFileName(const QString& fileName)
 {
 #ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
-    const KSyntaxHighlighting::Definition definition = repository().definitionForFileName(fileName);
+    // Rotated logs (app.log.1, app.log.2) are logs, not the man pages that *.1 would suggest.
+    static const QRegularExpression rotated(QStringLiteral("^(.+\\.log)(\\.\\d+)+$"));
+    const QRegularExpressionMatch match = rotated.match(fileName);
+    const KSyntaxHighlighting::Definition definition =
+        repository().definitionForFileName(match.hasMatch() ? match.captured(1) : fileName);
     return definition.isValid() ? definition.name() : QString();
 #else
     Q_UNUSED(fileName);
