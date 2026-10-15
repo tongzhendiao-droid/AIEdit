@@ -1,6 +1,7 @@
 #include "ui/FilterResultsView.h"
 
 #include "core/LineIndex.h"
+#include "ui/SyntaxHighlighting.h"
 #include "ui/TextDecoder.h"
 #include "ui/TextDocument.h"
 
@@ -270,7 +271,7 @@ void FilterResultsView::paintEvent(QPaintEvent* event)
 {
     QPainter painter(viewport());
     const QRect area = viewport()->rect();
-    painter.fillRect(event->rect(), palette().color(QPalette::Base));
+    painter.fillRect(event->rect(), m_colors.base);
     const int gutter = gutterWidth();
     painter.fillRect(QRect(0, 0, gutter, area.height()), m_colors.gutter);
 
@@ -399,14 +400,15 @@ void FilterResultsView::updateMetrics()
 
 void FilterResultsView::updateColors()
 {
-    const QPalette& pal = palette();
-    const QColor base = pal.color(QPalette::Base);
-    const bool dark = base.lightness() < 128;
-    m_colors.text = pal.color(QPalette::Text);
-    m_colors.dim = mix(m_colors.text, base, 0.5f);
-    m_colors.gutter = mix(base, m_colors.text, dark ? 0.06f : 0.035f);
-    m_colors.selection = pal.color(QPalette::Active, QPalette::Highlight);
-    m_colors.selectionText = pal.color(QPalette::Active, QPalette::HighlightedText);
+    const EditorColors colors = editorColors(palette());
+    const QColor base = colors.background;
+    const bool dark = colors.dark;
+    m_colors.base = base;
+    m_colors.text = colors.text;
+    m_colors.dim = colors.lineNumber;
+    m_colors.gutter = colors.gutter;
+    m_colors.selection = colors.selection;
+    m_colors.selectionText = colors.selectionText;
     m_colors.inactiveSelection = mix(base, m_colors.selection, 0.35f);
     m_colors.match = dark ? QColor(255, 214, 0, 80) : QColor(255, 200, 0, 110);
     m_colors.error = dark ? QColor(0xef, 0x6c, 0x6c) : QColor(0xc6, 0x28, 0x28);

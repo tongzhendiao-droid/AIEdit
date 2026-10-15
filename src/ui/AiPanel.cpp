@@ -464,6 +464,15 @@ void AiPanel::render()
         scroll->setValue(scroll->maximum());
 }
 
+void AiPanel::changeEvent(QEvent* event)
+{
+    QWidget::changeEvent(event);
+    // Markdown is turned into text with the link colour of the moment: a new palette (a colour
+    // scheme) needs it done again.
+    if (event->type() == QEvent::PaletteChange && m_transcript)
+        render();
+}
+
 void AiPanel::updateState()
 {
     const bool busy = isBusy();

@@ -1,5 +1,6 @@
 #include "ui/TextView.h"
 
+#include "ui/SyntaxHighlighting.h"
 #include "ui/TextDocument.h"
 
 #include <QApplication>
@@ -457,17 +458,16 @@ void TextView::updateMetrics()
 
 void TextView::updateColors()
 {
-    const QPalette& pal = palette();
-    const bool dark = pal.color(QPalette::Base).lightness() < 128;
-    m_colors.base = pal.color(QPalette::Base);
-    m_colors.text = pal.color(QPalette::Text);
-    m_colors.dim = mix(m_colors.text, m_colors.base, 0.55f);
-    m_colors.gutter = mix(m_colors.base, m_colors.text, dark ? 0.06f : 0.035f);
-    m_colors.selection = pal.color(QPalette::Active, QPalette::Highlight);
-    m_colors.selectionText = pal.color(QPalette::Active, QPalette::HighlightedText);
+    const EditorColors colors = editorColors(palette());
+    m_colors.base = colors.background;
+    m_colors.text = colors.text;
+    m_colors.dim = colors.lineNumber;
+    m_colors.gutter = colors.gutter;
+    m_colors.selection = colors.selection;
+    m_colors.selectionText = colors.selectionText;
     m_colors.inactiveSelection = mix(m_colors.base, m_colors.selection, 0.35f);
     m_colors.inactiveSelectionText = m_colors.text;
-    m_colors.currentLine = mix(m_colors.base, m_colors.selection, dark ? 0.14f : 0.08f);
+    m_colors.currentLine = colors.currentLine;
 }
 
 int TextView::gutterWidth() const

@@ -64,6 +64,10 @@ private:
     void createMenus();
     void createCodecMenu();
     void populateSyntaxMenu();
+    // Colour schemes and the editor font (View menu).
+    void populateSchemeMenu();
+    void chooseColorScheme(const QString& name);
+    void chooseEditorFont();
     void readSettings();
     void writeSettings() const;
 
@@ -183,6 +187,10 @@ private:
     int m_untitledCount = 0;
     QList<DocumentView::State> m_recentFiles;
     QMenu* m_recentMenu = nullptr;
+    QMenu* m_schemeMenu = nullptr;
+    QActionGroup* m_schemeGroup = nullptr;
+    QAction* m_fontAction = nullptr;
+    QString m_fontFamily; // empty: the system's fixed-width font
     bool m_wordWrap = true;
     int m_defaultPointSize = 10;
     int m_pointSize = 10;

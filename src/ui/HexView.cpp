@@ -2,6 +2,7 @@
 
 #include "core/FileSource.h"
 #include "core/FileType.h"
+#include "ui/SyntaxHighlighting.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -277,18 +278,18 @@ QString HexView::formatOffset(std::uint64_t offset) const
 
 void HexView::updateColors()
 {
-    const QPalette& pal = palette();
-    const bool dark = pal.color(QPalette::Base).lightness() < 128;
-    m_colors.base = pal.color(QPalette::Base);
-    m_colors.text = pal.color(QPalette::Text);
-    m_colors.dim = mix(m_colors.text, m_colors.base, 0.55f);
+    const EditorColors colors = editorColors(palette());
+    const bool dark = colors.dark;
+    m_colors.base = colors.background;
+    m_colors.text = colors.text;
+    m_colors.dim = colors.lineNumber;
     m_colors.whitespace = dark ? QColor(0x81, 0xC7, 0x84) : QColor(0x2E, 0x7D, 0x32);
     m_colors.control = dark ? QColor(0xF4, 0x8F, 0xB1) : QColor(0xAD, 0x14, 0x57);
     m_colors.highByte = dark ? QColor(0xFF, 0xB7, 0x4D) : QColor(0xA8, 0x55, 0x00);
-    m_colors.selection = pal.color(QPalette::Highlight);
-    m_colors.selectionText = pal.color(QPalette::HighlightedText);
+    m_colors.selection = colors.selection;
+    m_colors.selectionText = colors.selectionText;
     m_colors.inactiveSelection = mix(m_colors.base, m_colors.selection, 0.35f);
-    m_colors.currentRow = mix(m_colors.base, m_colors.selection, dark ? 0.14f : 0.08f);
+    m_colors.currentRow = colors.currentLine;
     m_colors.separator = mix(m_colors.text, m_colors.base, 0.8f);
     m_colors.marks.clear();
     for (const QColor hue : {QColor(0x42, 0x85, 0xF4), QColor(0x34, 0xA8, 0x53), QColor(0xF9, 0xAB, 0x00),

@@ -26,6 +26,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDatabase>
+#include <QFontDialog>
 #include <QIcon>
 #include <QInputDialog>
 #include <QJsonObject>
@@ -494,6 +495,9 @@ void MainWindow::createActions()
     m_resetZoomAction = new QAction(tr("&Reset Zoom"), this);
     m_resetZoomAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
     connect(m_resetZoomAction, &QAction::triggered, this, &MainWindow::resetZoom);
+    m_fontAction = new QAction(tr("&Editor Font…"), this);
+    m_fontAction->setToolTip(tr("The fixed-width font of the text and hex views"));
+    connect(m_fontAction, &QAction::triggered, this, &MainWindow::chooseEditorFont);
 
     m_bytesPerRowGroup = new QActionGroup(this);
     for (const int bytes : kBytesPerRowChoices) {
@@ -579,6 +583,11 @@ void MainWindow::createMenus()
     view->addAction(m_zoomInAction);
     view->addAction(m_zoomOutAction);
     view->addAction(m_resetZoomAction);
+    view->addSeparator();
+    // Filled when first opened: listing the schemes loads the highlighting definitions.
+    m_schemeMenu = view->addMenu(tr("&Color Scheme"));
+    connect(m_schemeMenu, &QMenu::aboutToShow, this, &MainWindow::populateSchemeMenu);
+    view->addAction(m_fontAction);
     view->addSeparator();
     view->addAction(m_inspectorDock->toggleViewAction());
     view->addSeparator();
@@ -670,9 +679,65 @@ void MainWindow::populateSyntaxMenu()
     }
 }
 
+void MainWindow::populateSchemeMenu()
+{
+    if (m_schemeGroup) {
+        for (QAction* action : m_schemeGroup->actions())
+            action->setChecked(action->data().toString() == colorScheme());
+        return;
+    }
+    m_schemeGroup = new QActionGroup(this);
+    const auto add = [this](const QString& text, const QString& name) {
+        QAction* action = m_schemeMenu->addAction(text);
+        action->setCheckable(true);
+        action->setData(name);
+        action->setChecked(name == colorScheme());
+        m_schemeGroup->addAction(action);
+        connect(action, &QAction::triggered, this, [this, name] { chooseColorScheme(name); });
+    };
+    add(tr("Follow the &System"), QString());
+    bool dark = false;
+    m_schemeMenu->addSection(tr("Light"));
+    for (const ColorScheme& scheme : availableColorSchemes()) {
+        if (scheme.dark && !dark) {
+            m_schemeMenu->addSection(tr("Dark"));
+            dark = true;
+        }
+        add(scheme.displayName, scheme.name);
+    }
+}
+
+void MainWindow::chooseColorScheme(const QString& name)
+{
+    setColorScheme(name);
+    QSettings().setValue(QStringLiteral("view/colorScheme"), colorScheme());
+}
+
+void MainWindow::chooseEditorFont()
+{
+    QFont current = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    if (const DocumentView* doc = currentDocument())
+        current = doc->textView()->font();
+    bool ok = false;
+    const QFont font =
+        QFontDialog::getFont(&ok, current, this, tr("Editor Font"), QFontDialog::MonospacedFonts);
+    if (!ok)
+        return;
+    m_fontFamily = font.family();
+    const int pointSize = font.pointSize() > 0 ? font.pointSize() : m_pointSize;
+    m_pointSize = std::clamp(pointSize, kMinPointSize, kMaxPointSize);
+    for (int i = 0; i < m_tabs->count(); ++i)
+        applyViewSettings(document(i));
+    QSettings settings;
+    settings.setValue(QStringLiteral("view/fontFamily"), m_fontFamily);
+    settings.setValue(QStringLiteral("view/pointSize"), m_pointSize);
+}
+
 void MainWindow::readSettings()
 {
     QSettings settings;
+    setColorScheme(settings.value(QStringLiteral("view/colorScheme")).toString());
+    m_fontFamily = settings.value(QStringLiteral("view/fontFamily")).toString();
     if (!restoreGeometry(settings.value(QStringLiteral("window/geometry")).toByteArray()))
         resize(1100, 700);
     restoreState(settings.value(QStringLiteral("window/state")).toByteArray());
@@ -696,6 +761,7 @@ void MainWindow::writeSettings() const
     settings.setValue(QStringLiteral("window/state"), saveState());
     settings.setValue(QStringLiteral("files/lastDirectory"), m_lastDirectory);
     settings.setValue(QStringLiteral("view/pointSize"), m_pointSize);
+    settings.setValue(QStringLiteral("view/fontFamily"), m_fontFamily);
     settings.setValue(QStringLiteral("view/bytesPerRow"), m_bytesPerRow);
     settings.setValue(QStringLiteral("view/wordWrap"), m_wordWrap);
     settings.setValue(QStringLiteral("inspector/bigEndian"), m_inspector->isBigEndian());
@@ -1385,6 +1451,8 @@ void MainWindow::applyViewSettings(DocumentView* doc) const
 {
     for (QWidget* view : {static_cast<QWidget*>(doc->textView()), static_cast<QWidget*>(doc->hexView())}) {
         QFont font = view->font();
+        if (!m_fontFamily.isEmpty())
+            font.setFamily(m_fontFamily);
         font.setPointSize(m_pointSize);
         view->setFont(font);
     }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QList>
 #include <QString>
 #include <QTextLayout>
@@ -27,6 +28,40 @@ QList<SyntaxInfo> availableSyntaxes();
 QString syntaxForFileName(const QString& fileName);
 QString translatedSyntaxName(const QString& name);
 
+// Colour schemes: KSyntaxHighlighting's themes (Monokai, Solarized, …), or without it a light
+// and a dark one of AIEdit's own. A scheme colours the whole application, the syntax included;
+// without one, everything follows the system.
+struct ColorScheme
+{
+    QString name;        // stable identifier, e.g. "Monokai"
+    QString displayName; // what menus show
+    bool dark = false;
+};
+
+// Light schemes first, then dark ones, each by name.
+QList<ColorScheme> availableColorSchemes();
+// Empty while following the system.
+QString colorScheme();
+// Recolours the application (its palette, and so every view). An unknown name or an empty
+// one follows the system again.
+void setColorScheme(const QString& name);
+
+// What an editor (text, hex, results) paints with: the scheme's colours, or ones worked out
+// from the palette when following the system.
+struct EditorColors
+{
+    QColor background;
+    QColor text;
+    QColor selection;
+    QColor selectionText;
+    QColor currentLine;
+    QColor lineNumber;
+    QColor currentLineNumber;
+    QColor gutter;
+    bool dark = false;
+};
+EditorColors editorColors(const QPalette& palette);
+
 // The highlighting state between two lines (open comments, strings, …). Cheap to copy.
 class SyntaxState
 {
@@ -42,7 +77,8 @@ private:
     std::shared_ptr<const Impl> m_impl; // null: the state before the first line
 };
 
-// Highlights lines with one syntax and a colour theme chosen to suit a palette.
+// Highlights lines with one syntax, in the colours of the scheme or, following the system, of a
+// theme that suits the palette.
 class SyntaxHighlighter
 {
 public:

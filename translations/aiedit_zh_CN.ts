@@ -344,6 +344,17 @@
     </message>
 </context>
 <context>
+    <name>aiedit::ui::ColorScheme</name>
+    <message>
+        <source>Light</source>
+        <translation>浅色</translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation>深色</translation>
+    </message>
+</context>
+<context>
     <name>aiedit::ui::DataInspector</name>
     <message>
         <source>Little-endian</source>
@@ -1071,6 +1082,14 @@
         <translation>重置缩放(&amp;R)</translation>
     </message>
     <message>
+        <source>&amp;Editor Font…</source>
+        <translation>编辑区字体(&amp;E)…</translation>
+    </message>
+    <message>
+        <source>The fixed-width font of the text and hex views</source>
+        <translation>文本和十六进制视图用的等宽字体</translation>
+    </message>
+    <message>
         <source>%1 Bytes per Row</source>
         <translation>每行 %1 字节</translation>
     </message>
@@ -1131,6 +1150,10 @@
         <translation>十六进制布局(&amp;L)</translation>
     </message>
     <message>
+        <source>&amp;Color Scheme</source>
+        <translation>配色方案(&amp;C)</translation>
+    </message>
+    <message>
         <source>&amp;AI</source>
         <translation>&amp;AI</translation>
     </message>
@@ -1185,6 +1208,22 @@
     <message>
         <source>Plain Text</source>
         <translation>纯文本</translation>
+    </message>
+    <message>
+        <source>Follow the &amp;System</source>
+        <translation>跟随系统(&amp;S)</translation>
+    </message>
+    <message>
+        <source>Light</source>
+        <translation>浅色</translation>
+    </message>
+    <message>
+        <source>Dark</source>
+        <translation>深色</translation>
+    </message>
+    <message>
+        <source>Editor Font</source>
+        <translation>编辑区字体</translation>
     </message>
     <message>
         <source>Cannot Open File</source>
