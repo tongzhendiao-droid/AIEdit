@@ -1,5 +1,6 @@
 # Pure C++ core: no Qt dependency, so it can be unit-tested in isolation and reused by a CLI later.
 add_library(aiedit_core STATIC
+    EditBuffer.cpp EditBuffer.h
     FileSource.cpp FileSource.h
     FileSummary.cpp FileSummary.h
     FileType.cpp FileType.h

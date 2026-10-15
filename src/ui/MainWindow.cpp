@@ -234,11 +234,32 @@ void MainWindow::createActions()
     m_closeAction->setShortcut(QKeySequence::Close);
     connect(m_closeAction, &QAction::triggered, this, [this] { closeTab(m_tabs->currentIndex()); });
 
+    m_saveAction = new QAction(tr("&Save"), this);
+    m_saveAction->setShortcut(QKeySequence::Save);
+    connect(m_saveAction, &QAction::triggered, this, [this] {
+        if (DocumentView* doc = currentDocument())
+            saveDocument(doc);
+    });
+    m_saveAsAction = new QAction(tr("Save &As…"), this);
+    m_saveAsAction->setShortcut(QKeySequence::SaveAs);
+    connect(m_saveAsAction, &QAction::triggered, this, [this] {
+        if (DocumentView* doc = currentDocument())
+            saveDocumentAs(doc);
+    });
+
     m_reloadAction = new QAction(tr("&Reload"), this);
     m_reloadAction->setShortcut(QKeySequence(Qt::Key_F5));
     connect(m_reloadAction, &QAction::triggered, this, [this] {
-        if (DocumentView* doc = currentDocument())
-            doc->reload();
+        DocumentView* doc = currentDocument();
+        if (!doc)
+            return;
+        if (doc->isModified() &&
+            QMessageBox::question(this, tr("Reload"),
+                                  tr("Discard your changes to %1 and load it from disk again?")
+                                      .arg(QFileInfo(doc->filePath()).fileName()),
+                                  QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Discard)
+            return;
+        doc->reload();
     });
 
     m_followAction = new QAction(tr("&Follow End of File"), this);
@@ -274,17 +295,25 @@ void MainWindow::createActions()
         });
         return action;
     };
+    m_undoAction = documentAction(tr("&Undo"), [](DocumentView* doc) { doc->undo(); }, QKeySequence::Undo);
+    m_redoAction = documentAction(tr("&Redo"), [](DocumentView* doc) { doc->redo(); });
+    QList<QKeySequence> redoKeys = QKeySequence::keyBindings(QKeySequence::Redo);
+    if (!redoKeys.contains(QKeySequence(Qt::CTRL | Qt::Key_Y)))
+        redoKeys << QKeySequence(Qt::CTRL | Qt::Key_Y);
+    m_redoAction->setShortcuts(redoKeys);
+    m_cutAction = documentAction(tr("Cu&t"), [](DocumentView* doc) { doc->cut(); }, QKeySequence::Cut);
+    m_pasteAction = documentAction(tr("&Paste"), [](DocumentView* doc) { doc->paste(); }, QKeySequence::Paste);
     // The hex view always mirrors the text selection, so byte-oriented copies can use it.
     m_copyAction = documentAction(tr("&Copy"), [](DocumentView* doc) { doc->copy(); }, QKeySequence::Copy);
     m_copyHexAction = documentAction(tr("Copy as &Hex"), [](DocumentView* doc) { doc->hexView()->copyAsHex(); });
-    m_copyTextAction = documentAction(tr("Copy as &Text"), [](DocumentView* doc) {
+    m_copyTextAction = documentAction(tr("Copy as Te&xt"), [](DocumentView* doc) {
         if (doc->isTextActive())
             doc->textView()->copy();
         else
             doc->hexView()->copyAsText();
     });
     m_copyCArrayAction =
-        documentAction(tr("Copy as C A&rray"), [](DocumentView* doc) { doc->hexView()->copyAsCArray(); });
+        documentAction(tr("Copy as C Arra&y"), [](DocumentView* doc) { doc->hexView()->copyAsCArray(); });
     m_copyOffsetAction = documentAction(tr("Copy &Offset"), [](DocumentView* doc) { doc->hexView()->copyOffset(); });
     m_selectAllAction =
         documentAction(tr("Select &All"), [](DocumentView* doc) { doc->selectAll(); }, QKeySequence::SelectAll);
@@ -384,13 +413,20 @@ void MainWindow::createMenus()
 {
     QMenu* file = menuBar()->addMenu(tr("&File"));
     file->addAction(m_openAction);
+    file->addAction(m_saveAction);
+    file->addAction(m_saveAsAction);
     file->addAction(m_reloadAction);
     file->addAction(m_closeAction);
     file->addSeparator();
     file->addAction(m_quitAction);
 
     QMenu* edit = menuBar()->addMenu(tr("&Edit"));
+    edit->addAction(m_undoAction);
+    edit->addAction(m_redoAction);
+    edit->addSeparator();
+    edit->addAction(m_cutAction);
     edit->addAction(m_copyAction);
+    edit->addAction(m_pasteAction);
     edit->addAction(m_copyHexAction);
     edit->addAction(m_copyTextAction);
     edit->addAction(m_copyCArrayAction);
@@ -518,6 +554,12 @@ void MainWindow::writeSettings() const
 
 void MainWindow::closeEvent(QCloseEvent* event)
 {
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        if (!confirmClose(document(i))) {
+            event->ignore();
+            return;
+        }
+    }
     writeSettings();
     event->accept();
 }
@@ -580,6 +622,12 @@ bool MainWindow::openFile(const QString& path)
     doc->setContextActions({m_aiExplainAction, m_aiTranslateAction, m_aiSummarizeAction, m_aiAskAction},
                            {m_aiExplainAction, m_aiSummarizeAction, m_aiAskAction, m_aiIdentifyAction});
     connect(doc, &DocumentView::stateChanged, this, [this, doc] { documentStateChanged(doc); });
+    connect(doc, &DocumentView::modificationChanged, this, [this, doc] { updateDocumentTitle(doc); });
+    connect(doc, &DocumentView::pathChanged, this, [this, doc] {
+        updateDocumentTitle(doc);
+        if (doc == currentDocument())
+            updateFileStatus();
+    });
     connect(doc, &DocumentView::sourceChanged, this, [this, doc] {
         if (doc != currentDocument())
             return;
@@ -613,7 +661,7 @@ void MainWindow::showOpenDialog()
 void MainWindow::closeTab(int index)
 {
     QWidget* widget = m_tabs->widget(index);
-    if (!widget)
+    if (!widget || !confirmClose(document(index)))
         return;
     m_tabs->removeTab(index);
     widget->deleteLater();
@@ -621,11 +669,72 @@ void MainWindow::closeTab(int index)
         m_stack->setCurrentWidget(m_welcome);
 }
 
+bool MainWindow::saveDocument(DocumentView* doc)
+{
+    QString error;
+    if (!doc->save(&error)) {
+        QMessageBox::warning(this, tr("Cannot Save"),
+                             tr("Cannot save %1:\n%2").arg(QDir::toNativeSeparators(doc->filePath()), error));
+        return false;
+    }
+    statusBar()->showMessage(tr("Saved %1").arg(QFileInfo(doc->filePath()).fileName()), kStatusTimeoutMs);
+    return true;
+}
+
+bool MainWindow::saveDocumentAs(DocumentView* doc)
+{
+    const QString path = QFileDialog::getSaveFileName(this, tr("Save As"), doc->filePath());
+    if (path.isEmpty())
+        return false;
+    QString error;
+    if (!doc->saveAs(path, &error)) {
+        QMessageBox::warning(this, tr("Cannot Save"),
+                             tr("Cannot save %1:\n%2").arg(QDir::toNativeSeparators(path), error));
+        return false;
+    }
+    m_lastDirectory = QFileInfo(path).absolutePath();
+    statusBar()->showMessage(tr("Saved %1").arg(QFileInfo(path).fileName()), kStatusTimeoutMs);
+    return true;
+}
+
+bool MainWindow::confirmClose(DocumentView* doc)
+{
+    if (!doc || !doc->isModified())
+        return true;
+    m_tabs->setCurrentWidget(doc);
+    const auto answer = QMessageBox::question(
+        this, tr("Unsaved Changes"),
+        tr("Save your changes to %1 before closing it?").arg(QFileInfo(doc->filePath()).fileName()),
+        QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
+    if (answer == QMessageBox::Save)
+        return saveDocument(doc);
+    return answer == QMessageBox::Discard;
+}
+
+void MainWindow::updateDocumentTitle(DocumentView* doc)
+{
+    const int index = m_tabs->indexOf(doc);
+    if (index < 0)
+        return;
+    const QString name = QFileInfo(doc->filePath()).fileName();
+    m_tabs->setTabText(index, doc->isModified() ? QStringLiteral("*") + name : name);
+    m_tabs->setTabToolTip(index, QDir::toNativeSeparators(doc->filePath()));
+    if (doc == currentDocument()) {
+        setWindowTitle(tr("%1[*] — AIEdit").arg(name));
+        setWindowModified(doc->isModified());
+    }
+}
+
 void MainWindow::currentTabChanged()
 {
     DocumentView* doc = currentDocument();
     m_inspector->setSource(doc ? doc->source() : nullptr);
-    setWindowTitle(doc ? tr("%1 — AIEdit").arg(QFileInfo(doc->filePath()).fileName()) : QStringLiteral("AIEdit"));
+    if (doc) {
+        updateDocumentTitle(doc);
+    } else {
+        setWindowTitle(QStringLiteral("AIEdit"));
+        setWindowModified(false);
+    }
     updateFileStatus();
     documentStateChanged(doc);
     updateActions();
@@ -644,6 +753,11 @@ void MainWindow::documentStateChanged(DocumentView* doc)
         const QSignalBlocker blocker(m_followAction);
         m_followAction->setChecked(doc->isFollowing());
     }
+    const bool editing = doc && doc->isEditable() && doc->isTextActive();
+    m_undoAction->setEnabled(editing && doc->textDocument()->canUndo());
+    m_redoAction->setEnabled(editing && doc->textDocument()->canRedo());
+    m_cutAction->setEnabled(editing && doc->textView()->hasSelection());
+    m_pasteAction->setEnabled(editing);
     // Explaining, translating and summarizing need a selection; asking and identifying do not.
     const bool selected = doc && doc->hasSelection();
     for (QAction* action : {m_aiExplainAction, m_aiTranslateAction, m_aiSummarizeAction})
@@ -656,7 +770,7 @@ void MainWindow::documentStateChanged(DocumentView* doc)
 void MainWindow::updateActions()
 {
     const bool hasDocument = currentDocument() != nullptr;
-    for (QAction* action : {m_closeAction, m_reloadAction, m_followAction, m_copyAction, m_copyHexAction, m_copyTextAction, m_copyCArrayAction,
+    for (QAction* action : {m_closeAction, m_saveAction, m_saveAsAction, m_reloadAction, m_followAction, m_copyAction, m_copyHexAction, m_copyTextAction, m_copyCArrayAction,
                             m_copyOffsetAction, m_selectAllAction, m_goToAction, m_findAction, m_findNextAction,
                             m_findPreviousAction, m_aiAskAction, m_aiIdentifyAction}) {
         action->setEnabled(hasDocument);

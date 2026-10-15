@@ -383,6 +383,10 @@
 <context>
     <name>aiedit::ui::DocumentView</name>
     <message>
+        <source>%1 changed on disk; your unsaved edits are kept</source>
+        <translation>%1 在磁盘上被修改了；你未保存的修改仍然保留</translation>
+    </message>
+    <message>
         <source>Cannot reload: %1</source>
         <translation>无法重新加载：%1</translation>
     </message>
@@ -401,6 +405,14 @@
     <message>
         <source>bytes 0x%1–0x%2 (%3 bytes)</source>
         <translation>字节 0x%1–0x%2（%3 字节）</translation>
+    </message>
+    <message>
+        <source>Binary files can only be viewed here</source>
+        <translation>二进制文件只能查看，不能在这里编辑</translation>
+    </message>
+    <message>
+        <source>Files larger than %1 can only be viewed here</source>
+        <translation>超过 %1 的文件只能查看，不能在这里编辑</translation>
     </message>
 </context>
 <context>
@@ -552,8 +564,24 @@
         <translation>关闭标签页(&amp;C)</translation>
     </message>
     <message>
+        <source>&amp;Save</source>
+        <translation>保存(&amp;S)</translation>
+    </message>
+    <message>
+        <source>Save &amp;As…</source>
+        <translation>另存为(&amp;A)…</translation>
+    </message>
+    <message>
         <source>&amp;Reload</source>
         <translation>重新加载(&amp;R)</translation>
+    </message>
+    <message>
+        <source>Reload</source>
+        <translation>重新加载</translation>
+    </message>
+    <message>
+        <source>Discard your changes to %1 and load it from disk again?</source>
+        <translation>放弃对 %1 的修改，重新从磁盘加载？</translation>
     </message>
     <message>
         <source>&amp;Follow End of File</source>
@@ -576,6 +604,22 @@
         <translation>退出(&amp;Q)</translation>
     </message>
     <message>
+        <source>&amp;Undo</source>
+        <translation>撤销(&amp;U)</translation>
+    </message>
+    <message>
+        <source>&amp;Redo</source>
+        <translation>重做(&amp;R)</translation>
+    </message>
+    <message>
+        <source>Cu&amp;t</source>
+        <translation>剪切(&amp;T)</translation>
+    </message>
+    <message>
+        <source>&amp;Paste</source>
+        <translation>粘贴(&amp;P)</translation>
+    </message>
+    <message>
         <source>&amp;Copy</source>
         <translation>复制(&amp;C)</translation>
     </message>
@@ -584,12 +628,12 @@
         <translation>复制为十六进制(&amp;H)</translation>
     </message>
     <message>
-        <source>Copy as &amp;Text</source>
-        <translation>复制为文本(&amp;T)</translation>
+        <source>Copy as Te&amp;xt</source>
+        <translation>复制为文本(&amp;X)</translation>
     </message>
     <message>
-        <source>Copy as C A&amp;rray</source>
-        <translation>复制为 C 数组(&amp;R)</translation>
+        <source>Copy as C Arra&amp;y</source>
+        <translation>复制为 C 数组(&amp;Y)</translation>
     </message>
     <message>
         <source>Copy &amp;Offset</source>
@@ -766,8 +810,34 @@
         <translation>打开文件</translation>
     </message>
     <message>
-        <source>%1 — AIEdit</source>
-        <translation>%1 — AIEdit</translation>
+        <source>Cannot Save</source>
+        <translation>无法保存</translation>
+    </message>
+    <message>
+        <source>Cannot save %1:
+%2</source>
+        <translation>无法保存 %1：
+%2</translation>
+    </message>
+    <message>
+        <source>Saved %1</source>
+        <translation>已保存 %1</translation>
+    </message>
+    <message>
+        <source>Save As</source>
+        <translation>另存为</translation>
+    </message>
+    <message>
+        <source>Unsaved Changes</source>
+        <translation>未保存的修改</translation>
+    </message>
+    <message>
+        <source>Save your changes to %1 before closing it?</source>
+        <translation>关闭前要保存对 %1 的修改吗？</translation>
+    </message>
+    <message>
+        <source>%1[*] — AIEdit</source>
+        <translation>%1[*] — AIEdit</translation>
     </message>
     <message>
         <source>Font size: %1 pt</source>
@@ -883,8 +953,32 @@
         </translation>
     </message>
     <message>
+        <source>This document is read-only</source>
+        <translation>这个文档是只读的</translation>
+    </message>
+    <message>
+        <source>These characters cannot be written in this file&apos;s encoding (%1)</source>
+        <translation>这些字符无法用这个文件的编码（%1）表示</translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation>撤销</translation>
+    </message>
+    <message>
+        <source>Redo</source>
+        <translation>重做</translation>
+    </message>
+    <message>
+        <source>Cut</source>
+        <translation>剪切</translation>
+    </message>
+    <message>
         <source>Copy</source>
         <translation>复制</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>粘贴</translation>
     </message>
     <message>
         <source>Select All</source>

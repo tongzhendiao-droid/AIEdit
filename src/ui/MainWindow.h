@@ -61,6 +61,12 @@ private:
 
     void showOpenDialog();
     void closeTab(int index);
+    // Saving; false if it failed (after saying why) or was cancelled.
+    bool saveDocument(DocumentView* doc);
+    bool saveDocumentAs(DocumentView* doc);
+    // Asks what to do with unsaved edits before a document goes away; false to keep it.
+    bool confirmClose(DocumentView* doc);
+    void updateDocumentTitle(DocumentView* doc);
     void currentTabChanged();
     void goTo();
     void setViewMode(DocumentView::ViewMode mode);
@@ -100,6 +106,12 @@ private:
     QLabel* m_selectionLabel = nullptr;
 
     QAction* m_openAction = nullptr;
+    QAction* m_saveAction = nullptr;
+    QAction* m_saveAsAction = nullptr;
+    QAction* m_undoAction = nullptr;
+    QAction* m_redoAction = nullptr;
+    QAction* m_cutAction = nullptr;
+    QAction* m_pasteAction = nullptr;
     QAction* m_closeAction = nullptr;
     QAction* m_reloadAction = nullptr;
     QAction* m_followAction = nullptr;

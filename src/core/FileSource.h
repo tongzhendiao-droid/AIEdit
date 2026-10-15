@@ -33,6 +33,9 @@ public:
     static constexpr std::uint64_t kMaxReadSize = 256ull * 1024 * 1024;
 
     static std::unique_ptr<FileSource> open(const std::filesystem::path& path, std::error_code& ec);
+    // Bytes held in memory, such as an edited document's; path() names the file they belong to.
+    static std::unique_ptr<FileSource> fromBytes(std::filesystem::path path,
+                                                 std::shared_ptr<const std::vector<std::uint8_t>> bytes);
 
     ~FileSource();
     FileSource(const FileSource&) = delete;
@@ -51,6 +54,7 @@ private:
     std::uint64_t m_size = 0;
     void* m_mapping = nullptr;         // base address of the mapping, if mapped
     std::vector<std::uint8_t> m_owned; // contents, if read into memory
+    std::shared_ptr<const std::vector<std::uint8_t>> m_shared; // contents, if held elsewhere
 };
 
 } // namespace aiedit::core

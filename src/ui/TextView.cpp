@@ -6,16 +6,20 @@
 #include <QClipboard>
 #include <QContextMenuEvent>
 #include <QFontDatabase>
+#include <QInputMethod>
+#include <QInputMethodEvent>
 #include <QKeyEvent>
 #include <QLocale>
 #include <QMenu>
 #include <QPainter>
+#include <QScopedValueRollback>
 #include <QScrollBar>
 #include <QTextBoundaryFinder>
 #include <QWheelEvent>
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 
 namespace aiedit::ui {
 
@@ -53,6 +57,24 @@ std::uint64_t countCharacters(const QString& text, qsizetype end)
         std::count_if(text.begin(), text.begin() + end, [](QChar c) { return !c.isLowSurrogate(); }));
 }
 
+// Whether a key press types text (as QPlainTextEdit decides it).
+bool isTypedText(const QKeyEvent* event)
+{
+    const QString text = event->text();
+    if (text.isEmpty())
+        return false;
+    const QChar c = text.at(0);
+    // Formatting characters such as ZWNJ and ZWJ are typed with Ctrl+Shift on some layouts.
+    if (c.category() == QChar::Other_Format)
+        return true;
+    const Qt::KeyboardModifiers modifiers = event->modifiers() & ~Qt::KeypadModifier;
+    if (modifiers == Qt::ControlModifier || modifiers == (Qt::ControlModifier | Qt::ShiftModifier))
+        return false;
+    if (c.isPrint() || c.category() == QChar::Other_PrivateUse)
+        return true;
+    return c.isHighSurrogate() && text.size() > 1 && text.at(1).isLowSurrogate();
+}
+
 // The line on which a cursor position shows; the last line for a position past every line.
 QTextLine lineAtPosition(const QTextLayout& layout, int position)
 {
@@ -87,6 +109,8 @@ void TextView::setDocument(TextDocument* document)
         connect(m_document, &TextDocument::indexFinished, this, &TextView::indexGrew);
         connect(m_document, &TextDocument::codecChanged, this, &TextView::resetForDocument);
         connect(m_document, &TextDocument::sourceChanged, this, &TextView::resetForDocument);
+        connect(m_document, &TextDocument::edited, this,
+                [this](std::uint64_t offset, std::uint64_t removed, std::uint64_t) { documentEdited(offset, removed); });
         connect(m_document, &QObject::destroyed, this, [this] {
             m_document = nullptr;
             resetForDocument();
@@ -207,6 +231,15 @@ void TextView::setWordWrap(bool on)
         setTopRow(m_document->index().rowIndexAt(top));
     if (caretShown)
         ensureCursorVisible();
+    viewport()->update();
+}
+
+void TextView::setReadOnly(bool readOnly, const QString& reason)
+{
+    m_readOnly = readOnly;
+    m_readOnlyReason = reason;
+    m_preedit.clear();
+    setAttribute(Qt::WA_InputMethodEnabled, !readOnly);
     viewport()->update();
 }
 
@@ -378,6 +411,9 @@ std::uint64_t TextView::computeMaxTopOffset() const
     // until then the last block may scroll up to the top.
     if (!m_document->index().isComplete())
         return last.span.start;
+    // Only where lines wrap matters, not their colours: highlighting the end would need the
+    // highlighting state of every line before it, after each edit.
+    const QScopedValueRollback measuring(m_measuring, true);
     return lineStart(moveLines({last, lineCount(last) - 1}, -(visibleRows() - 1)));
 }
 
@@ -448,10 +484,11 @@ qreal TextView::wrapWidth() const
 const TextView::BlockLayout& TextView::layoutFor(const Block& block) const
 {
     const core::Row& span = block.span;
+    const bool highlighted = !m_highlighter || !m_measuring;
     if (const auto it = m_layouts.find(span.start); it != m_layouts.end()) {
-        if (it->second->span == span)
+        if (it->second->span == span && (it->second->highlighted || !highlighted))
             return *it->second;
-        // The block grew (the index got further): replace it.
+        // The block grew (the index got further), or it is to be shown now: lay it out again.
         m_cachedLayoutBytes -= it->second->span.contentEnd - it->second->span.start;
         m_layouts.erase(it);
     }
@@ -463,8 +500,9 @@ const TextView::BlockLayout& TextView::layoutFor(const Block& block) const
 
     auto entry = std::make_unique<BlockLayout>();
     entry->span = span;
+    entry->highlighted = highlighted;
     entry->decoded = m_document->decoder().decode(m_document->bytes().subspan(span.start, static_cast<std::size_t>(size)));
-    if (m_highlighter)
+    if (m_highlighter && highlighted)
         entry->layout.setFormats(highlight(block, entry->decoded));
 
     QTextOption option;
@@ -792,6 +830,8 @@ void TextView::moveCursor(const Caret& caret, bool extendSelection, bool keepDes
 {
     if (!keepDesiredX)
         m_desiredX.reset();
+    if (m_document)
+        m_document->breakUndoMerge(); // typing somewhere else is a new step
     setCursorAndAnchor(caret.offset, extendSelection ? m_anchor : caret.offset);
     m_caretAtLineEnd = caret.atLineEnd;
     ensureCursorVisible();
@@ -823,6 +863,8 @@ void TextView::ensureCursorVisible()
         const bool above = m_wordWrap ? lineStart(caret) < lineStart(topLine()) : caret.block.firstRow < topRow();
         scrollToLine(above ? caret : moveLines(caret, -(visible - 1)));
     }
+    if (hasFocus() && !m_readOnly)
+        QGuiApplication::inputMethod()->update(Qt::ImCursorRectangle);
     if (m_wordWrap)
         return; // nothing to scroll sideways
 
@@ -870,8 +912,10 @@ std::optional<std::uint64_t> TextView::cursorColumn() const
 
 QRect TextView::cursorRect() const
 {
-    if (rowCount() == 0)
+    if (!m_document)
         return {};
+    if (rowCount() == 0) // empty: the caret stands at the start of the first line
+        return QRect(static_cast<int>(std::floor(textLeft())), 0, kCaretWidth, m_lineHeight);
     const VisualLine caret = caretLine();
     const std::optional<int> line = linesFromTop(caret, visibleRows());
     if (!line)
@@ -904,6 +948,285 @@ void TextView::copy()
     emit statusMessage(tr("Copied %n byte(s)", nullptr, static_cast<int>(length)));
 }
 
+// Editing ----------------------------------------------------------------------------------------
+
+bool TextView::canEdit()
+{
+    if (!m_document)
+        return false;
+    if (m_readOnly)
+        emit statusMessage(m_readOnlyReason.isEmpty() ? tr("This document is read-only") : m_readOnlyReason);
+    return !m_readOnly;
+}
+
+std::uint64_t TextView::editOffset(std::uint64_t offset) const
+{
+    const core::LineIndex& index = m_document->index();
+    if (offset < documentEnd() || index.rowCount() == 0 || !index.isComplete())
+        return offset;
+    return std::min(offset, index.row(index.rowCount() - 1).contentEnd);
+}
+
+void TextView::replaceSelection(const QString& text, core::EditBuffer::Merge merge)
+{
+    const std::uint64_t start = hasSelection() ? selectionStart() : editOffset(m_cursor);
+    replaceRange(start, hasSelection() ? selectionEnd() : start, text, merge);
+}
+
+void TextView::replaceRange(std::uint64_t start, std::uint64_t end, const QString& text, core::EditBuffer::Merge merge)
+{
+    const std::optional<std::uint64_t> inserted = m_document->replace(start, end, text, merge);
+    if (!inserted) {
+        emit statusMessage(tr("These characters cannot be written in this file's encoding (%1)")
+                               .arg(QString::fromLatin1(m_document->codec().name.data())));
+        return;
+    }
+    m_desiredX.reset();
+    setCursorAndAnchor(start + *inserted, start + *inserted);
+    ensureCursorVisible();
+}
+
+void TextView::insertText(const QString& text)
+{
+    if (canEdit())
+        replaceSelection(text, core::EditBuffer::Merge::Typing);
+}
+
+void TextView::deleteBackward(bool word)
+{
+    if (hasSelection()) {
+        replaceRange(selectionStart(), selectionEnd(), {}, core::EditBuffer::Merge::No);
+        return;
+    }
+    if (rowCount() == 0)
+        return;
+    const std::uint64_t caret = editOffset(m_cursor);
+    const std::uint64_t start = stepOffset(caret, false, word ? QTextLayout::SkipWords : QTextLayout::SkipCharacters);
+    if (start < caret)
+        replaceRange(start, caret, {}, core::EditBuffer::Merge::DeleteBackward);
+}
+
+void TextView::deleteForward(bool word)
+{
+    if (hasSelection()) {
+        replaceRange(selectionStart(), selectionEnd(), {}, core::EditBuffer::Merge::No);
+        return;
+    }
+    if (rowCount() == 0)
+        return;
+    const std::uint64_t caret = editOffset(m_cursor);
+    const std::uint64_t end = stepOffset(caret, true, word ? QTextLayout::SkipWords : QTextLayout::SkipCharacters);
+    if (end > caret)
+        replaceRange(caret, end, {}, core::EditBuffer::Merge::DeleteForward);
+}
+
+void TextView::insertLineBreak()
+{
+    QString text = m_document->lineTerminator();
+    // The new line starts indented like the one it splits, up to the caret.
+    if (rowCount() > 0) {
+        const core::LineIndex& index = m_document->index();
+        const std::uint64_t caret = hasSelection() ? selectionStart() : editOffset(m_cursor);
+        if (const auto first = index.rowIndexOfLine(index.row(index.rowIndexAt(caret)).line)) {
+            const core::Row start = index.row(*first);
+            const std::uint64_t end = std::min({caret, start.contentEnd, start.start + core::LineIndex::kMaxRowBytes});
+            const QString before = m_document->decoder().decodePlain(
+                m_document->bytes().subspan(start.start, static_cast<std::size_t>(end - start.start)));
+            qsizetype indent = 0;
+            while (indent < before.size() && (before.at(indent) == u' ' || before.at(indent) == u'\t'))
+                ++indent;
+            text += before.left(indent);
+        }
+    }
+    replaceSelection(text, core::EditBuffer::Merge::Typing);
+}
+
+QString TextView::indentUnit() const
+{
+    // Tabs, unless more lines start with spaces; then as many as the indents have in common
+    // (2 for most YAML, 4 for much code), or the tab width.
+    int tabs = 0;
+    int spaced = 0;
+    int width = 0;
+    for (const core::Row& row : m_document->index().rows(0, 2000)) {
+        if (row.continuation)
+            continue;
+        const auto length = static_cast<std::size_t>(std::min<std::uint64_t>(row.contentEnd - row.start, 64));
+        const QString start = m_document->decoder().decodePlain(m_document->bytes().subspan(row.start, length));
+        int spaces = 0;
+        while (spaces < start.size() && start.at(spaces) == u' ')
+            ++spaces;
+        if (start.startsWith(u'\t')) {
+            ++tabs;
+        } else if (spaces > 0 && spaces < start.size()) {
+            ++spaced;
+            width = std::gcd(width, spaces);
+        }
+    }
+    if (spaced <= tabs)
+        return QStringLiteral("\t");
+    return QString(width >= 2 && width <= 8 ? width : m_tabWidth, u' ');
+}
+
+void TextView::indentLines(bool unindent)
+{
+    if (rowCount() == 0)
+        return;
+    const core::LineIndex& index = m_document->index();
+    const std::uint64_t from = hasSelection() ? selectionStart() : editOffset(m_cursor);
+    const std::uint64_t to = hasSelection() ? selectionEnd() : from;
+    const std::uint64_t first = index.rowIndexAt(from);
+    std::uint64_t last = index.rowIndexAt(to);
+    if (last > first && index.row(last).start == to)
+        --last; // the selection ends at the start of that line
+    const std::vector<core::Row> rows = index.rows(first, static_cast<std::size_t>(last - first + 1));
+
+    // One change from the first line to the last, built from their bytes untouched plus the
+    // indents added or removed, so nothing else gets re-encoded.
+    const QString unit = indentUnit();
+    const std::optional<QByteArray> encodedUnit = m_document->encode(unit);
+    const auto bytes = m_document->bytes();
+    std::vector<std::uint8_t> text;
+    for (const core::Row& row : rows) {
+        std::uint64_t keep = row.start;
+        if (!row.continuation && row.contentEnd > row.start) {
+            if (!unindent && encodedUnit) {
+                text.insert(text.end(), encodedUnit->begin(), encodedUnit->end());
+            } else if (unindent) {
+                // At most one indent: a tab, or spaces up to the width of one.
+                const auto length = static_cast<std::size_t>(std::min<std::uint64_t>(row.contentEnd - row.start, 64));
+                const DecodedText head = m_document->decoder().decode(bytes.subspan(row.start, length), false);
+                const qsizetype width = unit == QStringLiteral("\t") ? m_tabWidth : unit.size();
+                qsizetype remove = 0;
+                if (head.text.startsWith(u'\t')) {
+                    remove = 1;
+                } else {
+                    while (remove < head.text.size() && remove < width && head.text.at(remove) == u' ')
+                        ++remove;
+                }
+                keep = row.start + head.byteAt(remove);
+            }
+        }
+        text.insert(text.end(), bytes.begin() + static_cast<std::ptrdiff_t>(keep),
+                    bytes.begin() + static_cast<std::ptrdiff_t>(row.end));
+    }
+    const std::uint64_t start = rows.front().start;
+    const std::uint64_t end = rows.back().end;
+    if (text.size() == end - start && std::equal(text.begin(), text.end(), bytes.begin() + static_cast<std::ptrdiff_t>(start)))
+        return; // nothing to unindent
+    m_document->replaceBytes(start, end, text);
+    // The lines stay selected, up to the end of the last one's text.
+    const core::Row lastRow = rows.back();
+    const std::uint64_t selectionEnd = start + text.size() - (lastRow.end - lastRow.contentEnd);
+    m_desiredX.reset();
+    setCursorAndAnchor(selectionEnd, start);
+    ensureCursorVisible();
+}
+
+void TextView::cut()
+{
+    if (!hasSelection() || !canEdit())
+        return;
+    if (selectionEnd() - selectionStart() > kMaxCopyBytes) {
+        copy(); // says why not
+        return;
+    }
+    copy();
+    replaceRange(selectionStart(), selectionEnd(), {}, core::EditBuffer::Merge::No);
+}
+
+void TextView::paste()
+{
+    if (!canEdit())
+        return;
+    QString text = QGuiApplication::clipboard()->text();
+    if (text.isEmpty())
+        return;
+    // Line breaks as the file has them.
+    text.replace(QStringLiteral("\r\n"), QStringLiteral("\n")).replace(u'\r', u'\n');
+    if (const QString terminator = m_document->lineTerminator(); terminator != QStringLiteral("\n"))
+        text.replace(QStringLiteral("\n"), terminator);
+    replaceSelection(text, core::EditBuffer::Merge::No);
+}
+
+void TextView::undo()
+{
+    if (m_readOnly || !m_document)
+        return;
+    if (const auto range = m_document->undo()) {
+        m_desiredX.reset();
+        setCursorAndAnchor(range->second, range->first); // what came back stays selected
+        ensureCursorVisible();
+    }
+}
+
+void TextView::redo()
+{
+    if (m_readOnly || !m_document)
+        return;
+    if (const auto range = m_document->redo()) {
+        m_desiredX.reset();
+        setCursorAndAnchor(range->second, range->second);
+        ensureCursorVisible();
+    }
+}
+
+void TextView::documentEdited(std::uint64_t offset, std::uint64_t /*removed*/)
+{
+    // Rows before the change are as they were, and so are their highlighting and layouts; the
+    // rest moved, or changed.
+    const std::uint64_t row = rowCount() == 0 ? 0 : m_document->index().rowIndexAt(offset);
+    m_stateCheckpoints.resize(
+        std::min(m_stateCheckpoints.size(), static_cast<std::size_t>(row / kStateCheckpointRows) + 1));
+    std::erase_if(m_stateAfterRow, [row](const auto& entry) { return entry.first >= row; });
+    std::erase_if(m_layouts, [this, offset](const auto& entry) {
+        if (entry.second->span.end <= offset)
+            return false;
+        m_cachedLayoutBytes -= entry.second->span.contentEnd - entry.second->span.start;
+        return true;
+    });
+    updateScrollBars();
+    viewport()->update();
+}
+
+void TextView::inputMethodEvent(QInputMethodEvent* event)
+{
+    if (m_readOnly || !m_document) {
+        event->ignore();
+        return;
+    }
+    if (!event->commitString().isEmpty())
+        replaceSelection(event->commitString(), core::EditBuffer::Merge::Typing);
+    m_preedit = event->preeditString();
+    viewport()->update();
+    event->accept();
+}
+
+QVariant TextView::inputMethodQuery(Qt::InputMethodQuery query) const
+{
+    switch (query) {
+    case Qt::ImEnabled:
+        return !m_readOnly && m_document;
+    case Qt::ImCursorRectangle:
+        // In this widget's coordinates; the viewport sits inside its frame.
+        return cursorRect().translated(viewport()->geometry().topLeft());
+    case Qt::ImFont:
+        return font();
+    case Qt::ImHints:
+        return static_cast<int>(Qt::ImhMultiLine);
+    case Qt::ImCurrentSelection:
+        return selectionEnd() - selectionStart() <= 4096 ? selectedText() : QString();
+    default:
+        return QAbstractScrollArea::inputMethodQuery(query);
+    }
+}
+
+bool TextView::focusNextPrevChild(bool next)
+{
+    // Tab is for indenting when the text can be edited.
+    return m_readOnly && QAbstractScrollArea::focusNextPrevChild(next);
+}
+
 // Painting ---------------------------------------------------------------------------------------
 
 void TextView::paintEvent(QPaintEvent* event)
@@ -914,8 +1237,18 @@ void TextView::paintEvent(QPaintEvent* event)
     const int height = viewport()->height();
     const int gutter = gutterWidth();
     painter.fillRect(QRect(0, 0, gutter, height), m_colors.gutter);
-    if (rowCount() == 0)
+    if (rowCount() == 0) {
+        // An empty file still has its first line, where typing starts.
+        if (!m_document)
+            return;
+        painter.setFont(font());
+        painter.setPen(m_colors.text);
+        painter.drawText(QRectF(0, 0, gutter - m_charWidth, m_lineHeight), Qt::AlignRight | Qt::AlignVCenter,
+                         QStringLiteral("1"));
+        if (hasFocus())
+            painter.fillRect(cursorRect(), m_colors.text);
         return;
+    }
 
     const VisualLine top = topLine();
     const VisualLine caret = caretLine();
@@ -1013,6 +1346,21 @@ void TextView::paintEvent(QPaintEvent* event)
         count = static_cast<std::size_t>(std::max(0, height - y) / m_lineHeight + 1);
     }
 
+    // What an input method is composing shows at the caret, over the text after it, underlined.
+    if (!m_preedit.isEmpty() && focused) {
+        const QRect caretRect = cursorRect();
+        if (!caretRect.isNull()) {
+            const QFontMetricsF metrics(font());
+            const QRectF area(caretRect.left(), caretRect.top(), metrics.horizontalAdvance(m_preedit) + kCaretWidth,
+                              m_lineHeight);
+            painter.fillRect(area, m_colors.base);
+            painter.setPen(m_colors.text);
+            painter.drawText(QPointF(area.left(), area.top() + m_ascent), m_preedit);
+            painter.drawLine(QPointF(area.left(), area.bottom() - 1), QPointF(area.right() - kCaretWidth, area.bottom() - 1));
+            painter.fillRect(QRectF(area.right() - kCaretWidth, area.top(), kCaretWidth, m_lineHeight), m_colors.text);
+        }
+    }
+
     // Rows laid out for the first time may be wider than the scroll range allows for.
     if (!m_wordWrap && m_maxRowWidth > m_maxRowWidthInRange)
         QMetaObject::invokeMethod(this, &TextView::updateHorizontalRange, Qt::QueuedConnection);
@@ -1053,14 +1401,49 @@ void TextView::keyPressEvent(QKeyEvent* event)
         selectAll();
         return;
     }
-    if (rowCount() == 0) {
-        QAbstractScrollArea::keyPressEvent(event);
-        return;
-    }
 
     const bool extend = event->modifiers() & Qt::ShiftModifier;
     const bool ctrl = event->modifiers() & Qt::ControlModifier;
     const auto mode = ctrl ? QTextLayout::SkipWords : QTextLayout::SkipCharacters;
+
+    const int key = event->key();
+    const bool editing = event == QKeySequence::Undo || event == QKeySequence::Redo || event == QKeySequence::Cut ||
+                         event == QKeySequence::Paste || isTypedText(event) || key == Qt::Key_Tab ||
+                         key == Qt::Key_Backtab || key == Qt::Key_Backspace || key == Qt::Key_Delete ||
+                         key == Qt::Key_Return || key == Qt::Key_Enter;
+    if (editing && m_document) {
+        if (!canEdit())
+            return;
+        if (event == QKeySequence::Undo)
+            undo();
+        else if (event == QKeySequence::Redo)
+            redo();
+        else if (event == QKeySequence::Cut)
+            cut();
+        else if (event == QKeySequence::Paste)
+            paste();
+        else if (event->key() == Qt::Key_Backspace)
+            deleteBackward(ctrl);
+        else if (event->key() == Qt::Key_Delete)
+            deleteForward(ctrl);
+        else if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
+            insertLineBreak();
+        else if (event->key() == Qt::Key_Backtab)
+            indentLines(true);
+        else if (event->key() == Qt::Key_Tab && hasSelection() &&
+                 m_document->index().row(m_document->index().rowIndexAt(selectionStart())).line !=
+                     m_document->index().row(m_document->index().rowIndexAt(selectionEnd())).line)
+            indentLines(false);
+        else if (event->key() == Qt::Key_Tab)
+            replaceSelection(indentUnit(), core::EditBuffer::Merge::Typing);
+        else
+            replaceSelection(event->text(), core::EditBuffer::Merge::Typing);
+        return;
+    }
+    if (rowCount() == 0) {
+        QAbstractScrollArea::keyPressEvent(event);
+        return;
+    }
 
     switch (event->key()) {
     case Qt::Key_Left:
@@ -1262,7 +1645,16 @@ void TextView::setContextActions(const QList<QAction*>& actions)
 std::unique_ptr<QMenu> TextView::createContextMenu()
 {
     auto menu = std::make_unique<QMenu>(this);
+    if (!m_readOnly && m_document) {
+        menu->addAction(tr("Undo"), this, &TextView::undo)->setEnabled(m_document->canUndo());
+        menu->addAction(tr("Redo"), this, &TextView::redo)->setEnabled(m_document->canRedo());
+        menu->addSeparator();
+        menu->addAction(tr("Cut"), this, &TextView::cut)->setEnabled(hasSelection());
+    }
     menu->addAction(tr("Copy"), this, &TextView::copy)->setEnabled(hasSelection());
+    if (!m_readOnly && m_document)
+        menu->addAction(tr("Paste"), this, &TextView::paste)
+            ->setEnabled(!QGuiApplication::clipboard()->text().isEmpty());
     menu->addSeparator();
     for (QAction* action : m_contextActions) {
         if (action)
