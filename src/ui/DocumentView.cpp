@@ -142,7 +142,13 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
 
     m_reloadTimer.setSingleShot(true);
     m_reloadTimer.setInterval(kReloadDelayMs);
-    connect(&m_reloadTimer, &QTimer::timeout, this, &DocumentView::reload);
+    // Edits made while a reload waited are kept: fileChanged() says so instead of reloading.
+    connect(&m_reloadTimer, &QTimer::timeout, this, [this] {
+        if (isModified())
+            fileChanged();
+        else
+            reload();
+    });
     if (!isUntitled())
         m_watcher.addPath(filePath());
     connect(&m_watcher, &QFileSystemWatcher::fileChanged, this, &DocumentView::fileChanged);
