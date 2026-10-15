@@ -4,6 +4,7 @@
 #include "core/FileType.h"
 #include "core/LineIndex.h"
 #include "core/TextCodec.h"
+#include "ui/Collation.h"
 #include "ui/Paths.h"
 #include "ui/TextDecoder.h"
 
@@ -30,8 +31,7 @@ QStringList filesUnder(const FileSearchRequest& request, const std::function<boo
                     request.subfolders ? QDirIterator::Subdirectories : QDirIterator::NoIteratorFlags);
     while (it.hasNext() && !cancelled())
         files << it.next();
-    QCollator collator;
-    collator.setNumericMode(true);
+    const QCollator collator = naturalCollator();
     std::sort(files.begin(), files.end(), [&collator](const QString& a, const QString& b) {
         const qsizetype slashA = std::max<qsizetype>(0, a.lastIndexOf(QLatin1Char('/')));
         const qsizetype slashB = std::max<qsizetype>(0, b.lastIndexOf(QLatin1Char('/')));
