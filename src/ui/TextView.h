@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/EditBuffer.h"
 #include "core/LineIndex.h"
 #include "ui/RowScrollBar.h"
 #include "ui/SyntaxHighlighting.h"
@@ -34,6 +35,9 @@ class TextDocument;
 // With word wrap on, a long line takes as many lines on screen as the width needs. Scrolling,
 // the caret and the mouse then work in lines on screen; the vertical scroll bar still counts
 // rows, which is exact enough for its position and needs no layout of the whole file.
+//
+// Unless read-only, it edits the document: typing (input methods included), deleting, Enter,
+// Tab, cut, paste, undo and redo. Text goes into the file in the file's own codec.
 class TextView : public QAbstractScrollArea
 {
     Q_OBJECT
@@ -65,6 +69,9 @@ public:
     std::uint64_t topRow() const { return m_rows.topRow(); }
     // Lines that fit on screen.
     int visibleRows() const;
+    // Read-only by default. `reason` is what the status bar says when typing is refused.
+    bool isReadOnly() const { return m_readOnly; }
+    void setReadOnly(bool readOnly, const QString& reason = {});
     // Off by default: long lines then scroll sideways.
     bool wordWrap() const { return m_wordWrap; }
     void setWordWrap(bool on);
@@ -87,6 +94,7 @@ public:
     // Where the caret is drawn, in viewport coordinates; null while its line is scrolled out of
     // view.
     QRect cursorRect() const;
+    QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
 
     // The selection as text; empty if nothing is selected or it exceeds kMaxCopyBytes.
     QString selectedText() const;
@@ -94,6 +102,12 @@ public:
 public slots:
     void selectAll();
     void copy();
+    void cut();
+    void paste();
+    void undo();
+    void redo();
+    // Replaces the selection, or inserts at the caret, as typing does.
+    void insertText(const QString& text);
 
 signals:
     void cursorMoved(std::uint64_t offset);
@@ -117,6 +131,8 @@ protected:
     void focusOutEvent(QFocusEvent* event) override;
     void timerEvent(QTimerEvent* event) override;
     void scrollContentsBy(int dx, int dy) override;
+    void inputMethodEvent(QInputMethodEvent* event) override;
+    bool focusNextPrevChild(bool next) override;
 
 private:
     // What the view lays out as one QTextLayout: a row, or with word wrap on, the rows of one
@@ -155,6 +171,7 @@ private:
         core::Row span;
         DecodedText decoded;
         QTextLayout layout;
+        bool highlighted = false; // laid out with the highlighting formats (if there are any)
     };
 
     struct Colors
@@ -228,6 +245,23 @@ private:
     void dragTo(const QPoint& pos);
     void selectWordAt(std::uint64_t offset);
 
+    // Editing.
+    // False, with a word in the status bar, when the document cannot be edited.
+    bool canEdit();
+    // Where an edit at offset goes: past the file's last line terminator there is no line on
+    // screen, and a caret there shows at the end of the last line, so the edit goes there too.
+    std::uint64_t editOffset(std::uint64_t offset) const;
+    void replaceSelection(const QString& text, core::EditBuffer::Merge merge);
+    void replaceRange(std::uint64_t start, std::uint64_t end, const QString& text, core::EditBuffer::Merge merge);
+    void deleteBackward(bool word);
+    void deleteForward(bool word);
+    void insertLineBreak();
+    // Tab and Shift+Tab on several lines: indents or unindents each.
+    void indentLines(bool unindent);
+    // What Tab inserts: a tab, or the spaces the file indents with.
+    QString indentUnit() const;
+    void documentEdited(std::uint64_t offset, std::uint64_t removed);
+
     int gutterWidth() const;
     qreal textLeft() const;
 
@@ -237,6 +271,9 @@ private:
     std::uint64_t m_cursor = 0;
     std::uint64_t m_anchor = 0;
     bool m_caretAtLineEnd = false;
+    bool m_readOnly = true;
+    QString m_readOnlyReason;
+    QString m_preedit; // what an input method is composing, shown at the caret
     std::optional<qreal> m_desiredX; // kept while moving up and down
     int m_tabWidth = 4;
 
@@ -252,6 +289,8 @@ private:
 
     mutable std::unordered_map<std::uint64_t, std::unique_ptr<BlockLayout>> m_layouts; // by block start
     mutable std::uint64_t m_cachedLayoutBytes = 0;
+    // Set while laying out only to measure (where lines wrap), which needs no highlighting.
+    mutable bool m_measuring = false;
     mutable qreal m_maxRowWidth = 0;
     qreal m_maxRowWidthInRange = -1; // what the horizontal scroll bar was last sized for
 

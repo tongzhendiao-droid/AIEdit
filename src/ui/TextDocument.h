@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/EditBuffer.h"
 #include "core/LineIndex.h"
 #include "core/TextCodec.h"
 #include "ui/TextDecoder.h"
@@ -8,7 +9,9 @@
 #include <QTimer>
 
 #include <memory>
+#include <optional>
 #include <thread>
+#include <utility>
 
 namespace aiedit::core {
 class FileSource;
@@ -18,6 +21,9 @@ namespace aiedit::ui {
 
 // A file seen as text in one codec: the decoder plus a line index that is built on a
 // background thread. Small files are indexed synchronously so they appear complete at once.
+//
+// It can also be edited. The first change copies the bytes into memory (core::EditBuffer);
+// from then on source() is a snapshot of the edited bytes, replaced with every change.
 class TextDocument : public QObject
 {
     Q_OBJECT
@@ -35,8 +41,32 @@ public:
     const core::TextCodec& codec() const { return *m_codec; }
     // Re-decodes and re-indexes the file; views must drop anything derived from index().
     void setCodec(const core::TextCodec& codec);
-    // Shows a fresh snapshot of the file (after it changed on disk), keeping the codec.
+    // Shows a fresh snapshot of the file (after it changed on disk), keeping the codec. Edits
+    // not saved are dropped.
     void setSource(std::shared_ptr<const core::FileSource> source);
+
+    // Replaces [start, end) with text written in the document's codec and returns how many
+    // bytes that took; nothing, changing nothing, if the codec cannot write the text.
+    std::optional<std::uint64_t> replace(std::uint64_t start, std::uint64_t end, const QString& text,
+                                         core::EditBuffer::Merge merge = core::EditBuffer::Merge::No);
+    // The same with bytes, for changes that must leave the bytes around them exactly as they are.
+    void replaceBytes(std::uint64_t start, std::uint64_t end, std::span<const std::uint8_t> bytes,
+                      core::EditBuffer::Merge merge = core::EditBuffer::Merge::No);
+    bool canUndo() const;
+    bool canRedo() const;
+    // Undo and redo return the range the step now covers (what undo restored, what redo put
+    // back), to place the caret.
+    std::optional<std::pair<std::uint64_t, std::uint64_t>> undo();
+    std::optional<std::pair<std::uint64_t, std::uint64_t>> redo();
+    // The next change starts a new undo step.
+    void breakUndoMerge();
+    bool isModified() const;
+    // The bytes were written to the file: unmodified from here on.
+    void setSaved();
+    // Text in the document's codec, if it can be written in it.
+    std::optional<QByteArray> encode(const QString& text) const;
+    // What Enter inserts: the line terminator the file uses.
+    QString lineTerminator() const;
 
     const TextDecoder& decoder() const { return *m_decoder; }
     // Replaced by setCodec(); do not keep references across codecChanged().
@@ -56,15 +86,24 @@ signals:
     void indexFinished();
     void codecChanged();
     void sourceChanged();
+    // `removed` bytes at offset were replaced with `inserted` ones; source() and index() show
+    // the result already.
+    void edited(std::uint64_t offset, std::uint64_t removed, std::uint64_t inserted);
+    void modificationChanged(bool modified);
 
 private:
-    void startIndexing();
+    // After an edit everything is indexed at once (the document is small enough to edit), so
+    // that the rows at the caret are there for what comes next.
+    void startIndexing(bool synchronous = false);
     void stopIndexing();
     void pollIndexer();
+    // Shows the edit buffer's content after a change.
+    void applyEdit(std::uint64_t offset, std::uint64_t removed, std::uint64_t inserted, bool wasModified);
 
     std::shared_ptr<const core::FileSource> m_source;
     const core::TextCodec* m_codec;
     std::unique_ptr<TextDecoder> m_decoder;
+    std::unique_ptr<core::EditBuffer> m_edits; // from the first change on
     std::shared_ptr<core::LineIndex> m_index;
     core::LineEndings m_lineEndings;
     std::thread m_indexer;

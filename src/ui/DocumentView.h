@@ -30,6 +30,9 @@ class TextView;
 
 // One open file: its bytes, what kind of file it is, and the text and hex views showing it.
 // Both views always share the caret and selection, so switching or splitting loses nothing.
+//
+// Text files up to core::EditBuffer::kMaxEditableSize can be edited in the text view. With
+// unsaved edits, changes on disk no longer reload the file; saving writes over them.
 class DocumentView : public QWidget
 {
     Q_OBJECT
@@ -48,7 +51,12 @@ public:
 
     const std::shared_ptr<const core::FileSource>& source() const { return m_source; }
     const core::FileTypeInfo& fileType() const { return m_fileType; }
+    // Empty for a new document that has not been saved yet.
     QString filePath() const;
+    bool isUntitled() const;
+    // What tabs and questions call it: the file name, or a new document's title until it is saved.
+    QString title() const;
+    void setUntitledTitle(const QString& title) { m_untitledTitle = title; }
     HexView* hexView() const { return m_hexView; }
     TextView* textView() const { return m_textView; }
     TextDocument* textDocument() const { return m_textDocument; }
@@ -75,6 +83,13 @@ public:
     // Colours the fields in the hex view (and shows it, if only the text view was visible).
     void showFieldMarks(const QList<FieldMark>& marks);
 
+    bool isEditable() const;
+    bool isModified() const;
+    // Writes the document to its file, or to another (which it then shows). False, with the
+    // reason in `error`, if that failed.
+    bool save(QString* error = nullptr);
+    bool saveAs(const QString& path, QString* error = nullptr);
+
     // Follow mode (like tail -f): after every reload, jump to the end of the file.
     bool isFollowing() const { return m_following; }
     void setFollowing(bool following);
@@ -82,6 +97,10 @@ public:
 public slots:
     void copy();
     void selectAll();
+    void cut();
+    void paste();
+    void undo();
+    void redo();
     // Shows the find bar, seeded with a short selection.
     void showFindBar();
     // Finds the next or previous match of the find bar's query from the caret or selection.
@@ -93,8 +112,11 @@ public slots:
 signals:
     // Caret, selection, view mode or codec changed: anything the status bar shows.
     void stateChanged();
-    // The file was reloaded: size and contents may differ.
+    // The file was reloaded or edited: size and contents may differ.
     void sourceChanged();
+    void modificationChanged(bool modified);
+    // The document shows another file now (after Save As).
+    void pathChanged();
     // The text index grew or finished.
     void indexProgressed();
     void zoomRequested(int steps);
@@ -113,6 +135,9 @@ private:
     void closeFindBar();
     void fileChanged();
     void moveToEnd();
+    void updateEditable();
+    void documentEdited();
+    bool writeTo(const QString& path, QString* error);
 
     std::shared_ptr<const core::FileSource> m_source;
     core::FileTypeInfo m_fileType;
@@ -127,6 +152,7 @@ private:
     bool m_syncing = false;
     bool m_splitSizesPending = false; // sized once the splitter has its real width
     bool m_following = false;
+    QString m_untitledTitle;
     QFileSystemWatcher m_watcher;
     QTimer m_reloadTimer; // coalesces bursts of change notifications
 };

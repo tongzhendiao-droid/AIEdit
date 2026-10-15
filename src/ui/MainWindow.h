@@ -60,7 +60,16 @@ private:
     void writeSettings() const;
 
     void showOpenDialog();
+    // A new, empty document in a new tab; it gets a file when it is first saved.
+    void newDocument();
+    void addDocument(DocumentView* doc);
     void closeTab(int index);
+    // Saving; false if it failed (after saying why) or was cancelled.
+    bool saveDocument(DocumentView* doc);
+    bool saveDocumentAs(DocumentView* doc);
+    // Asks what to do with unsaved edits before a document goes away; false to keep it.
+    bool confirmClose(DocumentView* doc);
+    void updateDocumentTitle(DocumentView* doc);
     void currentTabChanged();
     void goTo();
     void setViewMode(DocumentView::ViewMode mode);
@@ -75,6 +84,8 @@ private:
     void runAiAction(void (AiPanel::*action)());
 
     void documentStateChanged(DocumentView* doc);
+    // What the Edit menu can do now: copying needs a selection, pasting text on the clipboard.
+    void updateEditActions(DocumentView* doc);
     void updateFileStatus();
     void updateCursorStatus();
     void updateTextStatus();
@@ -99,7 +110,14 @@ private:
     QLabel* m_positionLabel = nullptr;
     QLabel* m_selectionLabel = nullptr;
 
+    QAction* m_newAction = nullptr;
     QAction* m_openAction = nullptr;
+    QAction* m_saveAction = nullptr;
+    QAction* m_saveAsAction = nullptr;
+    QAction* m_undoAction = nullptr;
+    QAction* m_redoAction = nullptr;
+    QAction* m_cutAction = nullptr;
+    QAction* m_pasteAction = nullptr;
     QAction* m_closeAction = nullptr;
     QAction* m_reloadAction = nullptr;
     QAction* m_followAction = nullptr;
@@ -136,6 +154,7 @@ private:
     QAction* m_aboutQtAction = nullptr;
 
     int m_bytesPerRow = 16;
+    int m_untitledCount = 0;
     bool m_wordWrap = true;
     int m_defaultPointSize = 10;
     int m_pointSize = 10;

@@ -631,11 +631,13 @@ void TestTextView::aiActionsInContextMenus()
         return nullptr;
     };
 
-    // Without a selection, the selection actions are there but disabled; asking is not.
+    // Without a selection, the selection actions are there but disabled; asking is not. A text
+    // file can be edited, so the editing actions come first.
     auto menu = doc->textView()->createContextMenu();
-    QCOMPARE(actionTexts(menu.get()), (QStringList{QStringLiteral("Copy"), QStringLiteral("AI &Explain"),
-                                                   QStringLiteral("AI &Translate"), QStringLiteral("AI &Summarize"),
-                                                   QStringLiteral("&Ask AI…"), QStringLiteral("Select All")}));
+    QCOMPARE(actionTexts(menu.get()),
+             (QStringList{QStringLiteral("Undo"), QStringLiteral("Redo"), QStringLiteral("Cut"), QStringLiteral("Copy"),
+                          QStringLiteral("Paste"), QStringLiteral("AI &Explain"), QStringLiteral("AI &Translate"),
+                          QStringLiteral("AI &Summarize"), QStringLiteral("&Ask AI…"), QStringLiteral("Select All")}));
     QVERIFY(!find(menu.get(), QStringLiteral("AI &Explain"))->isEnabled());
     QVERIFY(find(menu.get(), QStringLiteral("&Ask AI…"))->isEnabled());
 

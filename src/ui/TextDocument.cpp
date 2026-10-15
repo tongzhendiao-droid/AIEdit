@@ -3,6 +3,8 @@
 #include "core/FileSource.h"
 #include "core/FileType.h"
 
+#include <QStringEncoder>
+
 #include <algorithm>
 
 namespace aiedit::ui {
@@ -43,13 +45,118 @@ void TextDocument::setCodec(const core::TextCodec& codec)
 
 void TextDocument::setSource(std::shared_ptr<const core::FileSource> source)
 {
+    const bool wasModified = isModified();
     stopIndexing();
     m_source = std::move(source);
+    m_edits.reset();
     startIndexing();
     emit sourceChanged();
+    if (wasModified)
+        emit modificationChanged(false);
 }
 
-void TextDocument::startIndexing()
+std::optional<QByteArray> TextDocument::encode(const QString& text) const
+{
+    QStringEncoder encoder(m_codec->name.data());
+    QByteArray bytes = encoder.encode(text);
+    if (encoder.hasError())
+        return std::nullopt;
+    return bytes;
+}
+
+QString TextDocument::lineTerminator() const
+{
+    const core::LineEndings& endings = m_lineEndings;
+    if (endings.crlf > endings.lf && endings.crlf >= endings.cr)
+        return QStringLiteral("\r\n");
+    if (endings.cr > endings.lf && endings.cr > endings.crlf)
+        return QStringLiteral("\r");
+    return QStringLiteral("\n");
+}
+
+std::optional<std::uint64_t> TextDocument::replace(std::uint64_t start, std::uint64_t end, const QString& text,
+                                                   core::EditBuffer::Merge merge)
+{
+    const std::optional<QByteArray> encoded = encode(text);
+    if (!encoded)
+        return std::nullopt;
+    replaceBytes(start, end,
+                 {reinterpret_cast<const std::uint8_t*>(encoded->constData()), static_cast<std::size_t>(encoded->size())},
+                 merge);
+    return static_cast<std::uint64_t>(encoded->size());
+}
+
+void TextDocument::replaceBytes(std::uint64_t start, std::uint64_t end, std::span<const std::uint8_t> bytes,
+                                core::EditBuffer::Merge merge)
+{
+    if (!m_edits)
+        m_edits = std::make_unique<core::EditBuffer>(this->bytes());
+    const bool wasModified = m_edits->isModified();
+    end = std::max(start, end);
+    m_edits->replace(start, end - start, bytes, merge);
+    applyEdit(start, end - start, bytes.size(), wasModified);
+}
+
+bool TextDocument::canUndo() const
+{
+    return m_edits && m_edits->canUndo();
+}
+
+bool TextDocument::canRedo() const
+{
+    return m_edits && m_edits->canRedo();
+}
+
+std::optional<std::pair<std::uint64_t, std::uint64_t>> TextDocument::undo()
+{
+    if (!canUndo())
+        return std::nullopt;
+    const bool wasModified = m_edits->isModified();
+    const core::Edit edit = *m_edits->undo();
+    applyEdit(edit.offset, edit.removed.size(), edit.inserted.size(), wasModified);
+    return std::pair{edit.offset, edit.offset + edit.inserted.size()};
+}
+
+std::optional<std::pair<std::uint64_t, std::uint64_t>> TextDocument::redo()
+{
+    if (!canRedo())
+        return std::nullopt;
+    const bool wasModified = m_edits->isModified();
+    const core::Edit edit = *m_edits->redo();
+    applyEdit(edit.offset, edit.removed.size(), edit.inserted.size(), wasModified);
+    return std::pair{edit.offset, edit.offset + edit.inserted.size()};
+}
+
+void TextDocument::breakUndoMerge()
+{
+    if (m_edits)
+        m_edits->breakMerge();
+}
+
+bool TextDocument::isModified() const
+{
+    return m_edits && m_edits->isModified();
+}
+
+void TextDocument::setSaved()
+{
+    if (!isModified())
+        return;
+    m_edits->setSaved();
+    emit modificationChanged(false);
+}
+
+void TextDocument::applyEdit(std::uint64_t offset, std::uint64_t removed, std::uint64_t inserted, bool wasModified)
+{
+    stopIndexing();
+    m_source = core::FileSource::fromBytes(m_source->path(), m_edits->content());
+    startIndexing(true);
+    emit edited(offset, removed, inserted);
+    if (m_edits->isModified() != wasModified)
+        emit modificationChanged(!wasModified);
+}
+
+void TextDocument::startIndexing(bool synchronous)
 {
     const auto data = bytes();
     const core::CharScheme scheme = m_codec->scheme;
@@ -57,7 +164,7 @@ void TextDocument::startIndexing()
     m_index = std::make_shared<core::LineIndex>(data, scheme, m_lineEndings.lineBreak(), core::bomLength(data, scheme));
 
     // Enough for the first screens at once; small files are finished right here.
-    const bool complete = m_index->buildSome(kSynchronousIndexBytes);
+    const bool complete = synchronous ? m_index->build() : m_index->buildSome(kSynchronousIndexBytes);
     m_reportedRows = m_index->rowCount();
     if (complete)
         return;

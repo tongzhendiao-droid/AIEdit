@@ -138,6 +138,16 @@ std::error_code make_error_code(FileError e)
     return {static_cast<int>(e), fileErrorCategory()};
 }
 
+std::unique_ptr<FileSource> FileSource::fromBytes(std::filesystem::path path,
+                                                  std::shared_ptr<const std::vector<std::uint8_t>> bytes)
+{
+    std::unique_ptr<FileSource> source(new FileSource(std::move(path)));
+    source->m_data = bytes->data();
+    source->m_size = bytes->size();
+    source->m_shared = std::move(bytes);
+    return source;
+}
+
 #ifdef _WIN32
 
 std::unique_ptr<FileSource> FileSource::open(const std::filesystem::path& path, std::error_code& ec)

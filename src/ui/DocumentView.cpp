@@ -1,5 +1,6 @@
 #include "ui/DocumentView.h"
 
+#include "core/EditBuffer.h"
 #include "core/FileSource.h"
 #include "core/FileSummary.h"
 #include "ui/AiPanel.h"
@@ -11,10 +12,12 @@
 #include "ui/TextView.h"
 
 #include <QApplication>
+#include <QDir>
 #include <QEvent>
 #include <QFileInfo>
 #include <QLocale>
 #include <QPointer>
+#include <QSaveFile>
 #include <QScopedValueRollback>
 #include <QSplitter>
 #include <QTimer>
@@ -125,6 +128,9 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
     connect(m_hexView, &HexView::statusMessage, this, &DocumentView::statusMessage);
     connect(m_textDocument, &TextDocument::indexGrew, this, &DocumentView::indexProgressed);
     connect(m_textDocument, &TextDocument::indexFinished, this, &DocumentView::indexProgressed);
+    connect(m_textDocument, &TextDocument::edited, this, &DocumentView::documentEdited);
+    connect(m_textDocument, &TextDocument::modificationChanged, this, &DocumentView::modificationChanged);
+    updateEditable();
 
     if (fileType.kind != core::ContentKind::Binary)
         m_textView->setSyntax(syntaxForFileName(QFileInfo(filePath()).fileName()));
@@ -132,7 +138,8 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
     m_reloadTimer.setSingleShot(true);
     m_reloadTimer.setInterval(kReloadDelayMs);
     connect(&m_reloadTimer, &QTimer::timeout, this, &DocumentView::reload);
-    m_watcher.addPath(filePath());
+    if (!isUntitled())
+        m_watcher.addPath(filePath());
     connect(&m_watcher, &QFileSystemWatcher::fileChanged, this, &DocumentView::fileChanged);
 
     // Text files open as text, everything else as hex.
@@ -155,6 +162,16 @@ DocumentView::~DocumentView()
 QString DocumentView::filePath() const
 {
     return toQString(m_source->path());
+}
+
+bool DocumentView::isUntitled() const
+{
+    return m_source->path().empty();
+}
+
+QString DocumentView::title() const
+{
+    return isUntitled() ? m_untitledTitle : QFileInfo(filePath()).fileName();
 }
 
 void DocumentView::setViewMode(ViewMode mode)
@@ -278,6 +295,12 @@ void DocumentView::closeFindBar()
 
 void DocumentView::fileChanged()
 {
+    if (isModified()) {
+        // Reloading would throw the edits away; saving writes over the change instead.
+        emit statusMessage(tr("%1 changed on disk; your unsaved edits are kept")
+                               .arg(QFileInfo(filePath()).fileName()));
+        return;
+    }
     // A file that shrank (truncated, rotated) must be remapped at once: the old mapping now
     // reaches past its end. Growth can wait for the writer to finish its burst.
     if (QFileInfo(filePath()).size() < static_cast<qint64>(m_source->size()))
@@ -288,6 +311,8 @@ void DocumentView::fileChanged()
 
 bool DocumentView::reload()
 {
+    if (isUntitled())
+        return false; // nothing on disk yet
     m_reloadTimer.stop();
     const QString path = filePath();
     // Watching stops when a file is replaced (rotation, atomic save); watch the new one.
@@ -311,6 +336,7 @@ bool DocumentView::reload()
         m_textDocument->setSource(m_source);
         m_hexView->replaceSource(m_source);
     }
+    updateEditable();
     if (m_following)
         moveToEnd();
     emit sourceChanged();
@@ -340,7 +366,7 @@ void DocumentView::moveToEnd()
 AiContext DocumentView::aiContext()
 {
     AiContext context;
-    context.fileName = QFileInfo(filePath()).fileName();
+    context.fileName = title();
     context.fileDescription = describeForAi(m_fileType, m_textDocument->codec(), m_source->size());
     const auto bytes = m_source->bytes();
     const QLocale locale;
@@ -419,6 +445,136 @@ void DocumentView::setSyntax(const QString& name)
 {
     m_textView->setSyntax(name);
     emit stateChanged();
+}
+
+bool DocumentView::isEditable() const
+{
+    return !m_textView->isReadOnly();
+}
+
+bool DocumentView::isModified() const
+{
+    return m_textDocument->isModified();
+}
+
+void DocumentView::updateEditable()
+{
+    // Decided when the file is opened or reloaded; edits may then make it larger.
+    QString reason;
+    if (m_fileType.kind == core::ContentKind::Binary)
+        reason = tr("Binary files can only be viewed here");
+    else if (m_source->size() > core::EditBuffer::kMaxEditableSize)
+        reason = tr("Files larger than %1 can only be viewed here")
+                     .arg(QLocale().formattedDataSize(static_cast<qint64>(core::EditBuffer::kMaxEditableSize)));
+    m_textView->setReadOnly(!reason.isEmpty(), reason);
+}
+
+void DocumentView::documentEdited()
+{
+    // Matches found before no longer point at the same text.
+    m_findBar->cancel();
+    m_lastMatch.reset();
+    m_source = m_textDocument->source();
+    {
+        const QScopedValueRollback guard(m_syncing, true); // the text view places the caret
+        m_hexView->replaceSource(m_source);
+    }
+    emit sourceChanged();
+    emit stateChanged();
+}
+
+bool DocumentView::writeTo(const QString& path, QString* error)
+{
+    // QSaveFile writes a temporary file and renames it over the target, so a failure halfway
+    // leaves the old file as it was. It keeps the file's permissions and follows symlinks; where
+    // the folder is not writable but the file is, it writes the file in place.
+    QSaveFile file(path);
+    file.setDirectWriteFallback(true);
+    const bool watched = m_watcher.files().contains(path);
+    if (watched)
+        m_watcher.removePath(path); // our own write is no change on disk to react to
+    const auto bytes = m_source->bytes();
+    const bool ok = file.open(QIODevice::WriteOnly) &&
+                    file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<qint64>(bytes.size())) ==
+                        static_cast<qint64>(bytes.size()) &&
+                    file.commit();
+    // The file written is a new one; watch it, also if the old one had gone (deleted, moved).
+    if ((watched || path == filePath()) && QFileInfo::exists(path))
+        m_watcher.addPath(path);
+    if (!ok && error)
+        *error = file.errorString();
+    return ok;
+}
+
+bool DocumentView::save(QString* error)
+{
+    if (isUntitled()) {
+        if (error)
+            *error = tr("It has no file yet; use Save As");
+        return false;
+    }
+    if (!writeTo(filePath(), error))
+        return false;
+    m_textDocument->setSaved();
+    return true;
+}
+
+bool DocumentView::saveAs(const QString& path, QString* error)
+{
+    if (!isUntitled() && QFileInfo(path).absoluteFilePath() == QFileInfo(filePath()).absoluteFilePath())
+        return save(error);
+    if (!writeTo(path, error))
+        return false;
+    // Show the new file from disk, as if it had been opened (the undo history goes with the
+    // old one).
+    std::error_code ec;
+    std::shared_ptr<const core::FileSource> source = core::FileSource::open(toPath(path), ec);
+    if (!source) {
+        if (error)
+            *error = QString::fromLocal8Bit(ec.message());
+        return false;
+    }
+    m_watcher.removePaths(m_watcher.files());
+    m_watcher.addPath(path);
+    m_findBar->cancel();
+    m_lastMatch.reset();
+    m_source = std::move(source);
+    {
+        const QScopedValueRollback guard(m_syncing, true);
+        m_textDocument->setSource(m_source);
+        m_hexView->replaceSource(m_source);
+    }
+    if (m_fileType.kind != core::ContentKind::Binary)
+        m_textView->setSyntax(syntaxForFileName(QFileInfo(path).fileName()));
+    updateEditable();
+    emit pathChanged();
+    emit sourceChanged();
+    emit stateChanged();
+    return true;
+}
+
+void DocumentView::cut()
+{
+    if (isTextActive())
+        m_textView->cut();
+}
+
+void DocumentView::paste()
+{
+    if (isTextActive())
+        m_textView->paste();
+}
+
+void DocumentView::undo()
+{
+    if (isTextActive())
+        m_textView->undo();
+}
+
+void DocumentView::redo()
+{
+    if (isTextActive())
+        m_textView->redo();
 }
 
 void DocumentView::copy()
