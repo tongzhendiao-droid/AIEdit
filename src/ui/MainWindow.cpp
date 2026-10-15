@@ -526,8 +526,9 @@ void MainWindow::createMenus()
 
 void MainWindow::createCodecMenu()
 {
-    // Grouped by script; every codec here exists in core::knownCodecs().
-    const std::pair<QString, std::initializer_list<std::string_view>> groups[] = {
+    // Grouped by script; every codec here exists in core::knownCodecs(). (A vector, not an
+    // initializer_list: inside a pair, that would outlive the array it points to.)
+    const std::pair<QString, std::vector<std::string_view>> groups[] = {
         {tr("Unicode"), {"UTF-8", "UTF-16LE", "UTF-16BE", "UTF-32LE", "UTF-32BE"}},
         {tr("Chinese"), {"GB18030", "Big5"}},
         {tr("Japanese"), {"Shift_JIS", "EUC-JP"}},
