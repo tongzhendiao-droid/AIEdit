@@ -355,6 +355,208 @@
     </message>
 </context>
 <context>
+    <name>aiedit::ui::CompareTab</name>
+    <message>
+        <source>Swap the two sides</source>
+        <translation>交换左右两边</translation>
+    </message>
+    <message>
+        <source>◀ Previous</source>
+        <translation>◀ 上一处</translation>
+    </message>
+    <message>
+        <source>The previous change</source>
+        <translation>上一处不同</translation>
+    </message>
+    <message>
+        <source>Next ▶</source>
+        <translation>下一处 ▶</translation>
+    </message>
+    <message>
+        <source>The next change</source>
+        <translation>下一处不同</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>刷新</translation>
+    </message>
+    <message>
+        <source>Read both sides again and compare them</source>
+        <translation>重新读取两边再比较</translation>
+    </message>
+    <message>
+        <source>Ask AI What Changed</source>
+        <translation>问 AI 改了什么</translation>
+    </message>
+    <message>
+        <source>The AI gets the differences (a unified diff; for binaries, where they lie and the code around them) and says what changed</source>
+        <translation>把差异交给 AI（文本是统一 diff；二进制是差异所在的位置和附近的代码），让它说明改了什么</translation>
+    </message>
+    <message>
+        <source>Only differences</source>
+        <translation>只看差异</translation>
+    </message>
+    <message>
+        <source>Fold the lines that are the same, but for a few around each change</source>
+        <translation>折叠相同的行，每处不同只保留前后几行</translation>
+    </message>
+    <message>
+        <source>Ignore whitespace</source>
+        <translation>忽略空白</translation>
+    </message>
+    <message>
+        <source>Spaces and tabs added, removed or changed do not count</source>
+        <translation>空格和制表符的增减、改动都不算不同</translation>
+    </message>
+    <message>
+        <source>Ignore case</source>
+        <translation>忽略大小写</translation>
+    </message>
+    <message>
+        <source>Capital and small letters count as the same</source>
+        <translation>大写和小写字母当作相同</translation>
+    </message>
+    <message>
+        <source>Ignore line endings</source>
+        <translation>忽略换行符</translation>
+    </message>
+    <message>
+        <source>CRLF and LF count as the same, and so does a missing line break at the end</source>
+        <translation>CRLF 和 LF 当作相同，结尾少一个换行也不算不同</translation>
+    </message>
+    <message>
+        <source>Compare bytes</source>
+        <translation>按字节比较</translation>
+    </message>
+    <message>
+        <source>Compare byte by byte in hex, at the same offsets (binary files always are)</source>
+        <translation>在十六进制里按相同偏移逐字节比较（二进制文件总是这样比较）</translation>
+    </message>
+    <message>
+        <source>Comparing…</source>
+        <translation>正在比较…</translation>
+    </message>
+    <message>
+        <source>The two are identical</source>
+        <translation>两边完全相同</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n difference(s), %1 bytes in all</source>
+        <translation>
+            <numerusform>%n 处不同，共 %1 字节</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>sizes %1 and %2 bytes</source>
+        <translation>大小分别是 %1 和 %2 字节</translation>
+    </message>
+    <message>
+        <source>shifted by %1 bytes from %2</source>
+        <translation>从 %2 起错开了 %1 字节</translation>
+    </message>
+    <message>
+        <source>No differences, apart from what is ignored</source>
+        <translation>除了忽略的部分，没有不同</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n change(s): %1 line(s) removed, %2 added</source>
+        <translation>
+            <numerusform>%n 处不同：删除 %1 行，增加 %2 行</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>read as %1 and %2, compared as text</source>
+        <translation>分别按 %1 和 %2 读取，按文字比较</translation>
+    </message>
+    <message>
+        <source>line endings %1 and %2</source>
+        <translation>换行符分别是 %1 和 %2</translation>
+    </message>
+    <message>
+        <source>in the headers or between sections</source>
+        <translation>在文件头里或节之间</translation>
+    </message>
+    <message>
+        <source>a section</source>
+        <translation>某个节</translation>
+    </message>
+    <message>
+        <source>in %1, address %2 (RVA %3)</source>
+        <translation>在 %1 节，地址 %2（RVA %3）</translation>
+    </message>
+    <message>
+        <source>in %1, address %2</source>
+        <translation>在 %1 节，地址 %2</translation>
+    </message>
+    <message>
+        <source>, code</source>
+        <translation>，是代码</translation>
+    </message>
+    <message numerus="yes">
+        <source>Difference %1 of %2: %3–%4, %n byte(s)</source>
+        <translation>
+            <numerusform>第 %1 处不同（共 %2 处）：%3–%4，%n 字节</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Offset %1: the same on both sides</source>
+        <translation>偏移 %1：两边相同</translation>
+    </message>
+    <message>
+        <source>From %1 on, the right side is shifted by %2 bytes (bytes were inserted or removed): comparing at the same offsets means little here.</source>
+        <translation>从 %1 起，右边错开了 %2 字节（插入或删除了内容）：在这里按相同偏移比较意义不大。</translation>
+    </message>
+    <message>
+        <source>(past its end)</source>
+        <translation>（已超出文件末尾）</translation>
+    </message>
+    <message>
+        <source>Built without Capstone: no disassembly.</source>
+        <translation>编译时没有 Capstone，无法反汇编。</translation>
+    </message>
+    <message>
+        <source>These are the differences between two binary files, probably two versions or builds of the same program. Say what each change most likely is (a patched instruction, a changed constant or string, a timestamp or checksum) and what it does. The disassembly was made by Capstone on this computer: rely on it rather than decoding bytes yourself.</source>
+        <translation>下面是两个二进制文件之间的差异，它们多半是同一个程序的两个版本或两次构建。请说明每处改动最可能是什么（改了一条指令、一个常量或字符串、时间戳或校验和），以及它的作用。反汇编是本机用 Capstone 做的：请以它为准，不要自己解码字节。</translation>
+    </message>
+    <message>
+        <source>the differences between %1 and %2, with the code around them</source>
+        <translation>%1 和 %2 的差异，以及附近的代码</translation>
+    </message>
+    <message>
+        <source>%1 (cut short)</source>
+        <translation>%1（已截短）</translation>
+    </message>
+    <message>
+        <source>What changed between these two versions? Sum up the changes, the most important first, say what they do, and point out anything that looks like a mistake.</source>
+        <translation>这两个版本之间改了什么？请总结这些改动，重要的先说，说明它们的作用，并指出看起来像是错误的地方。</translation>
+    </message>
+    <message>
+        <source>the start of the differences between %1 and %2 (a unified diff, cut short)</source>
+        <translation>%1 和 %2 的差异的开头部分（统一 diff，已截短）</translation>
+    </message>
+    <message>
+        <source>the differences between %1 and %2 (a unified diff)</source>
+        <translation>%1 和 %2 的差异（统一 diff）</translation>
+    </message>
+</context>
+<context>
+    <name>aiedit::ui::CompareView</name>
+    <message numerus="yes">
+        <source>⋯ %n same line(s): click to show them ⋯</source>
+        <translation>
+            <numerusform>⋯ %n 行相同：点击展开 ⋯</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>&amp;Copy Line</source>
+        <translation>复制这一行(&amp;C)</translation>
+    </message>
+    <message>
+        <source>Open %1 at This Line</source>
+        <translation>在 %1 里打开这一行</translation>
+    </message>
+</context>
+<context>
     <name>aiedit::ui::ContentsPanel</name>
     <message>
         <source>Let the AI work out what this book&apos;s headings look like. It sees the first lines and short lines from all through the book; the rule it writes runs here.</source>
@@ -1089,6 +1291,10 @@
         <translation>作为文件夹打开(&amp;F)</translation>
     </message>
     <message>
+        <source>Co&amp;mpare These Two Files</source>
+        <translation>比较这两个文件(&amp;M)</translation>
+    </message>
+    <message>
         <source>&amp;Find in This Folder…</source>
         <translation>在这个文件夹里查找(&amp;F)…</translation>
     </message>
@@ -1635,6 +1841,26 @@
         <translation>这是什么文件(&amp;F)？</translation>
     </message>
     <message>
+        <source>With the &amp;Saved Version</source>
+        <translation>与磁盘上的版本比较(&amp;S)</translation>
+    </message>
+    <message>
+        <source>What has been changed in the document since it was saved</source>
+        <translation>文档自上次保存以来改了什么</translation>
+    </message>
+    <message>
+        <source>With the Clip&amp;board</source>
+        <translation>与剪贴板比较(&amp;B)</translation>
+    </message>
+    <message>
+        <source>With Another &amp;File…</source>
+        <translation>与另一个文件比较(&amp;F)…</translation>
+    </message>
+    <message>
+        <source>&amp;Two Files…</source>
+        <translation>比较两个文件(&amp;T)…</translation>
+    </message>
+    <message>
         <source>What Is in This Fol&amp;der?</source>
         <translation>这个文件夹里是什么(&amp;D)？</translation>
     </message>
@@ -1673,6 +1899,10 @@
     <message>
         <source>Recent Fold&amp;ers</source>
         <translation>最近打开的文件夹(&amp;E)</translation>
+    </message>
+    <message>
+        <source>Co&amp;mpare</source>
+        <translation>比较(&amp;M)</translation>
     </message>
     <message>
         <source>&amp;Edit</source>
@@ -1853,6 +2083,10 @@
         <translation>%1[*] — AIEdit</translation>
     </message>
     <message>
+        <source>%1 — AIEdit</source>
+        <translation>%1 — AIEdit</translation>
+    </message>
+    <message>
         <source>Some bytes in %1 are not valid %2. Saved in %3, each becomes the replacement character �. Save anyway?</source>
         <translation>%1 里有一些字节不是有效的 %2。以 %3 保存时，它们都会变成替换字符 �。仍要保存吗？</translation>
     </message>
@@ -1939,6 +2173,38 @@
     <message>
         <source>No Recent Folders</source>
         <translation>没有最近打开的文件夹</translation>
+    </message>
+    <message>
+        <source>Compare</source>
+        <translation>比较</translation>
+    </message>
+    <message>
+        <source>%1 (edited)</source>
+        <translation>%1（编辑中）</translation>
+    </message>
+    <message>
+        <source>%1 on disk</source>
+        <translation>%1（磁盘上）</translation>
+    </message>
+    <message>
+        <source>There is no text on the clipboard to compare with</source>
+        <translation>剪贴板里没有可以比较的文字</translation>
+    </message>
+    <message>
+        <source>Clipboard</source>
+        <translation>剪贴板</translation>
+    </message>
+    <message>
+        <source>Compare %1 With</source>
+        <translation>把 %1 与哪个文件比较</translation>
+    </message>
+    <message>
+        <source>Compare: The First File (Left)</source>
+        <translation>比较：第一个文件（左边）</translation>
+    </message>
+    <message>
+        <source>Compare: The Second File (Right)</source>
+        <translation>比较：第二个文件（右边）</translation>
     </message>
     <message>
         <source>About AIEdit</source>

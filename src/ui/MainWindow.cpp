@@ -6,6 +6,9 @@
 #include "core/TextCodec.h"
 #include "ui/AiPanel.h"
 #include "ui/AiSettingsDialog.h"
+#include "ui/CompareTab.h"
+#include "ui/CompareView.h"
+#include "ui/HexCompareView.h"
 #include "ui/ContentsPanel.h"
 #include "ui/DataInspector.h"
 #include "ui/FindInFilesPanel.h"
@@ -203,6 +206,8 @@ MainWindow::~MainWindow()
     // at the top) must not reach a window that is half gone.
     for (int i = 0; i < m_tabs->count(); ++i) {
         DocumentView* doc = document(i);
+        if (!doc)
+            continue;
         doc->disconnect(this);
         doc->textView()->verticalScrollBar()->disconnect(this);
     }
@@ -309,7 +314,7 @@ void MainWindow::createWidgets()
         const QString prefix = path + QLatin1Char('/');
         for (int i = 0; i < m_tabs->count(); ++i) {
             const DocumentView* doc = document(i);
-            if (doc->isModified() && !doc->isUntitled() &&
+            if (doc && doc->isModified() && !doc->isUntitled() &&
                 (doc->filePath() == path || doc->filePath().startsWith(prefix)))
                 return doc->title();
         }
@@ -325,6 +330,7 @@ void MainWindow::createWidgets()
     connect(m_folders, &FolderPanel::pathRenamed, this, &MainWindow::documentsMoved);
     connect(m_folders, &FolderPanel::pathTrashed, this, &MainWindow::documentsTrashed);
     connect(m_folders, &FolderPanel::folderChanged, this, [this] { updateActions(); });
+    connect(m_folders, &FolderPanel::compareRequested, this, &MainWindow::compareFiles);
     m_folderDock = new QDockWidget(tr("Folder"), this);
     m_folderDock->setObjectName(QStringLiteral("folderDock"));
     m_folderDock->setWidget(m_folders);
@@ -377,6 +383,9 @@ void MainWindow::createWidgets()
     m_linesLabel = new QLabel;
     m_positionLabel = new QLabel;
     m_selectionLabel = new QLabel;
+    m_compareStatus = new QLabel;
+    m_compareStatus->hide();
+    statusBar()->addWidget(m_compareStatus, 1);
     statusBar()->addPermanentWidget(m_selectionLabel);
     statusBar()->addPermanentWidget(m_positionLabel);
     statusBar()->addPermanentWidget(m_linesLabel);
@@ -607,6 +616,16 @@ void MainWindow::createActions()
     m_aiSummarizeAction = aiAction(tr("AI &Summarize"), &AiPanel::summarizeSelection);
     m_aiAskAction = aiAction(tr("&Ask AI…"), &AiPanel::focusInput);
     m_aiIdentifyAction = aiAction(tr("What Is This &File?"), &AiPanel::identifyFile);
+    m_compareSavedAction = new QAction(tr("With the &Saved Version"), this);
+    m_compareSavedAction->setToolTip(tr("What has been changed in the document since it was saved"));
+    connect(m_compareSavedAction, &QAction::triggered, this, &MainWindow::compareWithSaved);
+    m_compareClipboardAction = new QAction(tr("With the Clip&board"), this);
+    connect(m_compareClipboardAction, &QAction::triggered, this, &MainWindow::compareWithClipboard);
+    m_compareFileAction = new QAction(tr("With Another &File…"), this);
+    connect(m_compareFileAction, &QAction::triggered, this, &MainWindow::compareWithFile);
+    m_compareTwoAction = new QAction(tr("&Two Files…"), this);
+    connect(m_compareTwoAction, &QAction::triggered, this, &MainWindow::compareTwoFiles);
+
     m_aiFolderAction = new QAction(tr("What Is in This Fol&der?"), this);
     m_aiFolderAction->setToolTip(tr("The AI is told what the open folder holds: names, sizes and kinds of files, "
                                     "and the first lines of a few. The files themselves are not sent."));
@@ -643,6 +662,10 @@ void MainWindow::createMenus()
     connect(m_recentMenu, &QMenu::aboutToShow, this, &MainWindow::populateRecentMenu);
     m_recentFoldersMenu = file->addMenu(tr("Recent Fold&ers"));
     connect(m_recentFoldersMenu, &QMenu::aboutToShow, this, &MainWindow::populateRecentFoldersMenu);
+    QMenu* compareMenu = file->addMenu(tr("Co&mpare"));
+    compareMenu->addActions({m_compareSavedAction, m_compareClipboardAction, m_compareFileAction});
+    compareMenu->addSeparator();
+    compareMenu->addAction(m_compareTwoAction);
     file->addAction(m_saveAction);
     file->addAction(m_saveAsAction);
     file->addAction(m_reloadAction);
@@ -844,8 +867,7 @@ void MainWindow::chooseEditorFont()
     m_fontFamily = font.family();
     const int pointSize = font.pointSize() > 0 ? font.pointSize() : m_pointSize;
     m_pointSize = std::clamp(pointSize, kMinPointSize, kMaxPointSize);
-    for (int i = 0; i < m_tabs->count(); ++i)
-        applyViewSettings(document(i));
+    applyViewSettingsToTabs();
     QSettings settings;
     settings.setValue(QStringLiteral("view/fontFamily"), m_fontFamily);
     settings.setValue(QStringLiteral("view/pointSize"), m_pointSize);
@@ -893,7 +915,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
     QSet<const DocumentView*> kept;
     for (int i = 0; i < m_tabs->count(); ++i) {
         DocumentView* doc = document(i);
-        if (!doc->isModified())
+        if (!doc || !doc->isModified())
             continue;
         BackupInfo& backup = m_backupInfo[doc];
         if (m_backups.writeNow(backup.id, backupMeta(doc, i), doc->textDocument()->bytes())) {
@@ -916,6 +938,8 @@ void MainWindow::closeEvent(QCloseEvent* event)
     int current = -1;
     for (int i = 0; i < m_tabs->count(); ++i) {
         const DocumentView* doc = document(i);
+        if (!doc)
+            continue; // a comparison is not kept
         rememberDocument(doc, doc != m_previewDoc);
         QVariantMap tab;
         if (!doc->isUntitled())
@@ -1013,7 +1037,7 @@ DocumentView* MainWindow::showFile(const QString& path, bool preview, QString* e
     const QFileInfo info(path);
     const QString filePath = info.canonicalFilePath().isEmpty() ? info.absoluteFilePath() : info.canonicalFilePath();
     for (int i = 0; i < m_tabs->count(); ++i) {
-        if (document(i)->filePath() == filePath) {
+        if (document(i) && document(i)->filePath() == filePath) {
             m_tabs->setCurrentIndex(i);
             if (!preview)
                 keepDocument(document(i));
@@ -1266,6 +1290,8 @@ void MainWindow::writeBackups()
     m_backupTimer.stop();
     for (int i = 0; i < m_tabs->count(); ++i) {
         DocumentView* doc = document(i);
+        if (!doc)
+            continue;
         BackupInfo& backup = m_backupInfo[doc];
         if (!backup.dirty || !doc->isModified())
             continue;
@@ -1460,9 +1486,17 @@ void MainWindow::showOpenDialog()
 
 void MainWindow::closeTab(int index)
 {
+    QWidget* widget = m_tabs->widget(index);
     DocumentView* doc = document(index);
-    if (!doc || !confirmClose(doc))
+    if (!widget || (doc && !confirmClose(doc)))
         return;
+    if (!doc) { // a comparison
+        m_tabs->removeTab(index);
+        widget->deleteLater();
+        if (m_tabs->count() == 0)
+            m_stack->setCurrentWidget(m_welcome);
+        return;
+    }
     rememberDocument(doc, doc != m_previewDoc);
     discardDocument(doc);
 }
@@ -1547,9 +1581,13 @@ void MainWindow::currentTabChanged()
     if (doc) {
         updateDocumentTitle(doc);
     } else {
-        setWindowTitle(QStringLiteral("AIEdit"));
+        const CompareTab* compareTab = currentCompareTab();
+        setWindowTitle(compareTab ? tr("%1 — AIEdit").arg(compareTab->title()) : QStringLiteral("AIEdit"));
         setWindowModified(false);
     }
+    m_compareStatus->setVisible(currentCompareTab() != nullptr);
+    if (const CompareTab* compareTab = currentCompareTab())
+        m_compareStatus->setText(compareTab->statusText());
     updateFileStatus();
     documentStateChanged(doc);
     updateActions();
@@ -1612,6 +1650,9 @@ void MainWindow::updateActions()
     m_followAction->setEnabled(onDisk);
     m_viewModeGroup->setEnabled(hasDocument);
     m_aiFolderAction->setEnabled(!m_folders->folder().isEmpty());
+    m_compareSavedAction->setEnabled(onDisk);
+    m_compareClipboardAction->setEnabled(hasDocument);
+    m_compareFileAction->setEnabled(hasDocument);
 }
 
 void MainWindow::setViewMode(DocumentView::ViewMode mode)
@@ -1705,7 +1746,8 @@ void MainWindow::setBytesPerRow(int bytesPerRow)
     for (QAction* action : m_bytesPerRowGroup->actions())
         action->setChecked(action->data().toInt() == m_bytesPerRow);
     for (int i = 0; i < m_tabs->count(); ++i)
-        document(i)->hexView()->setBytesPerRow(m_bytesPerRow);
+        if (DocumentView* doc = document(i))
+            doc->hexView()->setBytesPerRow(m_bytesPerRow);
 }
 
 void MainWindow::setWordWrap(bool on)
@@ -1714,7 +1756,8 @@ void MainWindow::setWordWrap(bool on)
     const QSignalBlocker blocker(m_wordWrapAction);
     m_wordWrapAction->setChecked(on);
     for (int i = 0; i < m_tabs->count(); ++i)
-        document(i)->textView()->setWordWrap(on);
+        if (DocumentView* doc = document(i))
+            doc->textView()->setWordWrap(on);
 }
 
 void MainWindow::zoomBy(int steps)
@@ -1723,8 +1766,7 @@ void MainWindow::zoomBy(int steps)
     if (pointSize == m_pointSize)
         return;
     m_pointSize = pointSize;
-    for (int i = 0; i < m_tabs->count(); ++i)
-        applyViewSettings(document(i));
+    applyViewSettingsToTabs();
     statusBar()->showMessage(tr("Font size: %1 pt").arg(m_pointSize), kStatusTimeoutMs);
 }
 
@@ -1897,6 +1939,16 @@ void MainWindow::openAtLine(const QString& path, std::uint64_t line, std::uint64
     doc->textView()->setFocus();
 }
 
+void MainWindow::openAtOffset(const QString& path, std::uint64_t offset)
+{
+    if (!openFile(path))
+        return;
+    DocumentView* doc = currentDocument();
+    doc->setViewMode(DocumentView::ViewMode::Hex);
+    doc->hexView()->goTo(offset);
+    doc->hexView()->setFocus();
+}
+
 void MainWindow::showFindInFilesIn(const QString& folder)
 {
     m_findInFiles->setFolder(folder);
@@ -1913,7 +1965,7 @@ void MainWindow::documentsMoved(const QString& from, const QString& to)
     };
     for (int i = 0; i < m_tabs->count(); ++i) {
         DocumentView* doc = document(i);
-        if (doc->isUntitled())
+        if (!doc || doc->isUntitled())
             continue;
         if (const QString path = moved(doc->filePath()); !path.isEmpty() && !doc->followMove(path))
             statusBar()->showMessage(tr("%1 was moved, but cannot be opened where it is now").arg(doc->title()),
@@ -1933,7 +1985,7 @@ void MainWindow::documentsTrashed(const QString& path)
     // Unsaved changes stop the trash before it gets here, so the documents can just go.
     for (int i = m_tabs->count() - 1; i >= 0; --i) {
         DocumentView* doc = document(i);
-        if (!doc->isUntitled() && !doc->isModified() && gone(doc->filePath()))
+        if (doc && !doc->isUntitled() && !doc->isModified() && gone(doc->filePath()))
             discardDocument(doc);
     }
     m_recentFiles.removeIf([&gone](const DocumentView::State& state) { return gone(state.path); });
@@ -1994,6 +2046,158 @@ void MainWindow::populateRecentFoldersMenu()
     }
     m_recentFoldersMenu->addSeparator();
     m_recentFoldersMenu->addAction(tr("&Clear List"), this, [this] { m_folders->clearRecentFolders(); });
+}
+
+// Comparing ------------------------------------------------------------------------------------------
+
+CompareTab* MainWindow::compare(CompareSide left, CompareSide right)
+{
+    auto* tab = new CompareTab(std::move(left), std::move(right));
+    applyCompareSettings(tab);
+    connect(tab, &CompareTab::openRequested, this, &MainWindow::openAtLine);
+    connect(tab, &CompareTab::openOffsetRequested, this, &MainWindow::openAtOffset);
+    connect(tab, &CompareTab::zoomRequested, this, &MainWindow::zoomBy);
+    connect(tab, &CompareTab::aiRequested, this, [this](const QString& question, const QString& label, const QString& text) {
+        m_aiDock->show();
+        m_aiDock->raise();
+        m_aiPanel->askAbout(question, label, text);
+    });
+    connect(tab, &CompareTab::statusChanged, this, [this, tab](const QString& text) {
+        if (tab == currentCompareTab())
+            m_compareStatus->setText(text);
+    });
+    connect(tab, &CompareTab::titleChanged, this, [this, tab] {
+        const int index = m_tabs->indexOf(tab);
+        if (index < 0)
+            return;
+        m_tabs->setTabText(index, tab->title());
+        m_tabs->setTabToolTip(index, tab->toolTip());
+        if (tab == currentCompareTab())
+            setWindowTitle(tr("%1 — AIEdit").arg(tab->title()));
+    });
+    const int index = m_tabs->addTab(tab, tab->title());
+    m_tabs->setTabToolTip(index, tab->toolTip());
+    m_tabs->setCurrentIndex(index);
+    m_stack->setCurrentWidget(m_tabs);
+    tab->setFocus();
+    return tab;
+}
+
+CompareTab* MainWindow::compareFiles(const QString& left, const QString& right)
+{
+    std::optional<CompareSide> sides[2];
+    const QString paths[2] = {left, right};
+    for (int i = 0; i < 2; ++i) {
+        QString error;
+        sides[i] = fileSide(paths[i], preferredLegacyCodec(), &error);
+        if (!sides[i]) {
+            QMessageBox::warning(this, tr("Compare"),
+                                 tr("Cannot open %1:\n%2").arg(QDir::toNativeSeparators(paths[i]), error));
+            return nullptr;
+        }
+    }
+    return compare(std::move(*sides[0]), std::move(*sides[1]));
+}
+
+CompareSide MainWindow::documentSide(DocumentView* doc) const
+{
+    const QString label = doc->isModified() && !doc->isUntitled() ? tr("%1 (edited)").arg(doc->title()) : doc->title();
+    CompareSide side = bytesSide(label, doc->textDocument()->source(), doc->textDocument()->codec());
+    if (!doc->isUntitled())
+        side.path = doc->filePath();
+    const QPointer<DocumentView> pointer(doc);
+    side.reload = [pointer]() -> std::shared_ptr<const core::FileSource> {
+        return pointer ? pointer->textDocument()->source() : nullptr;
+    };
+    return side;
+}
+
+CompareTab* MainWindow::compareWithSaved()
+{
+    DocumentView* doc = currentDocument();
+    if (!doc || doc->isUntitled())
+        return nullptr;
+    QString error;
+    std::optional<CompareSide> disk = fileSide(doc->filePath(), preferredLegacyCodec(), &error);
+    if (!disk) {
+        QMessageBox::warning(this, tr("Compare"),
+                             tr("Cannot open %1:\n%2").arg(QDir::toNativeSeparators(doc->filePath()), error));
+        return nullptr;
+    }
+    disk->label = tr("%1 on disk").arg(doc->title());
+    disk->codec = &doc->textDocument()->codec(); // read as the document is
+    return compare(std::move(*disk), documentSide(doc));
+}
+
+CompareTab* MainWindow::compareWithClipboard()
+{
+    DocumentView* doc = currentDocument();
+    if (!doc)
+        return nullptr;
+    const auto clipboard = []() -> std::shared_ptr<const core::FileSource> {
+        const QByteArray utf8 = QGuiApplication::clipboard()->text().toUtf8();
+        return core::FileSource::fromBytes({}, std::make_shared<const std::vector<std::uint8_t>>(utf8.begin(), utf8.end()));
+    };
+    if (QGuiApplication::clipboard()->text().isEmpty()) {
+        statusBar()->showMessage(tr("There is no text on the clipboard to compare with"), kStatusTimeoutMs);
+        return nullptr;
+    }
+    CompareSide side = bytesSide(tr("Clipboard"), clipboard(), core::utf8Codec());
+    side.reload = clipboard;
+    return compare(documentSide(doc), std::move(side));
+}
+
+void MainWindow::compareWithFile()
+{
+    DocumentView* doc = currentDocument();
+    if (!doc)
+        return;
+    const QString path = QFileDialog::getOpenFileName(this, tr("Compare %1 With").arg(doc->title()), m_lastDirectory);
+    if (path.isEmpty())
+        return;
+    QString error;
+    std::optional<CompareSide> other = fileSide(path, preferredLegacyCodec(), &error);
+    if (!other) {
+        QMessageBox::warning(this, tr("Compare"), tr("Cannot open %1:\n%2").arg(QDir::toNativeSeparators(path), error));
+        return;
+    }
+    compare(documentSide(doc), std::move(*other));
+}
+
+void MainWindow::compareTwoFiles()
+{
+    const QString first = QFileDialog::getOpenFileName(this, tr("Compare: The First File (Left)"), m_lastDirectory);
+    if (first.isEmpty())
+        return;
+    const QString second =
+        QFileDialog::getOpenFileName(this, tr("Compare: The Second File (Right)"), QFileInfo(first).absolutePath());
+    if (!second.isEmpty())
+        compareFiles(first, second);
+}
+
+CompareTab* MainWindow::currentCompareTab() const
+{
+    return qobject_cast<CompareTab*>(m_tabs->currentWidget());
+}
+
+void MainWindow::applyViewSettingsToTabs()
+{
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        if (DocumentView* doc = document(i))
+            applyViewSettings(doc);
+        else if (auto* tab = qobject_cast<CompareTab*>(m_tabs->widget(i)))
+            applyCompareSettings(tab);
+    }
+}
+
+void MainWindow::applyCompareSettings(CompareTab* tab) const
+{
+    QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    if (!m_fontFamily.isEmpty())
+        font.setFamily(m_fontFamily);
+    font.setPointSize(m_pointSize);
+    tab->view()->setFont(font);
+    tab->hexView()->setFont(font);
 }
 
 void MainWindow::changeEvent(QEvent* event)

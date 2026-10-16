@@ -4,7 +4,7 @@
 
 快速、带 AI 辅助的文本与二进制文件查看器。用 C++20 和 Qt 6 编写，以查看为主、编辑为辅。
 
-> 当前进度：已完成 **M7b**（文件夹面板：单击预览、按内容识别文件类型、按名字筛选、问 AI 这个文件夹里是什么）。之前的 M7 是读书：阅读模式、自动目录、AI 逐章总结和翻译。计划见 [DESIGN.md](DESIGN.md)。
+> 当前进度：已完成 **M8a**（差异对比：两个文件并排对比，二进制按字节对比并反汇编差异附近的代码，问 AI 改了什么）。之前的 M7b 是文件夹面板。计划见 [DESIGN.md](DESIGN.md)。
 
 ## 功能
 
@@ -65,6 +65,13 @@
 - 右键：新建文件、新建文件夹、重命名（`F2`）、移到回收站（`Delete`）、复制路径、在这个文件夹里查找。已打开的文件改名后，标签页跟着到新路径。
 - **问 AI 这个文件夹里是什么**：在本机整理出文件数量、类型、大小、结构，以及 README 这类文件的开头几行，只把这份摘要交给 AI，文件本身不发送。
 
+**比较**（文件 →「比较」）
+- 与磁盘上的版本比较（看看还没保存的改动）、与剪贴板比较、与另一个文件比较、比较两个文件；在文件夹面板里选两个文件，右键「比较这两个文件」。
+- 左右两栏对齐显示，删除的标红、增加的标绿，行内改了的词再深一层标出。右边细栏标出所有改动的位置。`F7` / `Shift+F7` 到下一处、上一处；双击在那个文件的那一行打开。
+- 可以忽略空白、大小写、换行符；「只看差异」把相同的部分折叠起来。GBK 文件和它的 UTF-8 副本算相同。百万行的文件也能比较，在后台进行。
+- **二进制文件**按字节对比：不同的字节标出颜色；插入或删除了内容、后面整体错开时会说明从哪里起错开了几个字节。PE（.exe、.dll）和 ELF（Linux 程序、.so）会显示差异在哪个节、地址多少，并用 Capstone 反汇编两边差异附近的指令，改了哪条指令一目了然。
+- **问 AI 改了什么**：把差异（文本是统一 diff，二进制是位置、字节和反汇编）交给 AI 总结、解释。
+
 **看日志**
 - 文件变化时自动重新加载（有未保存的修改时不会覆盖它们）。
 - 「跟随文件末尾」（`Ctrl+Shift+T`）的效果和 `tail -f` 一样。
@@ -104,6 +111,7 @@ AIEDIT_API_KEY=你的key ./build/src/aiedit
 | 在文件夹里查找 | `Ctrl+Shift+F` |
 | 阅读模式 / 目录 | `F9` / `Ctrl+Shift+O` |
 | 文件夹面板 | `Ctrl+Shift+D` |
+| 比较时：下一处 / 上一处 / 重新读取 | `F7` / `Shift+F7` / `F5` |
 | 文件夹面板里：打开 / 重命名 / 移到回收站 | `Enter` / `F2` / `Delete` |
 | 十六进制视图里切换十六进制栏和字符栏 | `Tab` |
 | 缩放 | `Ctrl++`、`Ctrl+-`、`Ctrl+0`，或 `Ctrl+滚轮` |
@@ -116,12 +124,13 @@ AIEDIT_API_KEY=你的key ./build/src/aiedit
 - 可选：
   - KSyntaxHighlighting：语法高亮。
   - uchardet：更准确的编码识别。
+  - Capstone：比较二进制文件时反汇编差异附近的代码。
   - Qt 的 `lrelease`：编译中文界面翻译。
 
 **Ubuntu / Debian**
 
 ```bash
-sudo apt install build-essential cmake qt6-base-dev qt6-l10n-tools libkf6syntaxhighlighting-dev libuchardet-dev
+sudo apt install build-essential cmake pkg-config qt6-base-dev qt6-l10n-tools libkf6syntaxhighlighting-dev libuchardet-dev libcapstone-dev
 ```
 
 ```bash

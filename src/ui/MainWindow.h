@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/BackupStore.h"
+#include "ui/Compare.h"
 #include "ui/DocumentView.h"
 
 #include <QHash>
@@ -27,6 +28,7 @@ struct TextCodec;
 namespace aiedit::ui {
 
 class AiPanel;
+class CompareTab;
 class ContentsPanel;
 class DataInspector;
 class FindInFilesPanel;
@@ -50,6 +52,15 @@ public:
     bool openFolder(const QString& path);
     // A file or a folder, from the command line, another launch or a drop.
     bool openPath(const QString& path);
+
+    // Compares two versions in a tab of their own; nullptr (after saying why) if a side cannot
+    // be had.
+    CompareTab* compare(CompareSide left, CompareSide right);
+    CompareTab* compareFiles(const QString& left, const QString& right);
+    // The current document, as it is being edited, against its file on disk or the clipboard.
+    CompareTab* compareWithSaved();
+    CompareTab* compareWithClipboard();
+    CompareTab* currentCompareTab() const;
     // Brings back the unsaved changes that windows which have ended left behind, and with
     // `reopenTabs` also the other files that were open when AIEdit last closed, as they were.
     void restoreSession(bool reopenTabs = true);
@@ -140,6 +151,8 @@ private:
     void askAboutChapter(int action, const QString& title, const QString& text, bool cut);
     // Opens a result of Find in Files at its line.
     void openAtLine(const QString& path, std::uint64_t line, std::uint64_t offset);
+    // Opens a file in the hex view at a byte.
+    void openAtOffset(const QString& path, std::uint64_t offset);
     void showFindInFilesIn(const QString& folder);
     // What the folder panel did to files on disk, for the documents showing them.
     void documentsMoved(const QString& from, const QString& to);
@@ -148,6 +161,13 @@ private:
     void askAboutFolder(const QString& folder, const QString& summary);
     void showOpenFolderDialog();
     void populateRecentFoldersMenu();
+    // The current document against a file picked; two files picked.
+    void compareWithFile();
+    void compareTwoFiles();
+    // A document as a side of a comparison: its text as it is now, edits included.
+    CompareSide documentSide(DocumentView* doc) const;
+    void applyViewSettingsToTabs();
+    void applyCompareSettings(CompareTab* tab) const;
 
     void documentStateChanged(DocumentView* doc);
     // What the Edit menu can do now: copying needs a selection, pasting text on the clipboard.
@@ -182,6 +202,7 @@ private:
     QLabel* m_linesLabel = nullptr;
     QLabel* m_positionLabel = nullptr;
     QLabel* m_selectionLabel = nullptr;
+    QLabel* m_compareStatus = nullptr; // what the comparison in the current tab found
 
     QAction* m_newAction = nullptr;
     QAction* m_openAction = nullptr;
@@ -228,6 +249,10 @@ private:
     QAction* m_aiSummarizeAction = nullptr;
     QAction* m_aiIdentifyAction = nullptr;
     QAction* m_aiFolderAction = nullptr;
+    QAction* m_compareSavedAction = nullptr;
+    QAction* m_compareClipboardAction = nullptr;
+    QAction* m_compareFileAction = nullptr;
+    QAction* m_compareTwoAction = nullptr;
     QAction* m_aiChapterSummaryAction = nullptr;
     QAction* m_aiChapterTranslationAction = nullptr;
     QAction* m_aiAskAction = nullptr;

@@ -6,6 +6,9 @@ qt_add_library(aiedit_ui STATIC
     BackupStore.cpp BackupStore.h
     ChatClient.cpp ChatClient.h
     Collation.h
+    Compare.cpp Compare.h
+    CompareTab.cpp CompareTab.h
+    CompareView.cpp CompareView.h
     Contents.cpp Contents.h
     ContentsPanel.cpp ContentsPanel.h
     DataInspector.cpp DataInspector.h
@@ -21,6 +24,7 @@ qt_add_library(aiedit_ui STATIC
     FolderModels.cpp FolderModels.h
     FolderPanel.cpp FolderPanel.h
     FolderSummary.cpp FolderSummary.h
+    HexCompareView.cpp HexCompareView.h
     HexView.cpp HexView.h
     LineOperations.cpp LineOperations.h
     LogFilter.cpp LogFilter.h

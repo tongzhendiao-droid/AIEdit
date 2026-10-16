@@ -1,5 +1,6 @@
 #include "ui/FolderPanel.h"
 
+#include "ui/Collation.h"
 #include "ui/FolderSummary.h"
 
 #include <QAction>
@@ -245,6 +246,15 @@ void FolderPanel::createActions()
         const QStringList paths = selectedPaths();
         if (paths.size() == 1)
             setFolder(paths.first());
+    });
+    m_compareAction = action(tr("Co&mpare These Two Files"), [this] {
+        QStringList paths = selectedPaths();
+        if (paths.size() != 2)
+            return;
+        const QCollator collator = naturalCollator();
+        std::sort(paths.begin(), paths.end(),
+                  [&collator](const QString& a, const QString& b) { return collator.compare(a, b) < 0; });
+        emit compareRequested(paths[0], paths[1]);
     });
     m_findHereAction = action(tr("&Find in This Folder…"), [this] {
         if (!m_actionFolder.isEmpty())
@@ -946,7 +956,7 @@ void FolderPanel::showContextMenu(QAbstractItemView* view, const QPoint& pos)
 
     // The same menu for files and folders: what does not apply to the one clicked is greyed out.
     QMenu menu(this);
-    menu.addActions({m_openAction, m_openFolderAction});
+    menu.addActions({m_openAction, m_openFolderAction, m_compareAction});
     menu.addSeparator();
     menu.addActions({m_findHereAction, m_askAiAction});
     menu.addSeparator();
@@ -1035,6 +1045,7 @@ void FolderPanel::updateActions()
 
     m_openAction->setEnabled(files > 0);
     m_openFolderAction->setEnabled(selected.size() == 1 && folders == 1);
+    m_compareAction->setEnabled(selected.size() == 2 && files == 2);
     m_renameAction->setEnabled(selected.size() == 1);
     m_trashAction->setEnabled(!selected.isEmpty());
     m_copyPathAction->setEnabled(open);
