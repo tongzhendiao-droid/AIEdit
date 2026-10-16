@@ -102,6 +102,8 @@ signals:
     void folderSummarized(const QString& folder, const QString& summary);
     void pathRenamed(const QString& from, const QString& to);
     void pathTrashed(const QString& path);
+    // Two files selected, to compare (in name order: left, right).
+    void compareRequested(const QString& left, const QString& right);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -168,6 +170,7 @@ private:
 
     QAction* m_openAction = nullptr;
     QAction* m_openFolderAction = nullptr;
+    QAction* m_compareAction = nullptr;
     QAction* m_findHereAction = nullptr;
     QAction* m_askAiAction = nullptr;
     QAction* m_newFileAction = nullptr;
