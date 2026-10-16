@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Registers an installed AIEdit with the desktop, for the current user only:
 #   - refreshes the application and icon caches, so menus and "Open with" know it;
-#   - adds "Open with AIEdit" to the Nautilus right-click menu (under Scripts), for any file;
+#   - adds "Open with AIEdit" to the Nautilus right-click menu (under Scripts), for any file or
+#     folder (a folder opens in the folder panel);
 #   - with --default, makes AIEdit the default application for plain text, logs, data files and
 #     binaries. File types you have pointed at another program yourself (C/C++ sources, shell
 #     scripts, CSV, HTML) are left alone: AIEdit cannot edit yet.
@@ -15,7 +16,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --default) set_default=1 ;;
         --prefix) prefix="$2"; shift ;;
-        -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
     esac
     shift
@@ -40,7 +41,7 @@ esac
 mkdir -p "$scripts"
 cat >"$scripts/$script_name" <<EOF
 #!/bin/sh
-# Opens the files selected in Nautilus in AIEdit (installed by AIEdit's register.sh).
+# Opens the files and folders selected in Nautilus in AIEdit (installed by AIEdit's register.sh).
 IFS='
 '
 exec "$binary" \$NAUTILUS_SCRIPT_SELECTED_FILE_PATHS

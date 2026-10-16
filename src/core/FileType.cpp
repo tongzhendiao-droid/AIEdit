@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <utility>
 
 namespace aiedit::core {
 
@@ -155,6 +156,46 @@ Encoding guessUtf16WithoutBom(std::span<const std::uint8_t> data)
     return Encoding::Unknown;
 }
 
+// What extensions stand for. Only extensions whose files have one signature in kMagics (or are
+// always text) are here: ".dat", ".bin" or ".iso" promise nothing that could be checked.
+constexpr std::string_view kText = "text";
+constexpr std::pair<std::string_view, std::string_view> kExtensions[] = {
+    {"png", "PNG"}, {"jpg", "JPEG"}, {"jpeg", "JPEG"}, {"jpe", "JPEG"}, {"jfif", "JPEG"}, {"gif", "GIF"},
+    {"webp", "WebP"}, {"wav", "WAV"}, {"avi", "AVI"}, {"tif", "TIFF"}, {"tiff", "TIFF"}, {"psd", "PSD"},
+    {"bmp", "BMP"}, {"dib", "BMP"}, {"pdf", "PDF"},
+    // Office documents, e-books, Java and Android packages are ZIP archives inside.
+    {"zip", "ZIP"}, {"jar", "ZIP"}, {"war", "ZIP"}, {"apk", "ZIP"}, {"aab", "ZIP"}, {"ipa", "ZIP"},
+    {"xpi", "ZIP"}, {"whl", "ZIP"}, {"nupkg", "ZIP"}, {"vsix", "ZIP"}, {"kmz", "ZIP"}, {"docx", "ZIP"},
+    {"xlsx", "ZIP"}, {"pptx", "ZIP"}, {"odt", "ZIP"}, {"ods", "ZIP"}, {"odp", "ZIP"}, {"epub", "ZIP"},
+    {"gz", "gzip"}, {"tgz", "gzip"}, {"xz", "xz"}, {"txz", "xz"}, {"bz2", "bzip2"}, {"tbz2", "bzip2"},
+    {"zst", "Zstandard"}, {"lz4", "LZ4"}, {"7z", "7z"}, {"rar", "RAR"}, {"tar", "tar"},
+    {"a", "ar archive"}, {"deb", "ar archive"}, {"cab", "CAB"}, {"rpm", "RPM"},
+    {"sqlite", "SQLite"}, {"sqlite3", "SQLite"},
+    {"doc", "OLE2 (DOC/XLS/MSI)"}, {"xls", "OLE2 (DOC/XLS/MSI)"}, {"ppt", "OLE2 (DOC/XLS/MSI)"},
+    {"msi", "OLE2 (DOC/XLS/MSI)"},
+    {"exe", "PE/MZ executable"}, {"dll", "PE/MZ executable"}, {"sys", "PE/MZ executable"},
+    {"efi", "PE/MZ executable"}, {"ocx", "PE/MZ executable"}, {"cpl", "PE/MZ executable"},
+    {"scr", "PE/MZ executable"},
+    {"so", "ELF"}, {"ko", "ELF"}, {"elf", "ELF"}, {"dylib", "Mach-O"}, {"class", "Java class"},
+    {"dex", "Android DEX"}, {"wasm", "WebAssembly"},
+    {"ogg", "Ogg"}, {"oga", "Ogg"}, {"ogv", "Ogg"}, {"opus", "Ogg"}, {"flac", "FLAC"}, {"mp3", "MP3 (ID3)"},
+    {"mkv", "Matroska/WebM"}, {"mka", "Matroska/WebM"}, {"webm", "Matroska/WebM"},
+    {"mp4", "ISO media (MP4/MOV/HEIF)"}, {"m4a", "ISO media (MP4/MOV/HEIF)"},
+    {"m4v", "ISO media (MP4/MOV/HEIF)"}, {"mov", "ISO media (MP4/MOV/HEIF)"},
+    {"heic", "ISO media (MP4/MOV/HEIF)"}, {"heif", "ISO media (MP4/MOV/HEIF)"},
+    {"avif", "ISO media (MP4/MOV/HEIF)"}, {"3gp", "ISO media (MP4/MOV/HEIF)"},
+    {"pcap", "pcap"}, {"pcapng", "pcapng"}, {"squashfs", "SquashFS"}, {"snap", "SquashFS"},
+    {"woff", "WOFF"}, {"woff2", "WOFF2"},
+    {"txt", kText}, {"log", kText}, {"md", kText}, {"markdown", kText}, {"rst", kText}, {"csv", kText},
+    {"tsv", kText}, {"json", kText}, {"jsonl", kText}, {"ipynb", kText}, {"xml", kText}, {"html", kText},
+    {"htm", kText}, {"svg", kText}, {"yaml", kText}, {"yml", kText}, {"toml", kText}, {"ini", kText},
+    {"cfg", kText}, {"conf", kText}, {"properties", kText}, {"tex", kText}, {"bib", kText}, {"srt", kText},
+    {"css", kText}, {"js", kText}, {"py", kText}, {"c", kText}, {"h", kText}, {"cc", kText}, {"cpp", kText},
+    {"cxx", kText}, {"hpp", kText}, {"java", kText}, {"go", kText}, {"rs", kText}, {"rb", kText},
+    {"php", kText}, {"sh", kText}, {"bash", kText}, {"bat", kText}, {"cmd", kText}, {"ps1", kText},
+    {"sql", kText}, {"lua", kText}, {"cmake", kText}, {"patch", kText}, {"diff", kText},
+};
+
 FileTypeInfo text(Encoding encoding, bool hasBom = false)
 {
     return {ContentKind::Text, encoding, hasBom, {}};
@@ -263,6 +304,38 @@ FileTypeInfo detectFileType(std::span<const std::uint8_t> data)
     if (controls * 100 <= sample.size() * 2)
         return text(Encoding::Legacy);
     return binary(weakFormat);
+}
+
+std::string_view formatForName(std::string_view fileName)
+{
+    const std::size_t dot = fileName.rfind('.');
+    // ".bashrc" is a name, not an extension.
+    if (dot == std::string_view::npos || dot == 0 || dot + 1 == fileName.size())
+        return {};
+    const std::string_view extension = fileName.substr(dot + 1);
+    for (const auto& [known, format] : kExtensions) {
+        if (known.size() == extension.size() &&
+            std::equal(known.begin(), known.end(), extension.begin(), [](char a, char b) {
+                return a == (b >= 'A' && b <= 'Z' ? static_cast<char>(b - 'A' + 'a') : b);
+            }))
+            return format;
+    }
+    return {};
+}
+
+std::string_view contentMismatch(std::string_view fileName, const FileTypeInfo& type)
+{
+    const std::string_view expected = formatForName(fileName);
+    if (expected.empty() || type.kind == ContentKind::Empty)
+        return {};
+    if (expected == kText)
+        return type.kind == ContentKind::Binary ? type.format : std::string_view();
+    if (type.kind == ContentKind::Text)
+        return kText;
+    // "Mach-O universal" is a Mach-O too.
+    if (type.format.empty() || type.format.starts_with(expected))
+        return {};
+    return type.format;
 }
 
 } // namespace aiedit::core

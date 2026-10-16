@@ -803,6 +803,38 @@ bool DocumentView::saveAs(const QString& path, QString* error)
     return true;
 }
 
+bool DocumentView::followMove(const QString& path)
+{
+    if (isUntitled() || isModified())
+        return false;
+    std::error_code ec;
+    std::shared_ptr<const core::FileSource> source = core::FileSource::open(toPath(path), ec);
+    if (!source)
+        return false;
+    State kept = state();
+    kept.path = path;
+    m_reloadTimer.stop();
+    m_watcher.removePaths(m_watcher.files());
+    m_watcher.addPath(path);
+    m_findBar->cancel();
+    m_lastMatch.reset();
+    m_source = std::move(source);
+    m_fileType = core::detectFileType(m_source->bytes());
+    {
+        const QScopedValueRollback guard(m_syncing, true);
+        m_textDocument->setSource(m_source);
+        m_hexView->replaceSource(m_source);
+    }
+    if (m_fileType.kind != core::ContentKind::Binary)
+        m_textView->setSyntax(syntaxForFileName(QFileInfo(path).fileName()));
+    updateEditable();
+    restoreState(kept);
+    emit pathChanged();
+    emit sourceChanged();
+    emit stateChanged();
+    return true;
+}
+
 bool DocumentView::convertLineEndings(const QString& terminator)
 {
     if (!isEditable())
