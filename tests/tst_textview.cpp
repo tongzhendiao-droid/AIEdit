@@ -640,7 +640,8 @@ void TestTextView::aiActionsInContextMenus()
     QCOMPARE(actionTexts(menu.get()),
              (QStringList{QStringLiteral("Undo"), QStringLiteral("Redo"), QStringLiteral("Cut"), QStringLiteral("Copy"),
                           QStringLiteral("Paste"), QStringLiteral("AI &Explain"), QStringLiteral("AI &Translate"),
-                          QStringLiteral("AI &Summarize"), QStringLiteral("&Ask AI…"), QStringLiteral("Select All")}));
+                          QStringLiteral("AI &Summarize"), QStringLiteral("&Ask AI…"), QStringLiteral("Ed&it with AI…"),
+                          QStringLiteral("Select All")}));
     QVERIFY(!find(menu.get(), QStringLiteral("AI &Explain"))->isEnabled());
     QVERIFY(find(menu.get(), QStringLiteral("&Ask AI…"))->isEnabled());
 

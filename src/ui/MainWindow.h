@@ -184,6 +184,8 @@ private:
     void showAbout();
     void showAiSettings();
     void runAiAction(void (AiPanel::*action)());
+    // What the AI proposes for a document, in a tab of its own to review it before it is written.
+    void reviewAiEdit(DocumentView* doc, const DocumentView::AiEditProposal& proposal);
     // Find in Files, in the current document's folder at first.
     void showFindInFiles();
     // Reading mode for the current document, with its contents beside it.
@@ -324,6 +326,7 @@ private:
     QAction* m_aiChapterSummaryAction = nullptr;
     QAction* m_aiChapterTranslationAction = nullptr;
     QAction* m_aiAskAction = nullptr;
+    QAction* m_aiEditAction = nullptr;
     QAction* m_aiSettingsAction = nullptr;
     QAction* m_aboutAction = nullptr;
     QAction* m_aboutQtAction = nullptr;

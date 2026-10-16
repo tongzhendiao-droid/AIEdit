@@ -1,4 +1,6 @@
 qt_add_library(aiedit_ui STATIC
+    AiEdit.cpp AiEdit.h
+    AiEditBar.cpp AiEditBar.h
     AiPanel.cpp AiPanel.h
     AiSettings.cpp AiSettings.h
     AiSettingsDialog.cpp AiSettingsDialog.h

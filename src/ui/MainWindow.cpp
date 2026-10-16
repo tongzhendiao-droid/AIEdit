@@ -4,6 +4,7 @@
 #include "core/FileType.h"
 #include "core/Offset.h"
 #include "core/TextCodec.h"
+#include "ui/AiEditBar.h"
 #include "ui/AiPanel.h"
 #include "ui/AiSettingsDialog.h"
 #include "ui/CompareTab.h"
@@ -824,6 +825,15 @@ void MainWindow::createActions()
     m_aiTranslateAction = aiAction(tr("AI &Translate"), &AiPanel::translateSelection);
     m_aiSummarizeAction = aiAction(tr("AI &Summarize"), &AiPanel::summarizeSelection);
     m_aiAskAction = aiAction(tr("&Ask AI…"), &AiPanel::focusInput);
+    // Ctrl+I, as VS Code's chat in the editor.
+    m_aiEditAction = new QAction(tr("Ed&it with AI…"), this);
+    m_aiEditAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_I));
+    m_aiEditAction->setToolTip(tr("Say what to change in the selection, or in the whole file; the AI's changes are "
+                                  "reviewed before anything is written"));
+    connect(m_aiEditAction, &QAction::triggered, this, [this] {
+        if (DocumentView* doc = currentDocument())
+            doc->showAiEditBar();
+    });
     m_aiIdentifyAction = aiAction(tr("What Is This &File?"), &AiPanel::identifyFile);
     m_compareSavedAction = new QAction(tr("With the &Saved Version"), this);
     m_compareSavedAction->setToolTip(tr("What has been changed in the document since it was saved"));
@@ -972,6 +982,7 @@ void MainWindow::createMenus()
     ai->addAction(m_aiTranslateAction);
     ai->addAction(m_aiSummarizeAction);
     ai->addAction(m_aiAskAction);
+    ai->addAction(m_aiEditAction);
     ai->addAction(m_aiIdentifyAction);
     ai->addAction(m_aiFolderAction);
     ai->addSeparator();
@@ -1677,7 +1688,7 @@ void MainWindow::newDocument()
 void MainWindow::addDocument(DocumentView* doc, int index, bool focus)
 {
     applyViewSettings(doc);
-    doc->setContextActions({m_aiExplainAction, m_aiTranslateAction, m_aiSummarizeAction, m_aiAskAction},
+    doc->setContextActions({m_aiExplainAction, m_aiTranslateAction, m_aiSummarizeAction, m_aiAskAction, m_aiEditAction},
                            {m_aiExplainAction, m_aiSummarizeAction, m_aiAskAction, m_aiIdentifyAction});
     connect(doc, &DocumentView::stateChanged, this, [this, doc] { documentStateChanged(doc); });
     connect(doc, &DocumentView::modificationChanged, this, [this, doc](bool modified) {
@@ -1709,6 +1720,8 @@ void MainWindow::addDocument(DocumentView* doc, int index, bool focus)
     });
     connect(doc, &DocumentView::zoomRequested, this, &MainWindow::zoomBy);
     connect(doc, &DocumentView::aiSettingsRequested, this, &MainWindow::showAiSettings);
+    connect(doc, &DocumentView::aiEditProposed, this,
+            [this, doc](const DocumentView::AiEditProposal& proposal) { reviewAiEdit(doc, proposal); });
     connect(doc, &DocumentView::readingModeChanged, this, [this, doc] { applyViewSettings(doc); });
     // How far a book is read shows as it scrolls.
     connect(doc->textView()->verticalScrollBar(), &QScrollBar::valueChanged, this, [this, doc] {
@@ -2149,7 +2162,8 @@ void MainWindow::updateActions()
     const bool hasDocument = doc != nullptr;
     for (QAction* action : {m_saveAction, m_saveAsAction, m_copyOffsetAction, m_goToAction, m_findAction,
                             m_findNextAction, m_findPreviousAction, m_findSelectionAction, m_findSelectionBackAction,
-                            m_replaceAction, m_filterAction, m_aiAskAction, m_aiIdentifyAction, m_readingAction}) {
+                            m_replaceAction, m_filterAction, m_aiAskAction, m_aiEditAction, m_aiIdentifyAction,
+                            m_readingAction}) {
         action->setEnabled(hasDocument);
     }
     for (QAction* action : std::as_const(m_bookmarkActions))
@@ -2518,6 +2532,67 @@ void MainWindow::runAiAction(void (AiPanel::*action)())
     m_aiDock->show();
     m_aiDock->raise();
     (m_aiPanel->*action)();
+}
+
+void MainWindow::reviewAiEdit(DocumentView* doc, const DocumentView::AiEditProposal& proposal)
+{
+    const auto source = [](const QByteArray& bytes) {
+        return core::FileSource::fromBytes(
+            {}, std::make_shared<const std::vector<std::uint8_t>>(bytes.cbegin(), bytes.cend()));
+    };
+    const core::TextCodec& codec = doc->textDocument()->codec();
+    // The part changed, by its lines, unless it is the whole document.
+    const bool whole = proposal.start <= doc->textDocument()->textStart() &&
+                       proposal.end >= static_cast<std::uint64_t>(doc->textDocument()->bytes().size());
+    QString now = tr("%1 now").arg(doc->title());
+    if (!whole) {
+        const core::LineIndex& index = doc->textDocument()->index();
+        const std::uint64_t last = index.rowCount() > 0 && proposal.end > proposal.start
+                                       ? index.row(index.rowIndexAt(proposal.end - 1)).line
+                                       : proposal.firstLine;
+        now = last == proposal.firstLine
+                  ? tr("%1, line %2, now").arg(doc->title(), QString::number(last + 1))
+                  : tr("%1, lines %2–%3, now")
+                        .arg(doc->title(), QString::number(proposal.firstLine + 1), QString::number(last + 1));
+    }
+    CompareTab* tab = compare(bytesSide(now, source(proposal.before), codec),
+                              bytesSide(tr("The AI's version"), source(proposal.after), codec));
+    CompareTab::Review review;
+    review.note = tr("Asked: %1").arg(proposal.instruction);
+    if (!proposal.note.isEmpty())
+        review.note += QLatin1Char('\n') + proposal.note;
+    if (!proposal.rule.isEmpty())
+        review.note += QLatin1Char('\n') + tr("The rule it wrote, which ran here:") + QLatin1Char('\n') +
+                       proposal.rule.trimmed();
+    review.applyLabel = tr("Apply to %1").arg(doc->title());
+    const QPointer<DocumentView> target(doc);
+    review.apply = [this, target, start = proposal.start, end = proposal.end,
+                    before = proposal.before](const QByteArray& bytes, int accepted, int changes) {
+        if (!target) {
+            QMessageBox::information(this, tr("Edit with AI"), tr("The document is closed."));
+            return false;
+        }
+        if (!target->replaceIfUnchanged(start, end, before, bytes)) {
+            QMessageBox::information(this, tr("Edit with AI"),
+                                     tr("%1 has changed since the AI was asked, so its changes no longer fit. Ask "
+                                        "again.")
+                                         .arg(target->title()));
+            return false;
+        }
+        m_tabs->setCurrentWidget(target);
+        if (target->aiEditBar()) // done with, as VS Code's chat in the editor is
+            target->aiEditBar()->hide();
+        target->setFocus();
+        statusBar()->showMessage(tr("Applied %1 of %n change(s) to %2; Ctrl+Z takes them back", "", changes)
+                                     .arg(QString::number(accepted), target->title()),
+                                 kNoticeTimeoutMs);
+        return true;
+    };
+    tab->setReview(std::move(review));
+    connect(tab, &CompareTab::applied, this, [this, tab] {
+        if (const int index = m_tabs->indexOf(tab); index >= 0)
+            closeTab(index);
+    });
 }
 
 void MainWindow::showAiSettings()

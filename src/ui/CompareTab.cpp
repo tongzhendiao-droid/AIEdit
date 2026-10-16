@@ -74,11 +74,11 @@ CompareTab::CompareTab(CompareSide left, CompareSide right, QWidget* parent)
         label->setTextFormat(Qt::RichText);
         label->setMinimumWidth(1);
     }
-    auto* swap = new QToolButton(this);
-    swap->setText(QStringLiteral("⇄"));
-    swap->setToolTip(tr("Swap the two sides"));
-    swap->setAutoRaise(true);
-    connect(swap, &QToolButton::clicked, this, &CompareTab::swapSides);
+    m_swap = new QToolButton(this);
+    m_swap->setText(QStringLiteral("⇄"));
+    m_swap->setToolTip(tr("Swap the two sides"));
+    m_swap->setAutoRaise(true);
+    connect(m_swap, &QToolButton::clicked, this, &CompareTab::swapSides);
 
     const auto action = [this](const QString& text, const QString& tip, const QKeySequence& shortcut, auto slot) {
         auto* a = new QAction(text, this);
@@ -108,7 +108,7 @@ CompareTab::CompareTab(CompareSide left, CompareSide right, QWidget* parent)
         else
             m_view->goToNextDifference();
     });
-    QAction* refreshAction =
+    m_refresh =
         action(tr("Refresh"), tr("Read both sides again and compare them"), QKeySequence(Qt::Key_F5), &CompareTab::refresh);
     m_ai = action(tr("Ask AI What Changed"),
                   tr("The AI gets the differences (a unified diff; for binaries, where they lie and the code around "
@@ -181,7 +181,7 @@ CompareTab::CompareTab(CompareSide left, CompareSide right, QWidget* parent)
     auto* names = new QHBoxLayout;
     names->setContentsMargins(6, 4, 6, 0);
     names->addWidget(m_leftLabel, 1);
-    names->addWidget(swap);
+    names->addWidget(m_swap);
     names->addWidget(m_rightLabel, 1);
     auto* tools = new QHBoxLayout;
     tools->setContentsMargins(4, 0, 6, 0);
@@ -195,15 +195,47 @@ CompareTab::CompareTab(CompareSide left, CompareSide right, QWidget* parent)
     tools->addWidget(m_ignoreLineEndings);
     tools->addWidget(m_compareBytes);
     tools->addSpacing(8);
-    tools->addWidget(button(refreshAction));
+    m_refreshButton = button(m_refresh);
+    tools->addWidget(m_refreshButton);
     tools->addWidget(button(m_ai));
     tools->addStretch(1);
+    // For a review: in or out with each change, and applying those that are in.
+    m_toggle = action(tr("Reject This Change"), tr("Leave this change out, or take it back in"),
+                      QKeySequence(Qt::Key_Space), &CompareTab::toggleCurrentChange);
+    m_acceptAll = action(tr("Accept All"), tr("Take in every change"), QKeySequence(), &CompareTab::acceptAll);
+    m_rejectAll = action(tr("Reject All"), tr("Leave out every change"), QKeySequence(), &CompareTab::rejectAll);
+    m_apply = action(tr("Apply"), tr("Write the accepted changes, as one step to undo"),
+                     QKeySequence(Qt::CTRL | Qt::Key_Return), [this] { applyAccepted(); });
+    m_apply->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_Return), QKeySequence(Qt::CTRL | Qt::Key_Enter)});
+    for (QAction* a : {m_toggle, m_acceptAll, m_rejectAll, m_apply})
+        a->setEnabled(false); // their keys too, until there is a review
+    m_reviewTools = new QWidget(this);
+    auto* review = new QHBoxLayout(m_reviewTools);
+    review->setContentsMargins(4, 0, 6, 0);
+    review->setSpacing(6);
+    review->addWidget(button(m_toggle));
+    review->addWidget(button(m_acceptAll));
+    review->addWidget(button(m_rejectAll));
+    review->addStretch(1);
+    auto* apply = new QToolButton(this);
+    apply->setDefaultAction(m_apply);
+    apply->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    review->addWidget(apply);
+    m_reviewTools->hide();
+    m_note = new QLabel(this);
+    m_note->setWordWrap(true);
+    m_note->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_note->setContentsMargins(6, 2, 6, 4);
+    m_note->hide();
+
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(2);
     layout->addLayout(names);
     layout->addLayout(tools);
+    layout->addWidget(m_reviewTools);
     layout->addWidget(m_pages, 1);
+    layout->addWidget(m_note);
 
     connect(&m_textWatcher, &QFutureWatcher<TextComparison>::finished, this, &CompareTab::textFinished);
     connect(&m_binaryWatcher, &QFutureWatcher<BinaryResult>::finished, this, &CompareTab::binaryFinished);
@@ -241,7 +273,7 @@ QString CompareTab::toolTip() const
 
 bool CompareTab::isComparing() const
 {
-    return m_textWatcher.isRunning() || m_binaryWatcher.isRunning();
+    return m_comparing;
 }
 
 QString CompareTab::detailsText() const
@@ -311,6 +343,7 @@ void CompareTab::compare()
     m_binaryWatcher.cancel();
     m_textWatcher.waitForFinished();
     m_binaryWatcher.waitForFinished();
+    m_comparing = true;
     // Binary files are compared byte by byte whatever is asked.
     m_binary = m_compareBytes->isChecked() || isBinaryFile(m_left) || isBinaryFile(m_right);
     updateOptions();
@@ -342,7 +375,10 @@ void CompareTab::textFinished()
     if (comparison.cancelled)
         return;
     m_comparison = std::move(comparison);
+    m_comparing = false;
     m_view->setComparison(m_left, m_right, m_comparison, m_onlyDifferences->isChecked());
+    if (m_review)
+        m_accepted.assign(m_comparison.hunks.size(), true);
     updateStatus();
     updateButtons();
     emit compared();
@@ -358,6 +394,7 @@ void CompareTab::binaryFinished()
     m_bytes = std::move(result.bytes);
     m_leftLayout = std::move(result.left);
     m_rightLayout = std::move(result.right);
+    m_comparing = false;
     m_hexView->setComparison(m_left, m_right, m_bytes);
     updateStatus();
     updateButtons();
@@ -428,6 +465,8 @@ void CompareTab::updateStatus()
         parts << tr("%n change(s): %1 line(s) removed, %2 added", "", static_cast<int>(hunks.size()))
                      .arg(locale.toString(static_cast<qulonglong>(removed)),
                           locale.toString(static_cast<qulonglong>(added)));
+        if (m_review)
+            parts << tr("%1 accepted").arg(std::count(m_accepted.begin(), m_accepted.end(), true));
     }
     if (m_left.codec->name != m_right.codec->name)
         parts << tr("read as %1 and %2, compared as text").arg(codecName(m_left), codecName(m_right));
@@ -551,6 +590,90 @@ void CompareTab::updateButtons()
     m_next->setEnabled(hunks > 0 && (current >= 0 ? current + 1 < hunks : m_view->rows().hunkAtOrAfter(row) >= 0));
     m_previous->setEnabled(hunks > 0 && (current >= 0 ? current > 0 : m_view->rows().hunkBefore(row) >= 0));
     m_ai->setEnabled(hunks > 0);
+    if (m_review)
+        updateReview();
+}
+
+void CompareTab::setReview(Review review)
+{
+    m_review = std::move(review);
+    // Changes as they are: nothing ignored but how lines end, and nothing to swap or read again.
+    {
+        const QSignalBlocker blocker(m_compareBytes);
+        m_compareBytes->setChecked(false);
+    }
+    for (QWidget* widget : {static_cast<QWidget*>(m_ignoreWhitespace), static_cast<QWidget*>(m_ignoreCase),
+                            static_cast<QWidget*>(m_ignoreLineEndings), static_cast<QWidget*>(m_compareBytes),
+                            static_cast<QWidget*>(m_swap), static_cast<QWidget*>(m_refreshButton)})
+        widget->hide();
+    m_refresh->setEnabled(false);
+    m_apply->setText(m_review->applyLabel.isEmpty() ? tr("Apply") : m_review->applyLabel);
+    m_reviewTools->show();
+    m_note->setText(m_review->note);
+    m_note->setVisible(!m_review->note.isEmpty());
+    setOptions(CompareOptions{});
+}
+
+void CompareTab::setAccepted(int change, bool accepted)
+{
+    if (!m_review || change < 0 || static_cast<std::size_t>(change) >= m_accepted.size())
+        return;
+    m_accepted[static_cast<std::size_t>(change)] = accepted;
+    updateReview();
+}
+
+void CompareTab::toggleCurrentChange()
+{
+    const int change = m_view->currentHunk();
+    if (m_review && change >= 0 && static_cast<std::size_t>(change) < m_accepted.size())
+        setAccepted(change, !m_accepted[static_cast<std::size_t>(change)]);
+}
+
+void CompareTab::acceptAll()
+{
+    std::fill(m_accepted.begin(), m_accepted.end(), true);
+    updateReview();
+}
+
+void CompareTab::rejectAll()
+{
+    std::fill(m_accepted.begin(), m_accepted.end(), false);
+    updateReview();
+}
+
+bool CompareTab::applyAccepted()
+{
+    if (!m_review || !m_review->apply || isComparing() || !m_view->hasComparison())
+        return false;
+    const int accepted = static_cast<int>(std::count(m_accepted.begin(), m_accepted.end(), true));
+    if (accepted == 0)
+        return false;
+    const QByteArray bytes = acceptChanges(m_comparison, m_left.source->bytes(), m_right.source->bytes(), m_accepted);
+    if (!m_review->apply(bytes, accepted, static_cast<int>(m_accepted.size())))
+        return false;
+    emit applied();
+    return true;
+}
+
+void CompareTab::updateReview()
+{
+    std::vector<bool> rejected(m_accepted.size());
+    for (std::size_t i = 0; i < m_accepted.size(); ++i)
+        rejected[i] = !m_accepted[i];
+    m_view->setRejected(std::move(rejected));
+    const bool ready = !isComparing() && m_view->hasComparison();
+    const int accepted = static_cast<int>(std::count(m_accepted.begin(), m_accepted.end(), true));
+    const int changes = static_cast<int>(m_accepted.size());
+    const int current = m_view->currentHunk();
+    const bool currentAccepted = current >= 0 && static_cast<std::size_t>(current) < m_accepted.size() &&
+                                 m_accepted[static_cast<std::size_t>(current)];
+    m_toggle->setText(currentAccepted || current < 0 ? tr("Reject This Change") : tr("Accept This Change"));
+    m_toggle->setEnabled(ready && current >= 0);
+    m_acceptAll->setEnabled(ready && accepted < changes);
+    m_rejectAll->setEnabled(ready && accepted > 0);
+    m_apply->setEnabled(ready && accepted > 0);
+    if (ready)
+        updateStatus();
 }
 
 void CompareTab::saveOptions() const

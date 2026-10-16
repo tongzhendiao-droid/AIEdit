@@ -8,12 +8,14 @@
 #include "core/LineIndex.h"
 #include "core/TextCodec.h"
 
+#include <QByteArray>
 #include <QString>
 
 #include <functional>
 #include <memory>
 #include <optional>
 #include <set>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -83,6 +85,11 @@ struct TextComparison
 // Compares two sides line by line, on the calling thread (a worker's).
 TextComparison compareText(const CompareSide& left, const CompareSide& right, const CompareOptions& options,
                            const std::function<bool()>& cancelled = {});
+
+// The left side with only the accepted changes made: the right's lines in place of each
+// accepted hunk, the left's bytes everywhere else.
+QByteArray acceptChanges(const TextComparison& comparison, std::span<const std::uint8_t> left,
+                         std::span<const std::uint8_t> right, const std::vector<bool>& accepted);
 
 // A line as shown: decoded, control characters made visible as the text view shows them. A line
 // longer than an index row (4 KiB) is cut to its first row, and `cut` says so.

@@ -4,7 +4,9 @@
 #include "core/TextCodec.h"
 #include "ui/LineOperations.h"
 
+#include <QByteArray>
 #include <QFileSystemWatcher>
+#include <QFutureWatcher>
 #include <QTimer>
 #include <QWidget>
 
@@ -25,8 +27,11 @@ class FileSource;
 namespace aiedit::ui {
 
 struct AiContext;
+struct AiEditRequest;
 struct FieldMark;
 struct SearchContext;
+class AiEditBar;
+class AiEditor;
 class FilterPanel;
 class FindBar;
 class HexView;
@@ -152,6 +157,30 @@ public:
     bool isFollowing() const { return m_following; }
     void setFollowing(bool following);
 
+    // An edit the AI proposed for [start, end) of the bytes, which held `before` when it was
+    // asked; nothing is written until it is reviewed (see CompareTab).
+    struct AiEditProposal
+    {
+        std::uint64_t start = 0;
+        std::uint64_t end = 0;
+        std::uint64_t firstLine = 0; // of the range, from 0
+        QByteArray before;
+        QByteArray after;
+        QString instruction;
+        QString note; // what the AI said of it
+        QString rule; // a rule it wrote and that ran here, as JSON
+    };
+    // The bar that asks the AI to change the selection, or else the whole document (Ctrl+I).
+    void showAiEditBar();
+    AiEditBar* aiEditBar() const { return m_aiEditBar; }
+    // Made when first needed; tests point it at a local server.
+    AiEditor* aiEditor();
+    // Asks the AI to change the selection, or the whole document, as the instruction says.
+    void requestAiEdit(const QString& instruction);
+    // Replaces [start, end) with `bytes` as one step to undo, if it still holds `before`; false,
+    // changing nothing, if the document changed since.
+    bool replaceIfUnchanged(std::uint64_t start, std::uint64_t end, const QByteArray& before, const QByteArray& bytes);
+
 public slots:
     void copy();
     void selectAll();
@@ -190,6 +219,7 @@ signals:
     void statusMessage(const QString& message);
     void aiSettingsRequested();
     void readingModeChanged(bool on);
+    void aiEditProposed(const aiedit::ui::DocumentView::AiEditProposal& proposal);
 
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
@@ -210,6 +240,12 @@ private:
     void documentEdited();
     // The lines the selection takes in: the caret's line without one.
     std::pair<std::uint64_t, std::uint64_t> selectedLines() const;
+    // What the AI is asked, for the selection or the whole document; the range it changes.
+    AiEditRequest aiEditRequest(const QString& instruction, std::uint64_t* start, std::uint64_t* end) const;
+    void updateAiEditScope();
+    void aiTextWritten(const QString& text, const QString& note);
+    void aiRuleRan();
+    void aiEditFailed(const QString& message);
     void applyLineEdit(const LineEdit& edit);
     bool writeTo(const QString& path, QString* error);
     bool writeBytes(const QString& path, std::span<const std::uint8_t> bytes, QString* error);
@@ -233,6 +269,19 @@ private:
     bool m_codecChosen = false; // by the user, rather than detected
     std::optional<State> m_pendingState; // waiting for the index to get there
     QString m_untitledTitle;
+    AiEditBar* m_aiEditBar = nullptr;
+    AiEditor* m_aiEditor = nullptr;
+    AiEditProposal m_aiEdit; // what is being asked: the range, and what it held
+    QString m_aiEditText;    // that text, decoded
+    std::shared_ptr<const SearchContext> m_aiContext; // the text as it was asked about, for a rule
+    struct RuleRun
+    {
+        std::optional<QByteArray> bytes;
+        QString error;
+        QString rule;
+        QString note;
+    };
+    QFutureWatcher<RuleRun> m_ruleWatcher;
     QFileSystemWatcher m_watcher;
     QTimer m_reloadTimer; // coalesces bursts of change notifications
 };

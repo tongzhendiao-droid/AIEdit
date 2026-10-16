@@ -2,6 +2,33 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="zh_CN">
 <context>
+    <name>AiEdit</name>
+    <message>
+        <source>the rule both deletes and replaces</source>
+        <translation>这条规则既删除又替换</translation>
+    </message>
+    <message>
+        <source>the rule changes nothing: no replacement, and no deletion</source>
+        <translation>这条规则什么也不改：没有替换，也没有删除</translation>
+    </message>
+    <message>
+        <source>replacement %1 has nothing to find</source>
+        <translation>第 %1 个替换没有要查找的内容</translation>
+    </message>
+    <message>
+        <source>replacement %1: invalid regular expression: %2</source>
+        <translation>第 %1 个替换：正则表达式无效：%2</translation>
+    </message>
+    <message>
+        <source>which lines: %1</source>
+        <translation>要改的行：%1</translation>
+    </message>
+    <message>
+        <source>line %1 as changed cannot be written in %2</source>
+        <translation>第 %1 行改后的内容无法用 %2 保存</translation>
+    </message>
+</context>
+<context>
     <name>LogFilter</name>
     <message>
         <source>the regular expression is empty</source>
@@ -56,6 +83,84 @@
     <message>
         <source>Invalid regular expression: %1</source>
         <translation>正则表达式无效：%1</translation>
+    </message>
+</context>
+<context>
+    <name>aiedit::ui::AiEditBar</name>
+    <message>
+        <source>AI edit:</source>
+        <translation>AI 修改：</translation>
+    </message>
+    <message>
+        <source>What to change, such as: translate the comments into English</source>
+        <translation>要怎么改，比如：把注释翻译成英文</translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation>修改</translation>
+    </message>
+    <message>
+        <source>Ask the AI for the change (Enter); you review it before anything is written</source>
+        <translation>让 AI 写出修改（Enter）；写进文档之前会先让你确认</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>停止</translation>
+    </message>
+    <message>
+        <source>Stop the AI</source>
+        <translation>让 AI 停下</translation>
+    </message>
+    <message>
+        <source>Preview</source>
+        <translation>预览</translation>
+    </message>
+    <message>
+        <source>See the request that would be sent</source>
+        <translation>查看将要发送的请求</translation>
+    </message>
+    <message>
+        <source>Close (Esc)</source>
+        <translation>关闭（Esc）</translation>
+    </message>
+</context>
+<context>
+    <name>aiedit::ui::AiEditor</name>
+    <message>
+        <source>The AI answered without a change.</source>
+        <translation>AI 的回答里没有修改。</translation>
+    </message>
+    <message>
+        <source>the answer holds no rule</source>
+        <translation>回答里没有规则</translation>
+    </message>
+    <message>
+        <source>the rule is not valid JSON (%1)</source>
+        <translation>规则不是有效的 JSON（%1）</translation>
+    </message>
+    <message>
+        <source>Set up the AI service first.</source>
+        <translation>请先设置 AI 服务。</translation>
+    </message>
+    <message>
+        <source>The answer was cut off before the end of the text. Select less of it.</source>
+        <translation>回答在文字结束之前被截断了，请少选一些。</translation>
+    </message>
+    <message>
+        <source>The AI gave no changed text.</source>
+        <translation>AI 没有给出修改后的文字。</translation>
+    </message>
+    <message>
+        <source>The AI: %1</source>
+        <translation>AI：%1</translation>
+    </message>
+    <message>
+        <source>the answer was cut off</source>
+        <translation>回答被截断了</translation>
+    </message>
+    <message>
+        <source>The AI&apos;s rule cannot be used: %1</source>
+        <translation>AI 写的规则无法使用：%1</translation>
     </message>
 </context>
 <context>
@@ -433,6 +538,38 @@
         <translation>在十六进制里按相同偏移逐字节比较（二进制文件总是这样比较）</translation>
     </message>
     <message>
+        <source>Reject This Change</source>
+        <translation>拒绝这处改动</translation>
+    </message>
+    <message>
+        <source>Leave this change out, or take it back in</source>
+        <translation>不要这处改动，或者重新接受它</translation>
+    </message>
+    <message>
+        <source>Accept All</source>
+        <translation>全部接受</translation>
+    </message>
+    <message>
+        <source>Take in every change</source>
+        <translation>接受所有改动</translation>
+    </message>
+    <message>
+        <source>Reject All</source>
+        <translation>全部拒绝</translation>
+    </message>
+    <message>
+        <source>Leave out every change</source>
+        <translation>拒绝所有改动</translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation>应用</translation>
+    </message>
+    <message>
+        <source>Write the accepted changes, as one step to undo</source>
+        <translation>写入接受的改动，可以一步撤销</translation>
+    </message>
+    <message>
         <source>Comparing…</source>
         <translation>正在比较…</translation>
     </message>
@@ -463,6 +600,10 @@
         <translation>
             <numerusform>%n 处不同：删除 %1 行，增加 %2 行</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>%1 accepted</source>
+        <translation>已接受 %1 处</translation>
     </message>
     <message>
         <source>read as %1 and %2, compared as text</source>
@@ -513,6 +654,10 @@
     <message>
         <source>Built without Capstone: no disassembly.</source>
         <translation>编译时没有 Capstone，无法反汇编。</translation>
+    </message>
+    <message>
+        <source>Accept This Change</source>
+        <translation>接受这处改动</translation>
     </message>
     <message>
         <source>These are the differences between two binary files, probably two versions or builds of the same program. Say what each change most likely is (a patched instruction, a changed constant or string, a timestamp or checksum) and what it does. The disassembly was made by Capstone on this computer: rely on it rather than decoding bytes yourself.</source>
@@ -727,6 +872,82 @@
         <translation>
             <numerusform>已替换 %n 处</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>The AI is writing… %1 characters</source>
+        <translation>AI 正在写…已收到 %1 个字符</translation>
+    </message>
+    <message>
+        <source>Running the AI&apos;s rule here…</source>
+        <translation>正在本机执行 AI 写的规则…</translation>
+    </message>
+    <message>
+        <source>Stopped</source>
+        <translation>已停止</translation>
+    </message>
+    <message>
+        <source>(what to change)</source>
+        <translation>（要怎么改）</translation>
+    </message>
+    <message>
+        <source>the whole file, by a rule the AI writes</source>
+        <translation>整个文件，由 AI 写规则来改</translation>
+    </message>
+    <message>
+        <source>the whole file</source>
+        <translation>整个文件</translation>
+    </message>
+    <message numerus="yes">
+        <source>the %n selected line(s), by a rule the AI writes</source>
+        <translation>
+            <numerusform>选中的 %n 行，由 AI 写规则来改</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>the %n selected line(s)</source>
+        <translation>
+            <numerusform>选中的 %n 行</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>This document cannot be edited, so the AI cannot change it either.</source>
+        <translation>这个文档不能编辑，所以 AI 也不能修改它。</translation>
+    </message>
+    <message>
+        <source>Too long to send: the AI writes a rule from samples, which then runs here…</source>
+        <translation>文字太长，不能整段发送：AI 根据样例写一条规则，再在本机执行…</translation>
+    </message>
+    <message>
+        <source>Asking the AI…</source>
+        <translation>正在问 AI…</translation>
+    </message>
+    <message>
+        <source>The AI&apos;s text has characters that %1 cannot hold; nothing was changed.</source>
+        <translation>AI 的文字里有 %1 无法保存的字符，什么都没改。</translation>
+    </message>
+    <message>
+        <source>The AI changed nothing.</source>
+        <translation>AI 没有做任何修改。</translation>
+    </message>
+    <message>
+        <source>The AI changed nothing: %1</source>
+        <translation>AI 没有做任何修改：%1</translation>
+    </message>
+    <message>
+        <source>Review the changes in the tab next to this one; nothing is written until then.</source>
+        <translation>请在旁边的标签页里确认这些修改；确认之前不会写入文档。</translation>
+    </message>
+    <message>
+        <source>The AI&apos;s rule could not run.</source>
+        <translation>AI 写的规则无法执行。</translation>
+    </message>
+    <message>
+        <source>The AI&apos;s rule could not run: %1</source>
+        <translation>AI 写的规则无法执行：%1</translation>
+    </message>
+    <message>
+        <source>The AI&apos;s rule changes nothing here.</source>
+        <translation>AI 写的规则在这里什么也没改。</translation>
     </message>
     <message>
         <source>%1 changed on disk; your unsaved edits are kept</source>
@@ -1985,6 +2206,14 @@
         <translation>问 AI(&amp;A)…</translation>
     </message>
     <message>
+        <source>Ed&amp;it with AI…</source>
+        <translation>用 AI 修改(&amp;I)…</translation>
+    </message>
+    <message>
+        <source>Say what to change in the selection, or in the whole file; the AI&apos;s changes are reviewed before anything is written</source>
+        <translation>说明要怎么改选中的文字或整个文件；AI 的修改写入之前会先让你确认</translation>
+    </message>
+    <message>
         <source>What Is This &amp;File?</source>
         <translation>这是什么文件(&amp;F)？</translation>
     </message>
@@ -2435,6 +2664,52 @@
     <message>
         <source>Line Endings</source>
         <translation>换行符</translation>
+    </message>
+    <message>
+        <source>%1 now</source>
+        <translation>%1（现在）</translation>
+    </message>
+    <message>
+        <source>%1, line %2, now</source>
+        <translation>%1 第 %2 行（现在）</translation>
+    </message>
+    <message>
+        <source>%1, lines %2–%3, now</source>
+        <translation>%1 第 %2–%3 行（现在）</translation>
+    </message>
+    <message>
+        <source>The AI&apos;s version</source>
+        <translation>AI 的版本</translation>
+    </message>
+    <message>
+        <source>Asked: %1</source>
+        <translation>要求：%1</translation>
+    </message>
+    <message>
+        <source>The rule it wrote, which ran here:</source>
+        <translation>AI 写的规则（已在本机执行）：</translation>
+    </message>
+    <message>
+        <source>Apply to %1</source>
+        <translation>应用到 %1</translation>
+    </message>
+    <message>
+        <source>Edit with AI</source>
+        <translation>用 AI 修改</translation>
+    </message>
+    <message>
+        <source>The document is closed.</source>
+        <translation>文档已经关闭。</translation>
+    </message>
+    <message>
+        <source>%1 has changed since the AI was asked, so its changes no longer fit. Ask again.</source>
+        <translation>问 AI 之后 %1 又被改过，这些修改已经对不上了。请重新问一次。</translation>
+    </message>
+    <message numerus="yes">
+        <source>Applied %1 of %n change(s) to %2; Ctrl+Z takes them back</source>
+        <translation>
+            <numerusform>已把 %n 处改动中的 %1 处应用到 %2；按 Ctrl+Z 可以撤销</numerusform>
+        </translation>
     </message>
     <message>
         <source>Summarize this chapter: what happens, who is in it, and what stands out.</source>

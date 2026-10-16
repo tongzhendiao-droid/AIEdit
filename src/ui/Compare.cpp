@@ -159,6 +159,39 @@ TextComparison compareText(const CompareSide& left, const CompareSide& right, co
     return comparison;
 }
 
+QByteArray acceptChanges(const TextComparison& comparison, std::span<const std::uint8_t> left,
+                         std::span<const std::uint8_t> right, const std::vector<bool>& accepted)
+{
+    // Where a line starts; the end of the text past the last one.
+    const auto lineStart = [](const core::LineIndex& index, std::uint64_t line, std::size_t size) -> std::uint64_t {
+        if (line >= index.lineCount())
+            return size;
+        const std::optional<std::uint64_t> row = index.rowIndexOfLine(line);
+        return row ? index.row(*row).start : size;
+    };
+    const auto append = [](QByteArray& out, std::span<const std::uint8_t> bytes, std::uint64_t from,
+                           std::uint64_t to) {
+        if (to > from)
+            out.append(reinterpret_cast<const char*>(bytes.data()) + from, static_cast<qsizetype>(to - from));
+    };
+    QByteArray out;
+    std::uint64_t copied = 0; // of the left
+    for (std::size_t i = 0; i < comparison.hunks.size(); ++i) {
+        const core::DiffHunk& hunk = comparison.hunks[i];
+        const std::uint64_t from = lineStart(*comparison.left, hunk.leftStart, left.size());
+        const std::uint64_t to = lineStart(*comparison.left, hunk.leftStart + hunk.leftCount, left.size());
+        append(out, left, copied, from);
+        if (i < accepted.size() && accepted[i])
+            append(out, right, lineStart(*comparison.right, hunk.rightStart, right.size()),
+                   lineStart(*comparison.right, hunk.rightStart + hunk.rightCount, right.size()));
+        else
+            append(out, left, from, to);
+        copied = to;
+    }
+    append(out, left, copied, left.size());
+    return out;
+}
+
 QString shownLine(std::span<const std::uint8_t> bytes, const core::LineIndex& index, const TextDecoder& decoder,
                   std::uint64_t line, bool* cut)
 {
