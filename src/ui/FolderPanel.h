@@ -92,6 +92,8 @@ public slots:
     // On what is selected, after asking for a name or a confirmation.
     void renameSelected();
     void trashSelected();
+    // Any file or folder, after asking for its new name.
+    void renamePath(const QString& path);
 
 signals:
     // Show the file in the preview tab; open it for good.
@@ -131,7 +133,6 @@ private:
     void updateStatus();
     void rememberFolder(const QString& folder);
     void openRecentFolder(const QString& folder);
-    void reveal(const QString& path);
     void copyPaths(bool relative);
     QString pathAt(const QModelIndex& index) const;
     QAbstractItemView* currentView() const;

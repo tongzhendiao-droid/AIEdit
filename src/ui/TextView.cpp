@@ -1,5 +1,6 @@
 #include "ui/TextView.h"
 
+#include "core/TextCodec.h"
 #include "ui/SyntaxHighlighting.h"
 #include "ui/TextDocument.h"
 
@@ -114,7 +115,17 @@ void TextView::setDocument(TextDocument* document)
         connect(m_document, &TextDocument::codecChanged, this, &TextView::resetForDocument);
         connect(m_document, &TextDocument::sourceChanged, this, &TextView::resetForDocument);
         connect(m_document, &TextDocument::edited, this,
-                [this](std::uint64_t offset, std::uint64_t removed, std::uint64_t) { documentEdited(offset, removed); });
+                [this](std::uint64_t offset, std::uint64_t removed, std::uint64_t inserted) {
+                    // Bookmarks after the change move with the text; one whose line start went
+                    // goes to the line that took it in.
+                    for (std::uint64_t& bookmark : m_bookmarks) {
+                        if (bookmark > offset)
+                            bookmark = bookmark < offset + removed ? offset : bookmark - removed + inserted;
+                    }
+                    tidyBookmarks();
+                    documentEdited(offset, removed);
+                });
+        connect(m_document, &TextDocument::indexFinished, this, &TextView::tidyBookmarks);
         connect(m_document, &QObject::destroyed, this, [this] {
             m_document = nullptr;
             resetForDocument();
@@ -123,11 +134,13 @@ void TextView::setDocument(TextDocument* document)
     m_rows.setTopRow(0);
     m_topOffset = 0;
     m_cursor = m_anchor = 0;
+    m_bookmarks.clear();
     resetForDocument();
 }
 
 void TextView::resetForDocument()
 {
+    tidyBookmarks(); // the file may have changed under them
     resetHighlighting();
     m_maxRowWidth = 0;
     m_desiredX.reset();
@@ -311,6 +324,17 @@ bool TextView::goToLine(std::uint64_t line)
     scrollToLine(moveLines(visualLineAt(start), -(visibleRows() / 2)));
     moveCursor(start, false);
     return true;
+}
+
+void TextView::goToOffset(std::uint64_t offset)
+{
+    if (!m_document || rowCount() == 0)
+        return;
+    const std::uint64_t target = m_document->snapToCharStart(offset);
+    const VisualLine line = visualLineAt(target);
+    if (!linesFromTop(line, visibleRows() - 1))
+        scrollToLine(moveLines(line, -(visibleRows() / 2)));
+    moveCursor(target, false);
 }
 
 int TextView::visibleRows() const
@@ -501,6 +525,7 @@ void TextView::updateColors()
     m_colors.inactiveSelection = mix(m_colors.base, m_colors.selection, 0.35f);
     m_colors.inactiveSelectionText = m_colors.text;
     m_colors.currentLine = colors.currentLine;
+    m_colors.bookmark = mix(m_colors.gutter, m_colors.selection, 0.55f);
 }
 
 int TextView::gutterWidth() const
@@ -1097,7 +1122,19 @@ void TextView::insertLineBreak()
             text += before.left(indent);
         }
     }
+    // Past the last line break there is no line to type on: at the end of a file whose last line
+    // has none, the new line gets one as well, and the caret goes before it.
+    const core::LineIndex& index = m_document->index();
+    const std::uint64_t end = hasSelection() ? selectionEnd() : editOffset(m_cursor);
+    const bool openEnd = end == documentEnd() &&
+                         (index.rowCount() == 0 || index.row(index.rowCount() - 1).end ==
+                                                       index.row(index.rowCount() - 1).contentEnd);
+    const std::optional<QByteArray> terminator = m_document->encode(m_document->lineTerminator());
+    if (openEnd && terminator)
+        text += m_document->lineTerminator();
     replaceSelection(text, core::EditBuffer::Merge::Typing);
+    if (openEnd && terminator && m_cursor >= static_cast<std::uint64_t>(terminator->size()))
+        setCursorOffset(m_cursor - static_cast<std::uint64_t>(terminator->size()));
 }
 
 QString TextView::indentUnit() const
@@ -1331,8 +1368,18 @@ void TextView::paintEvent(QPaintEvent* event)
         if (isCaretBlock && !hasSelection() && !m_readingMode)
             painter.fillRect(QRect(gutter, y + caret.line * m_lineHeight, width - gutter, m_lineHeight),
                              m_colors.currentLine);
+        const bool bookmarked =
+            !span.continuation && std::binary_search(m_bookmarks.begin(), m_bookmarks.end(), span.start);
+        if (bookmarked && gutter > 0) {
+            // The line number on a coloured tab.
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(m_colors.bookmark);
+            const qreal inset = m_charWidth / 4;
+            painter.drawRoundedRect(QRectF(inset, y + 1, gutter - m_charWidth / 2 - inset, m_lineHeight - 2), inset,
+                                    inset);
+        }
         if (!span.continuation && gutter > 0) {
-            painter.setPen(isCaretBlock ? m_colors.text : m_colors.dim);
+            painter.setPen(isCaretBlock || bookmarked ? m_colors.text : m_colors.dim);
             painter.drawText(QRectF(0, y, gutter - m_charWidth, m_lineHeight), Qt::AlignRight | Qt::AlignVCenter,
                              QString::number(span.line + 1));
         }
@@ -1517,11 +1564,17 @@ void TextView::keyPressEvent(QKeyEvent* event)
         else
             moveCursor(stepOffset(m_cursor, true, mode), extend);
         break;
-    case Qt::Key_Up:
-        moveVertically(-1, extend);
+    case Qt::Key_Up: // with Ctrl, the text scrolls under the caret
+        if (ctrl && !extend)
+            scrollLines(-1);
+        else
+            moveVertically(-1, extend);
         break;
     case Qt::Key_Down:
-        moveVertically(1, extend);
+        if (ctrl && !extend)
+            scrollLines(1);
+        else
+            moveVertically(1, extend);
         break;
     case Qt::Key_PageUp:
         scrollLines(-visibleRows());
@@ -1531,9 +1584,19 @@ void TextView::keyPressEvent(QKeyEvent* event)
         scrollLines(visibleRows());
         moveVertically(visibleRows(), extend);
         break;
-    case Qt::Key_Home:
-        moveCursor(ctrl ? m_document->textStart() : lineStart(caretLine()), extend);
+    case Qt::Key_Home: {
+        if (ctrl) {
+            moveCursor(m_document->textStart(), extend);
+            break;
+        }
+        // On a line's first row: to where its text starts, then to the very start.
+        const std::uint64_t start = lineStart(caretLine());
+        std::uint64_t target = start;
+        if (!m_readingMode && lineStartAt(start) == start && indentationEnd(start) != m_cursor)
+            target = indentationEnd(start);
+        moveCursor(target, extend);
         break;
+    }
     case Qt::Key_End:
         moveCursor(ctrl ? Caret{documentEnd()} : lineEndCaret(caretLine()), extend);
         break;
@@ -1574,6 +1637,14 @@ void TextView::mousePressEvent(QMouseEvent* event)
     }
 
     const bool extend = event->modifiers() & Qt::ShiftModifier;
+    if (!extend && m_lastDoubleClick.isValid() && m_lastDoubleClick.elapsed() < QApplication::doubleClickInterval() &&
+        (pos - m_lastDoubleClickPos).manhattanLength() <= QApplication::startDragDistance()) {
+        // A third click: the whole line.
+        m_lastDoubleClick.invalidate();
+        setCursorOffset(offset);
+        selectLines();
+        return;
+    }
     if (pos.x() < gutterWidth()) {
         // A click on a line number selects the whole line as shown, terminator included.
         const core::Row span = blockAt(m_document->index().rowIndexAt(offset)).span;
@@ -1618,10 +1689,133 @@ void TextView::mouseReleaseEvent(QMouseEvent* event)
 
 void TextView::mouseDoubleClickEvent(QMouseEvent* event)
 {
-    if (event->button() == Qt::LeftButton && rowCount() > 0 && event->position().x() >= gutterWidth())
+    if (event->button() == Qt::LeftButton && rowCount() > 0 && event->position().x() >= gutterWidth()) {
         selectWordAt(caretAt(event->position().toPoint()).offset);
-    else
+        m_lastDoubleClick.start();
+        m_lastDoubleClickPos = event->position().toPoint();
+    } else {
         QAbstractScrollArea::mouseDoubleClickEvent(event);
+    }
+}
+
+void TextView::selectLines()
+{
+    if (!m_document || rowCount() == 0)
+        return;
+    const std::uint64_t start = selectionStart();
+    const std::uint64_t end = selectionEnd();
+    const auto atLineStart = [this](std::uint64_t offset) { return lineStartAt(offset) == offset; };
+    std::uint64_t to = 0;
+    if (hasSelection() && atLineStart(start) && atLineStart(end))
+        to = lineEndAt(end); // whole lines already: one more
+    else // the lines it touches; one it ends at the start of is not taken in
+        to = lineEndAt(hasSelection() && atLineStart(end) ? end - 1 : end);
+    select(lineStartAt(start), to);
+}
+
+std::uint64_t TextView::lineEndAt(std::uint64_t offset) const
+{
+    const core::LineIndex& index = m_document->index();
+    if (const auto next = index.rowIndexOfLine(index.row(index.rowIndexAt(offset)).line + 1))
+        return index.row(*next).start;
+    return documentEnd();
+}
+
+std::uint64_t TextView::indentationEnd(std::uint64_t lineStart) const
+{
+    const core::Row row = m_document->index().row(m_document->index().rowIndexAt(lineStart));
+    const auto bytes = m_document->bytes();
+    const core::CharScheme scheme = m_document->codec().scheme;
+    const std::size_t unit = core::codeUnitSize(scheme);
+    std::uint64_t at = lineStart;
+    while (at + unit <= row.contentEnd) {
+        const std::uint32_t c = core::codeUnitAt(bytes, static_cast<std::size_t>(at), scheme);
+        if (c != ' ' && c != '\t')
+            break;
+        at += unit;
+    }
+    return at;
+}
+
+bool TextView::selectWordAtCursor()
+{
+    if (rowCount() == 0)
+        return false;
+    selectWordAt(m_cursor);
+    return hasSelection();
+}
+
+std::uint64_t TextView::lineStartAt(std::uint64_t offset) const
+{
+    if (!m_document || rowCount() == 0)
+        return 0;
+    const core::LineIndex& index = m_document->index();
+    if (!index.isComplete() && offset >= index.indexedBytes())
+        return offset;
+    core::Row row = index.row(index.rowIndexAt(offset));
+    if (row.continuation) {
+        if (const auto first = index.rowIndexOfLine(row.line))
+            row = index.row(*first);
+    }
+    return row.start;
+}
+
+void TextView::tidyBookmarks()
+{
+    const std::uint64_t size = m_document ? m_document->bytes().size() : 0;
+    std::erase_if(m_bookmarks, [size](std::uint64_t offset) { return offset > size; });
+    for (std::uint64_t& bookmark : m_bookmarks)
+        bookmark = lineStartAt(bookmark);
+    std::sort(m_bookmarks.begin(), m_bookmarks.end());
+    m_bookmarks.erase(std::unique(m_bookmarks.begin(), m_bookmarks.end()), m_bookmarks.end());
+    viewport()->update();
+}
+
+void TextView::setBookmarks(std::vector<std::uint64_t> offsets)
+{
+    m_bookmarks = std::move(offsets);
+    tidyBookmarks();
+}
+
+void TextView::toggleBookmark()
+{
+    if (!m_document)
+        return;
+    const std::uint64_t start = lineStartAt(m_cursor);
+    const QString line = QLocale().toString(static_cast<qulonglong>(cursorLine() + 1));
+    const auto at = std::lower_bound(m_bookmarks.begin(), m_bookmarks.end(), start);
+    if (at != m_bookmarks.end() && *at == start) {
+        m_bookmarks.erase(at);
+        emit statusMessage(tr("Bookmark on line %1 removed").arg(line));
+    } else {
+        m_bookmarks.insert(at, start);
+        emit statusMessage(tr("Line %1 bookmarked").arg(line));
+    }
+    viewport()->update();
+}
+
+bool TextView::goToBookmark(bool forward)
+{
+    if (!m_document || rowCount() == 0)
+        return false;
+    // Only lines the index has reached can be gone to.
+    const core::LineIndex& index = m_document->index();
+    std::vector<std::uint64_t> reachable = m_bookmarks;
+    if (!index.isComplete())
+        std::erase_if(reachable, [&index](std::uint64_t offset) { return offset >= index.indexedBytes(); });
+    if (reachable.empty())
+        return false;
+    const std::uint64_t here = lineStartAt(m_cursor);
+    std::uint64_t target = 0;
+    if (forward) {
+        const auto next = std::upper_bound(reachable.begin(), reachable.end(), here);
+        target = next != reachable.end() ? *next : reachable.front();
+    } else {
+        const auto next = std::lower_bound(reachable.begin(), reachable.end(), here);
+        target = next != reachable.begin() ? *std::prev(next) : reachable.back();
+    }
+    goToOffset(target);
+    return true;
 }
 
 void TextView::selectWordAt(std::uint64_t offset)

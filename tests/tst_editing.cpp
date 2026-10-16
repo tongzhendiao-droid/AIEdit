@@ -4,6 +4,7 @@
 #include "ui/DocumentView.h"
 #include "ui/MainWindow.h"
 #include "ui/Paths.h"
+#include "ui/TabWidget.h"
 #include "ui/TextDocument.h"
 #include "ui/TextView.h"
 
@@ -310,7 +311,11 @@ void TestEditing::editsAnEmptyFile()
     QVERIFY(!view.cursorRect().isNull()); // a caret on line 1, though there are no rows yet
     QTest::keyClicks(&view, "abc");
     QTest::keyClick(&view, Qt::Key_Return);
-    QCOMPARE(contents(document), std::string("abc\n"));
+    // Past the last line break there is no line on screen: the new line gets one too, and
+    // typing goes on there.
+    QCOMPARE(contents(document), std::string("abc\n\n"));
+    QTest::keyClicks(&view, "d");
+    QCOMPARE(contents(document), std::string("abc\nd\n"));
 }
 
 void TestEditing::inputMethodComposesThenCommits()
@@ -541,9 +546,8 @@ void TestEditing::newDocumentsAreUntitledUntilSaved()
     QCOMPARE(tabs->tabText(0), QStringLiteral("hello.txt"));
     QVERIFY(reload->isEnabled());
 
-    // The + next to the tabs, and a double click beside them, open more new documents.
-    auto* plus = qobject_cast<QToolButton*>(tabs->cornerWidget(Qt::TopRightCorner));
-    QVERIFY(plus);
+    // The + after the tabs, and a double click beside them, open more new documents.
+    QToolButton* plus = window.findChild<ui::TabWidget*>()->newTabButton();
     plus->click();
     QCOMPARE(window.documentCount(), 2);
     QCOMPARE(tabs->tabText(1), QStringLiteral("Untitled 2"));

@@ -284,6 +284,7 @@ DocumentView::State DocumentView::state() const
     state.reading = isReadingMode();
     if (m_codecChosen)
         state.codec = QString::fromLatin1(m_textDocument->codec().name.data());
+    state.bookmarks = m_textView->bookmarks();
     return state;
 }
 
@@ -294,6 +295,7 @@ void DocumentView::restoreState(const State& state)
         setCodec(*codec);
     setViewMode(state.mode);
     setReadingMode(state.reading);
+    m_textView->setBookmarks(state.bookmarks); // those the index has not reached settle later
     const auto apply = [this, state] {
         m_pendingState.reset();
         if (isTextActive()) {
@@ -416,6 +418,33 @@ void DocumentView::findNext(bool forward)
     request.forward = forward;
     request.from = forward ? end : start;
     m_findBar->start(request, searchContext());
+}
+
+void DocumentView::findSelection(bool forward)
+{
+    if (!isTextActive()) {
+        // Bytes: the selection, as the find bar takes it.
+        if (m_hexView->selectionLength() > 1 && m_hexView->selectionLength() <= 64) {
+            m_findBar->setQuery(m_hexView->selectionAsHex());
+            m_findBar->setMode(SearchMode::Hex);
+        }
+        findNext(forward);
+        return;
+    }
+    QString text = m_textView->selectedText();
+    if (text.isEmpty() || text.contains(QLatin1Char('\n')) || text.size() > 256) {
+        const std::uint64_t caret = m_textView->cursorOffset();
+        if (!m_textView->selectWordAtCursor())
+            return;
+        text = m_textView->selectedText();
+        if (text.trimmed().isEmpty()) { // between words: nothing to look for
+            m_textView->setCursorOffset(caret);
+            return;
+        }
+    }
+    m_findBar->setQuery(text);
+    m_findBar->setMode(SearchMode::Text);
+    findNext(forward);
 }
 
 void DocumentView::selectMatch(std::uint64_t start, std::uint64_t end)
@@ -656,18 +685,14 @@ bool DocumentView::applyLineOperation(LineOperation operation)
         return false;
     const std::uint64_t start = m_textView->selectionStart();
     const std::uint64_t end = m_textView->selectionEnd();
-    const bool everyLine = start == end && operation != LineOperation::MoveUp &&
-                           operation != LineOperation::MoveDown && operation != LineOperation::Duplicate;
-    std::uint64_t first = 0;
-    std::uint64_t last = index.lineCount() - 1;
-    if (!everyLine) {
-        first = index.row(index.rowIndexAt(start)).line;
-        const core::Row endRow = index.row(index.rowIndexAt(end));
-        last = endRow.line;
-        // A selection that ends where a line starts does not take that line in.
-        if (end > start && last > first && endRow.start == end && !endRow.continuation)
-            --last;
-    }
+    // Without a selection, sorting and cleaning take every line; the others the caret's.
+    const bool everyLine = start == end && (operation == LineOperation::SortAscending ||
+                                            operation == LineOperation::SortDescending ||
+                                            operation == LineOperation::RemoveDuplicates ||
+                                            operation == LineOperation::RemoveEmpty ||
+                                            operation == LineOperation::TrimTrailingWhitespace);
+    const auto [first, last] = everyLine ? std::pair<std::uint64_t, std::uint64_t>(0, index.lineCount() - 1)
+                                         : selectedLines();
 
     const std::optional<LineEdit> edit = lineOperation(operation, *m_textDocument, first, last, start, end);
     const auto lines = edit ? static_cast<int>(edit->lines) : 0;
@@ -690,15 +715,74 @@ bool DocumentView::applyLineOperation(LineOperation operation)
     }
     if (!edit)
         return false;
+    applyLineEdit(*edit);
+    return true;
+}
+
+std::pair<std::uint64_t, std::uint64_t> DocumentView::selectedLines() const
+{
+    const core::LineIndex& index = m_textDocument->index();
+    const std::uint64_t start = m_textView->selectionStart();
+    const std::uint64_t end = m_textView->selectionEnd();
+    const std::uint64_t first = index.row(index.rowIndexAt(start)).line;
+    const core::Row endRow = index.row(index.rowIndexAt(end));
+    std::uint64_t last = endRow.line;
+    // A selection that ends where a line starts does not take that line in.
+    if (end > start && last > first && endRow.start == end && !endRow.continuation)
+        --last;
+    return {first, last};
+}
+
+void DocumentView::applyLineEdit(const LineEdit& edit)
+{
     m_textDocument->breakUndoMerge(); // one step of its own
-    m_textDocument->replaceBytes(edit->start, edit->end,
-                                 {reinterpret_cast<const std::uint8_t*>(edit->bytes.constData()),
-                                  static_cast<std::size_t>(edit->bytes.size())});
+    m_textDocument->replaceBytes(edit.start, edit.end,
+                                 {reinterpret_cast<const std::uint8_t*>(edit.bytes.constData()),
+                                  static_cast<std::size_t>(edit.bytes.size())});
     m_textDocument->breakUndoMerge();
-    if (edit->selectionStart == edit->selectionEnd)
-        m_textView->setCursorOffset(edit->selectionStart);
+    if (edit.selectionStart == edit.selectionEnd)
+        m_textView->setCursorOffset(edit.selectionStart);
     else
-        m_textView->select(edit->selectionStart, edit->selectionEnd);
+        m_textView->select(edit.selectionStart, edit.selectionEnd);
+}
+
+bool DocumentView::toggleComment()
+{
+    if (!isEditable() || !isTextActive())
+        return false;
+    const CommentMarkers markers = commentMarkers(syntax(), isUntitled() ? QString() : filePath());
+    if (markers.isEmpty()) {
+        emit statusMessage(syntax().isEmpty() ? tr("Plain text has no comments; choose a language first")
+                                              : tr("%1 has no comments").arg(translatedSyntaxName(syntax())));
+        return false;
+    }
+    m_textDocument->indexNow();
+    if (m_textDocument->index().rowCount() == 0)
+        return false;
+    const auto [first, last] = selectedLines();
+    const std::optional<LineEdit> edit = ui::toggleComment(*m_textDocument, markers, first, last,
+                                                           m_textView->selectionStart(), m_textView->selectionEnd());
+    if (!edit)
+        return false;
+    applyLineEdit(*edit);
+    return true;
+}
+
+bool DocumentView::convertCase(bool upper)
+{
+    if (!isEditable() || !isTextActive())
+        return false;
+    // The selection, or the word at the caret.
+    if (!m_textView->hasSelection() && !m_textView->selectWordAtCursor())
+        return false;
+    const std::uint64_t start = m_textView->selectionStart();
+    const QString text = m_textView->selectedText();
+    const QString converted = upper ? text.toUpper() : text.toLower();
+    if (text.isEmpty() || converted == text)
+        return false;
+    if (!m_textView->replaceSelectedText(converted))
+        return false;
+    m_textView->select(start, m_textView->cursorOffset());
     return true;
 }
 

@@ -1,13 +1,13 @@
 #include "ui/FolderPanel.h"
 
 #include "ui/Collation.h"
+#include "ui/Desktop.h"
 #include "ui/FolderSummary.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QBoxLayout>
 #include <QClipboard>
-#include <QDesktopServices>
 #include <QDir>
 #include <QFileDialog>
 #include <QInputDialog>
@@ -18,14 +18,12 @@
 #include <QLocale>
 #include <QMenu>
 #include <QMessageBox>
-#include <QProcess>
 #include <QPushButton>
 #include <QScopedValueRollback>
 #include <QSettings>
 #include <QStackedWidget>
 #include <QToolButton>
 #include <QTreeView>
-#include <QUrl>
 #include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
@@ -271,7 +269,7 @@ void FolderPanel::createActions()
     m_copyRelativePathAction = action(tr("Copy Re&lative Path"), [this] { copyPaths(true); });
     m_revealAction = action(tr("Show in File &Manager"), [this] {
         const QStringList paths = selectedPaths();
-        reveal(paths.size() == 1 ? paths.first() : m_folder);
+        showInFileManager(paths.size() == 1 ? paths.first() : m_folder);
     });
     m_folderActions = {m_findHereAction, m_askAiAction, m_newFileAction, m_newFolderAction};
     m_hiddenAction = new QAction(tr("Show &Hidden Files"), this);
@@ -845,10 +843,12 @@ void FolderPanel::newFolder(const QString& folder)
 
 void FolderPanel::renameSelected()
 {
-    const QStringList paths = selectedPaths();
-    if (paths.size() != 1)
-        return;
-    const QString path = paths.first();
+    if (const QStringList paths = selectedPaths(); paths.size() == 1)
+        renamePath(paths.first());
+}
+
+void FolderPanel::renamePath(const QString& path)
+{
     const QFileInfo info(path);
     QInputDialog dialog(this);
     dialog.setWindowTitle(tr("Rename"));
@@ -924,22 +924,6 @@ void FolderPanel::copyPaths(bool relative)
     QGuiApplication::clipboard()->setText(paths.join(QLatin1Char('\n')));
 }
 
-void FolderPanel::reveal(const QString& path)
-{
-    if (path.isEmpty())
-        return;
-#if defined(Q_OS_WIN)
-    QProcess::startDetached(QStringLiteral("explorer.exe"),
-                            {QStringLiteral("/select,"), QDir::toNativeSeparators(path)});
-#elif defined(Q_OS_MACOS)
-    QProcess::startDetached(QStringLiteral("open"), {QStringLiteral("-R"), path});
-#else
-    // No portable way to select a file; its folder opens.
-    const QFileInfo info(path);
-    QDesktopServices::openUrl(QUrl::fromLocalFile(info.isDir() ? path : info.absolutePath()));
-#endif
-}
-
 void FolderPanel::showContextMenu(QAbstractItemView* view, const QPoint& pos)
 {
     const QModelIndex index = view->indexAt(pos);
@@ -991,7 +975,8 @@ void FolderPanel::populateMenu()
     m_menu->addActions({m_newFileAction, m_newFolderAction});
     m_menu->addSeparator();
     m_menu->addActions({m_findHereAction, m_askAiAction});
-    m_menu->addAction(m_revealAction->text(), this, [this] { reveal(m_folder); })->setEnabled(!m_folder.isEmpty());
+    m_menu->addAction(m_revealAction->text(), this, [this] { showInFileManager(m_folder); })
+        ->setEnabled(!m_folder.isEmpty());
 }
 
 void FolderPanel::populateRecent(QMenu* menu)

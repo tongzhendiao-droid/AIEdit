@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <numeric>
+#include <span>
 #include <string_view>
 #include <unordered_set>
 #include <vector>
@@ -54,6 +55,22 @@ bool isBlank(std::uint32_t unit)
     return unit == ' ' || unit == '\t';
 }
 
+// Where the text of a line starts, after its spaces and tabs (its end, for a blank line), and
+// where it ends, before those that trail. Spaces and tabs are single code units in every
+// supported encoding, and these values never occur inside a multi-byte character.
+std::pair<std::uint64_t, std::uint64_t> textOf(std::span<const std::uint8_t> data, const Line& line,
+                                              core::CharScheme scheme)
+{
+    const std::size_t unit = core::codeUnitSize(scheme);
+    std::uint64_t from = line.start;
+    while (from + unit <= line.contentEnd && isBlank(core::codeUnitAt(data, static_cast<std::size_t>(from), scheme)))
+        from += unit;
+    std::uint64_t to = line.contentEnd;
+    while (to >= from + unit && isBlank(core::codeUnitAt(data, static_cast<std::size_t>(to - unit), scheme)))
+        to -= unit;
+    return {from, to};
+}
+
 } // namespace
 
 std::optional<LineEdit> lineOperation(LineOperation operation, const TextDocument& document,
@@ -69,7 +86,7 @@ std::optional<LineEdit> lineOperation(LineOperation operation, const TextDocumen
         if (first == 0)
             return std::nullopt;
         --first;
-    } else if (operation == LineOperation::MoveDown) {
+    } else if (operation == LineOperation::MoveDown || (operation == LineOperation::Join && first == last)) {
         if (last + 1 >= lineCount)
             return std::nullopt;
         ++last;
@@ -197,7 +214,8 @@ std::optional<LineEdit> lineOperation(LineOperation operation, const TextDocumen
         wholeSelection = false; // the selection moves with its lines
         break;
     }
-    case LineOperation::Duplicate: {
+    case LineOperation::Duplicate:
+    case LineOperation::CopyUp: {
         out = bytesOf(rangeStart, rangeEnd).toByteArray();
         if (lines.back().end == lines.back().contentEnd) { // the end of the file: the copy needs a break
             const std::optional<QByteArray> lineEnd = document.encode(document.lineTerminator());
@@ -205,13 +223,86 @@ std::optional<LineEdit> lineOperation(LineOperation operation, const TextDocumen
                 return std::nullopt;
             out += *lineEnd;
         }
-        copyOffset = static_cast<std::uint64_t>(out.size());
+        copyOffset = operation == LineOperation::Duplicate ? static_cast<std::uint64_t>(out.size()) : 0;
         out += bytesOf(rangeStart, rangeEnd);
         for (std::size_t i = 0; i < lines.size(); ++i)
-            landed[i] = lines[i].start + copyOffset; // the selection goes to the copy
+            landed[i] = lines[i].start + copyOffset; // the selection goes to the copy below, or stays
         edit.lines = lines.size();
         wholeSelection = false;
         break;
+    }
+    case LineOperation::Delete: {
+        // The lines go with their breaks. The file's last line takes the break before it, and
+        // the caret goes to the start of the line that comes up, or else of the one before.
+        edit.lines = lines.size();
+        edit.selectionStart = edit.selectionEnd = rangeStart;
+        if (lines.back().end == lines.back().contentEnd && first > 0) {
+            const std::vector<Line> before = linesOf(index, first - 1, first - 1);
+            if (!before.empty()) {
+                edit.start = before.front().contentEnd;
+                edit.selectionStart = edit.selectionEnd = before.front().start;
+            }
+        }
+        return edit;
+    }
+    case LineOperation::Join: {
+        // Each line break and the indentation after it become one space: none after a line that
+        // ends in a blank, nor next to an empty one. With nothing selected the caret goes to
+        // where the lines met; a selection takes in the line made.
+        const core::CharScheme scheme = document.codec().scheme;
+        const std::optional<QByteArray> space = document.encode(QStringLiteral(" "));
+        if (!space)
+            return std::nullopt;
+        std::uint64_t met = 0;
+        for (std::size_t i = 0; i < lines.size(); ++i) {
+            const std::uint64_t from = i == 0 ? lines[i].start : textOf(data, lines[i], scheme).first;
+            const bool empty = from == lines[i].contentEnd;
+            const std::size_t unit = core::codeUnitSize(scheme);
+            const bool trailingBlank =
+                out.size() >= static_cast<qsizetype>(unit) &&
+                isBlank(core::codeUnitAt({reinterpret_cast<const std::uint8_t*>(out.constData()),
+                                          static_cast<std::size_t>(out.size())},
+                                         static_cast<std::size_t>(out.size()) - unit, scheme));
+            if (i == 1)
+                met = rangeStart + static_cast<std::uint64_t>(out.size());
+            if (i > 0 && !empty && !out.isEmpty() && !trailingBlank)
+                out += *space;
+            out += bytesOf(from, lines[i].contentEnd);
+        }
+        const std::uint64_t joinedEnd = rangeStart + static_cast<std::uint64_t>(out.size());
+        out += lineBreak(lines.size() - 1);
+        edit.lines = lines.size();
+        edit.selectionStart = selectionStart == selectionEnd ? met : rangeStart;
+        edit.selectionEnd = selectionStart == selectionEnd ? met : joinedEnd;
+        return edit;
+    }
+    case LineOperation::InsertBelow:
+    case LineOperation::InsertAbove: {
+        const std::optional<QByteArray> lineEnd = document.encode(document.lineTerminator());
+        if (!lineEnd)
+            return std::nullopt;
+        const bool below = operation == LineOperation::InsertBelow;
+        const Line& next = below ? lines.back() : lines.front();
+        const QByteArrayView indent = bytesOf(next.start, textOf(data, next, document.codec().scheme).first);
+        const QByteArrayView original = bytesOf(rangeStart, rangeEnd);
+        std::uint64_t caret = 0;
+        if (!below) {
+            out = indent.toByteArray() + *lineEnd + original.toByteArray();
+            caret = rangeStart + static_cast<std::uint64_t>(indent.size());
+        } else if (lines.back().end == lines.back().contentEnd) {
+            // The end of a file whose last line has no line break: past one there would be no line
+            // to type on, so the new line gets one too.
+            out = original.toByteArray() + *lineEnd + indent.toByteArray();
+            caret = rangeStart + static_cast<std::uint64_t>(out.size());
+            out += *lineEnd;
+        } else {
+            out = original.toByteArray() + indent.toByteArray();
+            caret = rangeStart + static_cast<std::uint64_t>(out.size());
+            out += *lineEnd;
+        }
+        edit.lines = 1;
+        edit.selectionStart = edit.selectionEnd = caret;
+        return edit;
     }
     }
 
@@ -238,6 +329,116 @@ std::optional<LineEdit> lineOperation(LineOperation operation, const TextDocumen
         edit.selectionStart = carry(selectionStart);
         edit.selectionEnd = carry(selectionEnd);
     }
+    return edit;
+}
+
+std::optional<LineEdit> toggleComment(const TextDocument& document, const CommentMarkers& markers,
+                                      std::uint64_t first, std::uint64_t last, std::uint64_t selectionStart,
+                                      std::uint64_t selectionEnd)
+{
+    const core::LineIndex& index = document.index();
+    if (index.lineCount() == 0 || first > last || markers.isEmpty())
+        return std::nullopt;
+    const std::vector<Line> lines = linesOf(index, first, std::min(last, index.lineCount() - 1));
+    if (lines.empty())
+        return std::nullopt;
+    const auto data = document.bytes();
+    const core::CharScheme scheme = document.codec().scheme;
+    const bool block = markers.line.isEmpty();
+    const std::optional<QByteArray> open = document.encode(block ? markers.blockStart : markers.line);
+    const std::optional<QByteArray> close = block ? document.encode(markers.blockEnd) : QByteArray();
+    const std::optional<QByteArray> space = document.encode(QStringLiteral(" "));
+    if (!open || !close || !space)
+        return std::nullopt;
+    const auto bytesOf = [&data](std::uint64_t from, std::uint64_t to) {
+        return QByteArrayView(data.data() + from, static_cast<qsizetype>(to - from));
+    };
+    const auto has = [&](std::uint64_t at, std::uint64_t limit, const QByteArray& what) {
+        return at + static_cast<std::uint64_t>(what.size()) <= limit &&
+               bytesOf(at, at + static_cast<std::uint64_t>(what.size())) == what;
+    };
+    const auto size = [](const QByteArray& bytes) { return static_cast<std::uint64_t>(bytes.size()); };
+
+    // Comment out, unless every line with text is so already; at the indentation they share.
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> text(lines.size());
+    std::uint64_t indent = ~std::uint64_t{0};
+    bool commented = true;
+    bool anyText = false;
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        text[i] = textOf(data, lines[i], scheme);
+        const auto [from, to] = text[i];
+        if (from == lines[i].contentEnd)
+            continue; // blank
+        anyText = true;
+        indent = std::min(indent, from - lines[i].start);
+        commented = commented && has(from, to, *open) &&
+                    (!block || (to >= from + size(*open) + size(*close) && has(to - size(*close), to, *close)));
+    }
+    if (!anyText)
+        return std::nullopt;
+
+    struct Change
+    {
+        std::uint64_t at;
+        std::uint64_t removed;
+        QByteArray inserted;
+    };
+    std::vector<Change> changes; // in order
+    LineEdit edit;
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        const auto [from, to] = text[i];
+        if (from == lines[i].contentEnd)
+            continue;
+        ++edit.lines;
+        if (commented) {
+            // The marker goes, and a space after it; at the end, the closing marker and a
+            // space before it.
+            std::uint64_t removed = size(*open);
+            if (has(from + removed, to, *space))
+                removed += size(*space);
+            changes.push_back({from, removed, {}});
+            if (block) {
+                std::uint64_t closeAt = to - size(*close);
+                if (closeAt >= from + removed + size(*space) && has(closeAt - size(*space), to, *space))
+                    closeAt -= size(*space);
+                if (closeAt >= from + removed)
+                    changes.push_back({closeAt, to - closeAt, {}});
+            }
+        } else {
+            changes.push_back({!block && markers.lineAtStart ? lines[i].start : lines[i].start + indent, 0,
+                               *open + *space});
+            if (block)
+                changes.push_back({to, 0, *space + *close});
+        }
+    }
+
+    const std::uint64_t rangeStart = lines.front().start;
+    const std::uint64_t rangeEnd = lines.back().end;
+    edit.start = rangeStart;
+    edit.end = rangeEnd;
+    std::uint64_t at = rangeStart;
+    for (const Change& change : changes) {
+        edit.bytes += bytesOf(at, change.at);
+        edit.bytes += change.inserted;
+        at = change.at + change.removed;
+    }
+    edit.bytes += bytesOf(at, rangeEnd);
+    // Offsets move with the text around them. A selection that starts where a marker goes in
+    // takes it in; a caret there goes after it; one in what is taken out goes where that was.
+    const auto carry = [&](std::uint64_t offset, bool isStart) {
+        std::uint64_t shifted = offset;
+        for (const Change& change : changes) {
+            if (offset < change.at || (offset == change.at && isStart))
+                break;
+            if (offset < change.at + change.removed)
+                return shifted - (offset - change.at);
+            shifted = shifted + size(change.inserted) - change.removed;
+        }
+        return shifted;
+    };
+    const bool selection = selectionStart != selectionEnd;
+    edit.selectionStart = carry(selectionStart, selection);
+    edit.selectionEnd = carry(selectionEnd, false);
     return edit;
 }
 

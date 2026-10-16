@@ -8,6 +8,7 @@
 
 #include <QAbstractScrollArea>
 #include <QBasicTimer>
+#include <QElapsedTimer>
 #include <QColor>
 #include <QPointer>
 #include <QTextLayout>
@@ -64,6 +65,9 @@ public:
     // Puts the caret at the start of a 0-based line and centres it. False if the line has not
     // been indexed (or does not exist).
     bool goToLine(std::uint64_t line);
+    // Puts the caret at offset, and its line in the middle of the screen unless it is on screen
+    // already.
+    void goToOffset(std::uint64_t offset);
 
     // The first visible row; with word wrap on, the row in which the first line on screen starts.
     std::uint64_t topRow() const { return m_rows.topRow(); }
@@ -107,6 +111,21 @@ public:
 
     // The selection as text; empty if nothing is selected or it exceeds kMaxCopyBytes.
     QString selectedText() const;
+    // Selects the word at the caret, as double-clicking it does; false if there is none.
+    bool selectWordAtCursor();
+    // Selects the caret's line, line break included; with whole lines selected, the next one
+    // too (Ctrl+L, as in VS Code). A triple click selects a line as well.
+    void selectLines();
+
+    // Bookmarked lines, by where each starts, in order. They move with edits and show in the
+    // line numbers.
+    const std::vector<std::uint64_t>& bookmarks() const { return m_bookmarks; }
+    void setBookmarks(std::vector<std::uint64_t> offsets);
+    // Bookmarks the caret's line, or takes its bookmark away.
+    void toggleBookmark();
+    // The caret goes to the next (or previous) bookmarked line, round past the end; false if
+    // there is none.
+    bool goToBookmark(bool forward);
 
 public slots:
     void selectAll();
@@ -197,6 +216,7 @@ private:
         QColor selectionText;
         QColor inactiveSelection;
         QColor inactiveSelectionText;
+        QColor bookmark;
     };
 
     const BlockLayout& layoutFor(const Block& block) const;
@@ -278,6 +298,14 @@ private:
 
     int gutterWidth() const;
     qreal textLeft() const;
+    // Where the line holding `offset` starts; offsets the index has not reached stay as they are.
+    std::uint64_t lineStartAt(std::uint64_t offset) const;
+    // Where the next line starts after the one holding `offset`, or the end of the text.
+    std::uint64_t lineEndAt(std::uint64_t offset) const;
+    // Past the spaces and tabs a line starts with.
+    std::uint64_t indentationEnd(std::uint64_t lineStart) const;
+    // Bookmarks on the starts of their lines, in order, once each.
+    void tidyBookmarks();
 
     TextDocument* m_document = nullptr;
     RowScrollBar m_rows;
@@ -312,6 +340,8 @@ private:
 
     bool m_dragging = false;
     QPoint m_lastDragPos;
+    QElapsedTimer m_lastDoubleClick; // a press soon after is a triple click
+    QPoint m_lastDoubleClickPos;
     QBasicTimer m_autoScrollTimer;
     int m_wheelRemainder = 0;
     int m_zoomRemainder = 0;
@@ -321,6 +351,7 @@ private:
     int m_ascent = 12;
     qreal m_columnWidth = 0; // of the text in reading mode
     Colors m_colors;
+    std::vector<std::uint64_t> m_bookmarks;
 };
 
 } // namespace aiedit::ui

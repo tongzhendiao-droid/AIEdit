@@ -13,6 +13,7 @@
 #include <optional>
 #include <span>
 #include <utility>
+#include <vector>
 
 class QAction;
 class QSplitter;
@@ -105,6 +106,11 @@ public:
     // and cleaning take the whole document, moving and copying the caret's line. False if it
     // changed nothing; either way the status bar hears what happened.
     bool applyLineOperation(LineOperation operation);
+    // Comments the selected lines (or the caret's) out, or in again, as the document's
+    // language writes comments (Ctrl+/). False if nothing changed; the status bar says why.
+    bool toggleComment();
+    // The selection, or the word at the caret, in upper or lower case.
+    bool convertCase(bool upper);
     // Writes the document to its file, or to another (which it then shows). False, with the
     // reason in `error`, if that failed.
     bool save(QString* error = nullptr);
@@ -136,6 +142,7 @@ public:
         ViewMode mode = ViewMode::Text;
         QString codec; // empty unless chosen by the user; otherwise the file's is detected again
         bool reading = false;
+        std::vector<std::uint64_t> bookmarks; // where the bookmarked lines start
     };
     State state() const;
     // Puts it back; positions the index has not reached yet are applied once it has.
@@ -156,6 +163,9 @@ public slots:
     void showFindBar(bool replace = false);
     // Finds the next or previous match of the find bar's query from the caret or selection.
     void findNext(bool forward = true);
+    // Finds the next or previous place of the selection, or of the word at the caret, which it
+    // selects first (Ctrl+F3, as in Notepad++ and VS Code).
+    void findSelection(bool forward = true);
     // Replaces the match found last, if it is still selected, then finds the next one.
     void replaceCurrent();
     // Replaces every match in the document, as one step to undo.
@@ -198,6 +208,9 @@ private:
     void moveToEnd();
     void updateEditable();
     void documentEdited();
+    // The lines the selection takes in: the caret's line without one.
+    std::pair<std::uint64_t, std::uint64_t> selectedLines() const;
+    void applyLineEdit(const LineEdit& edit);
     bool writeTo(const QString& path, QString* error);
     bool writeBytes(const QString& path, std::span<const std::uint8_t> bytes, QString* error);
     SearchContext searchContext() const;

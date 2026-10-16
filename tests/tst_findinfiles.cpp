@@ -218,8 +218,9 @@ void TestFindInFiles::shortcuts()
     ui::MainWindow window;
     QCOMPARE(findAction(window, QStringLiteral("Find in F&iles…"))->shortcut(),
              QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F));
+    // Ctrl+Shift+T reopens closed tabs, as elsewhere; F5 reloads once, Shift+F5 keeps on.
     QCOMPARE(findAction(window, QStringLiteral("&Follow End of File"))->shortcut(),
-             QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T));
+             QKeySequence(Qt::SHIFT | Qt::Key_F5));
 }
 
 QTEST_MAIN(TestFindInFiles)
