@@ -1,5 +1,9 @@
 # Pure C++ core: no Qt dependency, so it can be unit-tested in isolation and reused by a CLI later.
 add_library(aiedit_core STATIC
+    BinaryLayout.cpp BinaryLayout.h
+    ByteDiff.cpp ByteDiff.h
+    Diff.cpp Diff.h
+    Disassembler.cpp Disassembler.h
     EditBuffer.cpp EditBuffer.h
     FileSource.cpp FileSource.h
     FileSummary.cpp FileSummary.h
@@ -15,6 +19,11 @@ target_include_directories(aiedit_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_features(aiedit_core PUBLIC cxx_std_20)
 target_link_libraries(aiedit_core PRIVATE aiedit_warnings)
 set_target_properties(aiedit_core PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
+
+if(CAPSTONE_FOUND)
+    target_link_libraries(aiedit_core PRIVATE PkgConfig::CAPSTONE)
+    target_compile_definitions(aiedit_core PRIVATE AIEDIT_HAVE_CAPSTONE)
+endif()
 
 if(uchardet_FOUND)
     target_link_libraries(aiedit_core PRIVATE uchardet::libuchardet)

@@ -27,6 +27,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             ca-certificates git cmake ninja-build g++ \
             qt6-base-dev qt6-l10n-tools libkf6syntaxhighlighting-dev libuchardet-dev \
+            pkg-config libcapstone-dev \
             fonts-dejavu-core fonts-noto-cjk
       - uses: actions/checkout@v6
       - name: Configure

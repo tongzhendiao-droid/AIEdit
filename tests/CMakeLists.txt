@@ -15,6 +15,8 @@ aiedit_add_test(tst_lineindex aiedit_core)
 aiedit_add_test(tst_search aiedit_core)
 aiedit_add_test(tst_aicore aiedit_core)
 aiedit_add_test(tst_editbuffer aiedit_core)
+aiedit_add_test(tst_diff aiedit_core)
+aiedit_add_test(tst_binary aiedit_core)
 aiedit_add_test(tst_hexview aiedit_ui)
 # The translation test loads the .qm files built for the application.
 target_compile_definitions(tst_hexview PRIVATE AIEDIT_QM_DIR="${CMAKE_BINARY_DIR}/src/i18n")

@@ -19,10 +19,16 @@ option(AIEDIT_BUILD_TESTS "Build the unit tests" ON)
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
 qt_standard_project_setup()
 
-# Optional: better charset detection, and syntax highlighting (the engine Kate uses).
+# Optional: better charset detection, syntax highlighting (the engine Kate uses), and
+# disassembling the code around differences between binaries (Capstone).
 find_package(uchardet CONFIG QUIET)
 find_package(KF6SyntaxHighlighting 6.0 CONFIG QUIET)
-message(STATUS "uchardet: ${uchardet_FOUND}, KF6SyntaxHighlighting: ${KF6SyntaxHighlighting_FOUND}")
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(CAPSTONE QUIET IMPORTED_TARGET capstone)
+endif()
+message(STATUS "uchardet: ${uchardet_FOUND}, KF6SyntaxHighlighting: ${KF6SyntaxHighlighting_FOUND}, "
+               "Capstone: ${CAPSTONE_FOUND}")
 
 # Shared warning flags, linked privately into every target we own.
 add_library(aiedit_warnings INTERFACE)
