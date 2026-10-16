@@ -73,6 +73,7 @@ void CompareView::setComparison(const CompareSide& left, const CompareSide& righ
     };
     setSide(m_left, left, comparison.left);
     setSide(m_right, right, comparison.right);
+    m_rejected.clear(); // of the hunks before
     m_texts.clear();
     m_inline.clear();
     m_widest = 0;
@@ -313,7 +314,8 @@ void CompareView::paintSide(QPainter& painter, bool left, const CompareRows::Row
 
     QColor background = m_colors.base;
     QColor words;
-    switch (row.kind) {
+    const bool rejected = isRejected(row.hunk);
+    switch (rejected ? CompareRows::Kind::Same : row.kind) {
     case CompareRows::Kind::Changed:
         background = left ? m_colors.removed : m_colors.added;
         words = left ? m_colors.removedWords : m_colors.addedWords;
@@ -352,7 +354,15 @@ void CompareView::paintSide(QPainter& painter, bool left, const CompareRows::Row
     const QString full = lineText(left, *line);
     const QString visible = full.left(shown);
     QList<QTextLayout::FormatRange> formats;
-    if (row.kind == CompareRows::Kind::Changed && row.left && row.right) {
+    if (rejected) {
+        // Left out: the left stays as it is, the right is struck through.
+        if (!left) {
+            QTextCharFormat struck;
+            struck.setFontStrikeOut(true);
+            struck.setForeground(m_colors.dim);
+            formats.append({0, static_cast<int>(visible.size()), struck});
+        }
+    } else if (row.kind == CompareRows::Kind::Changed && row.left && row.right) {
         QTextCharFormat marked;
         marked.setBackground(words);
         const core::InlineDiff& diff = inlineDiff(*row.left, *row.right);
@@ -380,6 +390,18 @@ void CompareView::paintSide(QPainter& painter, bool left, const CompareRows::Row
     painter.setPen(m_colors.text);
     layout.draw(&painter, QPointF(text.left() + m_charWidth / 2 - scrollX, rect.top() + (m_lineHeight - textLine.height()) / 2));
     painter.restore();
+}
+
+void CompareView::setRejected(std::vector<bool> rejected)
+{
+    m_rejected = std::move(rejected);
+    viewport()->update();
+}
+
+bool CompareView::isRejected(int hunk) const
+{
+    const auto at = static_cast<std::size_t>(hunk);
+    return hunk >= 0 && at < m_rejected.size() && m_rejected[at];
 }
 
 void CompareView::paintRuler(QPainter& painter, const QRect& rect) const

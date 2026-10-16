@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace aiedit::ui {
 
@@ -49,6 +50,9 @@ public:
     bool goToPreviousDifference();
     // The line a row shows on one side, as copying gives it; empty on a gap or a fold.
     QString rowText(std::uint64_t row, bool left) const;
+    // Changes left out (rejected in a review): shown as not made, the right side struck through.
+    void setRejected(std::vector<bool> rejected);
+    bool isRejected(int hunk) const;
 
 public slots:
     void copy();
@@ -137,6 +141,7 @@ private:
     qreal m_charWidth = 8;
     int m_lineHeight = 16;
     qreal m_widest = 0;
+    std::vector<bool> m_rejected; // by hunk
     int m_wheelRemainder = 0;
     Colors m_colors;
 };

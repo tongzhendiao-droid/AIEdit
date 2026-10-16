@@ -3,8 +3,11 @@
 #include "core/EditBuffer.h"
 #include "core/FileSource.h"
 #include "core/FileSummary.h"
+#include "ui/AiEdit.h"
+#include "ui/AiEditBar.h"
 #include "ui/AiPanel.h"
 #include "ui/FilterPanel.h"
+#include "ui/FilterRuleWriter.h"
 #include "ui/FindBar.h"
 #include "ui/HexView.h"
 #include "ui/Paths.h"
@@ -17,6 +20,7 @@
 #include <QDir>
 #include <QEvent>
 #include <QFileInfo>
+#include <QJsonDocument>
 #include <QLocale>
 #include <QPointer>
 #include <QSaveFile>
@@ -26,6 +30,7 @@
 #include <QSplitter>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
 
@@ -165,6 +170,8 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
 
 DocumentView::~DocumentView()
 {
+    m_ruleWatcher.cancel();
+    m_ruleWatcher.waitForFinished();
     // The children outlive this destructor body (QWidget deletes them later), and the text
     // document goes first. Keep their signals and focus events from reaching a half-destroyed
     // DocumentView.
@@ -445,6 +452,274 @@ void DocumentView::findSelection(bool forward)
     m_findBar->setQuery(text);
     m_findBar->setMode(SearchMode::Text);
     findNext(forward);
+}
+
+// AI edits ------------------------------------------------------------------------------------------
+
+namespace {
+
+// Where a line starts; the end of the text for a line past the last.
+std::uint64_t startOfLine(const core::LineIndex& index, std::uint64_t line, std::uint64_t size)
+{
+    if (line >= index.lineCount())
+        return size;
+    const std::optional<std::uint64_t> row = index.rowIndexOfLine(line);
+    return row ? index.row(*row).start : size;
+}
+
+} // namespace
+
+AiEditor* DocumentView::aiEditor()
+{
+    if (m_aiEditor)
+        return m_aiEditor;
+    m_aiEditor = new AiEditor(this);
+    connect(m_aiEditor, &AiEditor::progressed, this, [this](int characters) {
+        if (m_aiEditBar)
+            m_aiEditBar->showMessage(
+                tr("The AI is writing… %1 characters").arg(QLocale().toString(characters)));
+    });
+    connect(m_aiEditor, &AiEditor::textWritten, this, &DocumentView::aiTextWritten);
+    connect(m_aiEditor, &AiEditor::ruleWritten, this, [this](const EditRule& rule, const QString& note) {
+        if (m_aiEditBar)
+            m_aiEditBar->showMessage(tr("Running the AI's rule here…"));
+        const QString json = QString::fromUtf8(QJsonDocument(rule.toJson()).toJson(QJsonDocument::Indented));
+        m_ruleWatcher.setFuture(QtConcurrent::run(
+            [rule, context = m_aiContext, start = m_aiEdit.start, end = m_aiEdit.end, json,
+             note](QPromise<RuleRun>& promise) {
+                RuleRun run;
+                run.rule = json;
+                run.note = note;
+                run.bytes = applyEditRule(rule, *context, start, end, &run.error,
+                                          [&promise] { return promise.isCanceled(); });
+                promise.addResult(std::move(run));
+            }));
+    });
+    connect(m_aiEditor, &AiEditor::failed, this, &DocumentView::aiEditFailed);
+    connect(m_aiEditor, &AiEditor::settingsRequested, this, &DocumentView::aiSettingsRequested);
+    connect(&m_ruleWatcher, &QFutureWatcher<RuleRun>::finished, this, &DocumentView::aiRuleRan);
+    return m_aiEditor;
+}
+
+void DocumentView::showAiEditBar()
+{
+    if (!m_aiEditBar) {
+        m_aiEditBar = new AiEditBar(this);
+        static_cast<QVBoxLayout*>(layout())->insertWidget(0, m_aiEditBar);
+        connect(m_aiEditBar, &AiEditBar::editRequested, this, &DocumentView::requestAiEdit);
+        const auto stop = [this] {
+            aiEditor()->cancel();
+            m_ruleWatcher.cancel();
+            m_aiEditBar->setBusy(false);
+        };
+        connect(m_aiEditBar, &AiEditBar::stopRequested, this, [this, stop] {
+            stop();
+            m_aiEditBar->showMessage(tr("Stopped"));
+        });
+        connect(m_aiEditBar, &AiEditBar::closeRequested, this, [this, stop] {
+            if (m_aiEditBar->isBusy())
+                stop();
+            m_aiEditBar->hide();
+            (isTextActive() ? static_cast<QWidget*>(m_textView) : m_hexView)->setFocus();
+        });
+        connect(m_aiEditBar, &AiEditBar::previewRequested, this, [this](const QString& instruction) {
+            std::uint64_t start = 0;
+            std::uint64_t end = 0;
+            const AiEditRequest request =
+                aiEditRequest(instruction.isEmpty() ? tr("(what to change)") : instruction, &start, &end);
+            showRequestPreview(this, aiEditor()->settings(), aiEditor()->previewRequest(request));
+        });
+        connect(m_textView, &TextView::selectionChanged, this, &DocumentView::updateAiEditScope);
+    }
+    m_aiEditBar->activate();
+    updateAiEditScope();
+}
+
+void DocumentView::updateAiEditScope()
+{
+    if (!m_aiEditBar || m_aiEditBar->isHidden() || m_aiEditBar->isBusy())
+        return;
+    const std::uint64_t start = m_textView->selectionStart();
+    const std::uint64_t end = m_textView->selectionEnd();
+    const std::uint64_t size = start == end ? m_source->size() : end - start;
+    // A guess from the bytes; requestAiEdit() counts the characters.
+    const bool tooLong = size > 4 * static_cast<std::uint64_t>(AiEditor::kMaxText);
+    if (start == end) {
+        m_aiEditBar->setScope(tooLong ? tr("the whole file, by a rule the AI writes") : tr("the whole file"));
+        return;
+    }
+    const core::LineIndex& index = m_textDocument->index();
+    const std::uint64_t first = index.rowCount() ? index.row(index.rowIndexAt(start)).line : 0;
+    const std::uint64_t last = index.rowCount() ? index.row(index.rowIndexAt(end - 1)).line : 0;
+    const auto lines = static_cast<int>(std::min<std::uint64_t>(last - first + 1, 1'000'000'000));
+    m_aiEditBar->setScope(tooLong ? tr("the %n selected line(s), by a rule the AI writes", "", lines)
+                                  : tr("the %n selected line(s)", "", lines));
+}
+
+AiEditRequest DocumentView::aiEditRequest(const QString& instruction, std::uint64_t* start, std::uint64_t* end) const
+{
+    const core::LineIndex& index = m_textDocument->index();
+    const auto bytes = m_textDocument->bytes();
+    *start = m_textView->selectionStart();
+    *end = m_textView->selectionEnd();
+    const bool whole = *start == *end;
+    if (whole) {
+        *start = m_textDocument->textStart();
+        *end = bytes.size();
+    }
+    AiEditRequest request;
+    request.instruction = instruction;
+    request.fileName = isUntitled() ? QString() : QFileInfo(filePath()).fileName();
+    request.language = syntax();
+    const TextDecoder& decoder = m_textDocument->decoder();
+    const auto decode = [&](std::uint64_t from, std::uint64_t to) {
+        return decoder.decodePlain(bytes.subspan(from, to - from));
+    };
+    // Not decoded just to be counted when it is too long by far.
+    const bool farTooLong = *end - *start > 4 * static_cast<std::uint64_t>(AiEditor::kMaxText);
+    const QString text = farTooLong ? QString() : decode(*start, *end);
+    if (!farTooLong && text.size() <= AiEditor::kMaxText) {
+        request.text = text;
+        if (!whole && index.rowCount() > 0) {
+            // Some of what is around it, to read.
+            const std::uint64_t firstLine = index.row(index.rowIndexAt(*start)).line;
+            const std::uint64_t lastLine = index.row(index.rowIndexAt(*end > *start ? *end - 1 : *end)).line;
+            const std::uint64_t context = AiEditor::kContextLines;
+            const std::uint64_t from = startOfLine(index, firstLine > context ? firstLine - context : 0, bytes.size());
+            const std::uint64_t to = startOfLine(index, lastLine + 1 + context, bytes.size());
+            request.before = decode(std::min(from, *start), *start).right(AiEditor::kContextChars);
+            request.after = decode(*end, std::max(to, *end)).left(AiEditor::kContextChars);
+        }
+        return request;
+    }
+    // Too long to send: whole lines, which a rule the AI writes changes here.
+    if (index.rowCount() > 0) {
+        *start = startOfLine(index, index.row(index.rowIndexAt(*start)).line, bytes.size());
+        if (!whole && *end > 0 && startOfLine(index, index.row(index.rowIndexAt(*end)).line, bytes.size()) != *end)
+            *end = startOfLine(index, index.row(index.rowIndexAt(*end)).line + 1, bytes.size());
+    }
+    request.asRule = true;
+    request.samples = FilterRuleWriter::sampleLines(searchContext());
+    return request;
+}
+
+void DocumentView::requestAiEdit(const QString& instruction)
+{
+    if (!m_aiEditBar)
+        showAiEditBar();
+    if (instruction.trimmed().isEmpty())
+        return;
+    if (!isEditable()) {
+        m_aiEditBar->showMessage(tr("This document cannot be edited, so the AI cannot change it either."), true);
+        return;
+    }
+    m_textDocument->indexNow(); // every line, for the range and the samples
+    std::uint64_t start = 0;
+    std::uint64_t end = 0;
+    const AiEditRequest request = aiEditRequest(instruction, &start, &end);
+    const auto bytes = m_textDocument->bytes();
+    const core::LineIndex& index = m_textDocument->index();
+    m_aiEdit = {};
+    m_aiEdit.start = start;
+    m_aiEdit.end = end;
+    m_aiEdit.firstLine = index.rowCount() ? index.row(index.rowIndexAt(start)).line : 0;
+    m_aiEdit.before =
+        QByteArray(reinterpret_cast<const char*>(bytes.data()) + start, static_cast<qsizetype>(end - start));
+    m_aiEdit.instruction = instruction;
+    m_aiEditText = request.text;
+    m_aiContext = std::make_shared<const SearchContext>(searchContext());
+    m_aiEditBar->setBusy(true);
+    m_aiEditBar->showMessage(request.asRule
+                                 ? tr("Too long to send: the AI writes a rule from samples, which then runs here…")
+                                 : tr("Asking the AI…"));
+    aiEditor()->edit(request);
+}
+
+void DocumentView::aiTextWritten(const QString& text, const QString& note)
+{
+    if (m_aiEditBar)
+        m_aiEditBar->setBusy(false);
+    // In the document's line breaks and codec, ending as the text did.
+    const QString terminator = m_textDocument->lineTerminator();
+    QString changed = text;
+    changed.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    if (terminator != u"\n")
+        changed.replace(QLatin1Char('\n'), terminator);
+    const auto endsWithBreak = [](const QString& s) { return s.endsWith(u'\n') || s.endsWith(u'\r'); };
+    if (endsWithBreak(m_aiEditText) && !endsWithBreak(changed))
+        changed += terminator;
+    else if (!endsWithBreak(m_aiEditText))
+        while (endsWithBreak(changed))
+            changed.chop(1);
+    const std::optional<QByteArray> encoded = m_textDocument->encode(changed);
+    if (!encoded) {
+        aiEditFailed(tr("The AI's text has characters that %1 cannot hold; nothing was changed.")
+                         .arg(QString::fromLatin1(m_textDocument->codec().name.data())));
+        return;
+    }
+    if (*encoded == m_aiEdit.before) {
+        if (m_aiEditBar)
+            m_aiEditBar->showMessage(note.isEmpty() ? tr("The AI changed nothing.")
+                                                    : tr("The AI changed nothing: %1").arg(note));
+        return;
+    }
+    AiEditProposal proposal = m_aiEdit;
+    proposal.after = *encoded;
+    proposal.note = note;
+    if (m_aiEditBar)
+        m_aiEditBar->showMessage(tr("Review the changes in the tab next to this one; nothing is written until then."));
+    emit aiEditProposed(proposal);
+}
+
+void DocumentView::aiRuleRan()
+{
+    if (m_ruleWatcher.isCanceled() || m_ruleWatcher.future().resultCount() == 0)
+        return;
+    const RuleRun run = m_ruleWatcher.result();
+    if (m_aiEditBar)
+        m_aiEditBar->setBusy(false);
+    if (!run.bytes) {
+        aiEditFailed(run.error.isEmpty() ? tr("The AI's rule could not run.")
+                                         : tr("The AI's rule could not run: %1").arg(run.error));
+        return;
+    }
+    if (*run.bytes == m_aiEdit.before) {
+        if (m_aiEditBar)
+            m_aiEditBar->showMessage(tr("The AI's rule changes nothing here."));
+        return;
+    }
+    AiEditProposal proposal = m_aiEdit;
+    proposal.after = *run.bytes;
+    proposal.note = run.note;
+    proposal.rule = run.rule;
+    if (m_aiEditBar)
+        m_aiEditBar->showMessage(tr("Review the changes in the tab next to this one; nothing is written until then."));
+    emit aiEditProposed(proposal);
+}
+
+void DocumentView::aiEditFailed(const QString& message)
+{
+    if (!m_aiEditBar)
+        return;
+    m_aiEditBar->setBusy(false);
+    m_aiEditBar->showMessage(message, true);
+}
+
+bool DocumentView::replaceIfUnchanged(std::uint64_t start, std::uint64_t end, const QByteArray& before,
+                                      const QByteArray& bytes)
+{
+    const auto current = m_textDocument->bytes();
+    if (!isEditable() || start > end || end > current.size() ||
+        QByteArrayView(reinterpret_cast<const char*>(current.data()) + start, static_cast<qsizetype>(end - start)) !=
+            QByteArrayView(before))
+        return false;
+    m_textDocument->breakUndoMerge(); // one step of its own
+    m_textDocument->replaceBytes(start, end,
+                                 {reinterpret_cast<const std::uint8_t*>(bytes.constData()),
+                                  static_cast<std::size_t>(bytes.size())});
+    m_textDocument->breakUndoMerge();
+    m_textView->setCursorOffset(start);
+    return true;
 }
 
 void DocumentView::selectMatch(std::uint64_t start, std::uint64_t end)
