@@ -604,6 +604,41 @@
     </message>
 </context>
 <context>
+    <name>aiedit::ui::FileTypeSniffer</name>
+    <message>
+        <source>Unreadable</source>
+        <translation>无法读取</translation>
+    </message>
+    <message>
+        <source>Empty</source>
+        <translation>空文件</translation>
+    </message>
+    <message>
+        <source>Binary</source>
+        <translation>二进制</translation>
+    </message>
+    <message>
+        <source>Text · ASCII</source>
+        <translation>文本 · ASCII</translation>
+    </message>
+    <message>
+        <source>Text · %1 with BOM</source>
+        <translation>文本 · %1（带 BOM）</translation>
+    </message>
+    <message>
+        <source>Text · %1</source>
+        <translation>文本 · %1</translation>
+    </message>
+    <message>
+        <source>text</source>
+        <translation>文本</translation>
+    </message>
+    <message>
+        <source>The name says %1, but this is %2</source>
+        <translation>扩展名对应 %1，但内容是 %2</translation>
+    </message>
+</context>
+<context>
     <name>aiedit::ui::FilterPanel</name>
     <message>
         <source>Include</source>
@@ -997,6 +1032,248 @@
     </message>
 </context>
 <context>
+    <name>aiedit::ui::FolderModel</name>
+    <message>
+        <source>Name</source>
+        <translation>名称</translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation>大小</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation>类型</translation>
+    </message>
+    <message>
+        <source>Date Modified</source>
+        <translation>修改时间</translation>
+    </message>
+    <message>
+        <source>Folder</source>
+        <translation>文件夹</translation>
+    </message>
+    <message>
+        <source>Not a regular file</source>
+        <translation>不是普通文件</translation>
+    </message>
+    <message>
+        <source>Type: %1</source>
+        <translation>类型：%1</translation>
+    </message>
+</context>
+<context>
+    <name>aiedit::ui::FolderPanel</name>
+    <message>
+        <source>Folder actions</source>
+        <translation>文件夹操作</translation>
+    </message>
+    <message>
+        <source>Filter by name: *.log, error…</source>
+        <translation>按名字筛选：*.log、error…</translation>
+    </message>
+    <message>
+        <source>Lists the files of the whole folder whose names match: wildcards such as *.log, or a part of the name. With a slash, the path within the folder. Several, separated by spaces, match if any does.</source>
+        <translation>列出整个文件夹里名字相符的文件：可以用通配符（如 *.log），也可以只写名字的一部分。带斜杠时匹配文件夹里的路径。用空格隔开几个条件时，符合任意一个即可。</translation>
+    </message>
+    <message>
+        <source>Looking for files… %1 found so far</source>
+        <translation>正在查找文件… 已找到 %1 个</translation>
+    </message>
+    <message>
+        <source>&amp;Open</source>
+        <translation>打开(&amp;O)</translation>
+    </message>
+    <message>
+        <source>Open as &amp;Folder</source>
+        <translation>作为文件夹打开(&amp;F)</translation>
+    </message>
+    <message>
+        <source>&amp;Find in This Folder…</source>
+        <translation>在这个文件夹里查找(&amp;F)…</translation>
+    </message>
+    <message>
+        <source>&amp;What Is in This Folder?</source>
+        <translation>这个文件夹里是什么(&amp;W)？</translation>
+    </message>
+    <message>
+        <source>The AI is told what the folder holds: names, sizes and kinds of files, and the first lines of a few. The files themselves are not sent.</source>
+        <translation>告诉 AI 这个文件夹里有什么：文件的名字、大小和类型，以及其中几个文件的开头几行。文件本身不会发送。</translation>
+    </message>
+    <message>
+        <source>New &amp;File…</source>
+        <translation>新建文件(&amp;F)…</translation>
+    </message>
+    <message>
+        <source>New Fol&amp;der…</source>
+        <translation>新建文件夹(&amp;D)…</translation>
+    </message>
+    <message>
+        <source>&amp;Rename…</source>
+        <translation>重命名(&amp;R)…</translation>
+    </message>
+    <message>
+        <source>Move to &amp;Trash</source>
+        <translation>移到回收站(&amp;T)</translation>
+    </message>
+    <message>
+        <source>&amp;Copy Path</source>
+        <translation>复制路径(&amp;C)</translation>
+    </message>
+    <message>
+        <source>Copy Re&amp;lative Path</source>
+        <translation>复制相对路径(&amp;L)</translation>
+    </message>
+    <message>
+        <source>Show in File &amp;Manager</source>
+        <translation>在文件管理器中显示(&amp;M)</translation>
+    </message>
+    <message>
+        <source>Show &amp;Hidden Files</source>
+        <translation>显示隐藏文件(&amp;H)</translation>
+    </message>
+    <message>
+        <source>No folder open</source>
+        <translation>没有打开文件夹</translation>
+    </message>
+    <message>
+        <source>Open Folder…</source>
+        <translation>打开文件夹…</translation>
+    </message>
+    <message>
+        <source>Its files show here: click one to look at it, double-click to open it.</source>
+        <translation>文件夹里的文件会显示在这里：单击查看，双击打开。</translation>
+    </message>
+    <message>
+        <source>Recent folders</source>
+        <translation>最近打开的文件夹</translation>
+    </message>
+    <message>
+        <source>Looking for files…</source>
+        <translation>正在查找文件…</translation>
+    </message>
+    <message>
+        <source>No file names match</source>
+        <translation>没有名字相符的文件</translation>
+    </message>
+    <message>
+        <source>Showing the first %1 files that match</source>
+        <translation>只显示前 %1 个相符的文件</translation>
+    </message>
+    <message>
+        <source>%1 files match among the first %2 looked at</source>
+        <translation>在查看过的前 %2 项里，有 %1 个文件相符</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n file(s) match</source>
+        <translation>
+            <numerusform>%n 个文件相符</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Looking through %1 for the AI…</source>
+        <translation>正在为 AI 查看 %1…</translation>
+    </message>
+    <message>
+        <source>Open Folder</source>
+        <translation>打开文件夹</translation>
+    </message>
+    <message>
+        <source>“%1” is not a valid name.</source>
+        <translation>“%1”不是有效的名字。</translation>
+    </message>
+    <message>
+        <source>%1 already exists.</source>
+        <translation>%1 已经存在。</translation>
+    </message>
+    <message>
+        <source>Cannot make %1: %2</source>
+        <translation>无法创建 %1：%2</translation>
+    </message>
+    <message>
+        <source>Cannot make the folder %1.</source>
+        <translation>无法创建文件夹 %1。</translation>
+    </message>
+    <message>
+        <source>%1 has unsaved changes. Save or close it first.</source>
+        <translation>%1 有未保存的修改，请先保存或关闭它。</translation>
+    </message>
+    <message>
+        <source>Cannot rename %1.</source>
+        <translation>无法重命名 %1。</translation>
+    </message>
+    <message>
+        <source>Cannot move %1 to the trash; it is still there.</source>
+        <translation>无法把 %1 移到回收站，它还在原处。</translation>
+    </message>
+    <message>
+        <source>New File</source>
+        <translation>新建文件</translation>
+    </message>
+    <message>
+        <source>Name of the new file in %1:</source>
+        <translation>在 %1 里新建的文件名：</translation>
+    </message>
+    <message>
+        <source>New Folder</source>
+        <translation>新建文件夹</translation>
+    </message>
+    <message>
+        <source>Name of the new folder in %1:</source>
+        <translation>在 %1 里新建的文件夹名：</translation>
+    </message>
+    <message>
+        <source>Rename</source>
+        <translation>重命名</translation>
+    </message>
+    <message>
+        <source>New name for %1:</source>
+        <translation>%1 的新名字：</translation>
+    </message>
+    <message>
+        <source>Move %1 to the trash?</source>
+        <translation>把 %1 移到回收站？</translation>
+    </message>
+    <message numerus="yes">
+        <source>Move %n item(s) to the trash?</source>
+        <translation>
+            <numerusform>把这 %n 项移到回收站？</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Move to Trash</source>
+        <translation>移到回收站</translation>
+    </message>
+    <message>
+        <source>&amp;Open Folder…</source>
+        <translation>打开文件夹(&amp;O)…</translation>
+    </message>
+    <message>
+        <source>&amp;Recent Folders</source>
+        <translation>最近打开的文件夹(&amp;R)</translation>
+    </message>
+    <message>
+        <source>Go &amp;Up</source>
+        <translation>上一级(&amp;U)</translation>
+    </message>
+    <message>
+        <source>&amp;Close Folder</source>
+        <translation>关闭文件夹(&amp;C)</translation>
+    </message>
+    <message>
+        <source>%1 no longer exists.</source>
+        <translation>%1 已经不存在了。</translation>
+    </message>
+    <message>
+        <source>No Recent Folders</source>
+        <translation>没有最近打开的文件夹</translation>
+    </message>
+    <message>
+        <source>&amp;Clear List</source>
+        <translation>清除列表(&amp;C)</translation>
+    </message>
+</context>
+<context>
     <name>aiedit::ui::HexView</name>
     <message numerus="yes">
         <source>%n byte(s)</source>
@@ -1066,6 +1343,10 @@
         <translation>打开文件…</translation>
     </message>
     <message>
+        <source>Open Folder…</source>
+        <translation>打开文件夹…</translation>
+    </message>
+    <message>
         <source>New file (%1)</source>
         <translation>新建文件（%1）</translation>
     </message>
@@ -1080,6 +1361,10 @@
     <message>
         <source>Contents</source>
         <translation>目录</translation>
+    </message>
+    <message>
+        <source>Folder</source>
+        <translation>文件夹</translation>
     </message>
     <message>
         <source>Find in Files</source>
@@ -1116,6 +1401,14 @@
     <message>
         <source>&amp;Open…</source>
         <translation>打开(&amp;O)…</translation>
+    </message>
+    <message>
+        <source>Open &amp;Folder…</source>
+        <translation>打开文件夹(&amp;F)…</translation>
+    </message>
+    <message>
+        <source>Show a folder&apos;s files beside the documents</source>
+        <translation>在文档旁边显示一个文件夹里的文件</translation>
     </message>
     <message>
         <source>&amp;Close Tab</source>
@@ -1342,6 +1635,14 @@
         <translation>这是什么文件(&amp;F)？</translation>
     </message>
     <message>
+        <source>What Is in This Fol&amp;der?</source>
+        <translation>这个文件夹里是什么(&amp;D)？</translation>
+    </message>
+    <message>
+        <source>The AI is told what the open folder holds: names, sizes and kinds of files, and the first lines of a few. The files themselves are not sent.</source>
+        <translation>告诉 AI 打开的文件夹里有什么：文件的名字、大小和类型，以及其中几个文件的开头几行。文件本身不会发送。</translation>
+    </message>
+    <message>
         <source>Summarize This &amp;Chapter</source>
         <translation>总结本章(&amp;C)</translation>
     </message>
@@ -1368,6 +1669,10 @@
     <message>
         <source>Recen&amp;t Files</source>
         <translation>最近打开(&amp;T)</translation>
+    </message>
+    <message>
+        <source>Recent Fold&amp;ers</source>
+        <translation>最近打开的文件夹(&amp;E)</translation>
     </message>
     <message>
         <source>&amp;Edit</source>
@@ -1466,6 +1771,14 @@
         <translation>无法打开文件</translation>
     </message>
     <message>
+        <source>Open Folder</source>
+        <translation>打开文件夹</translation>
+    </message>
+    <message>
+        <source>%1 is not a folder, or no longer exists.</source>
+        <translation>%1 不是文件夹，或者已经不存在了。</translation>
+    </message>
+    <message>
         <source>Cannot open %1:
 %2</source>
         <translation>无法打开 %1：
@@ -1530,6 +1843,10 @@
     <message>
         <source>Save your changes to %1 before closing it?</source>
         <translation>关闭前要保存对 %1 的修改吗？</translation>
+    </message>
+    <message>
+        <source>Preview: the next file clicked in the folder takes this tab. Double-click the tab to keep it.</source>
+        <translation>预览：在文件夹里单击下一个文件时，它会替换这个标签页。双击标签页可以保留它。</translation>
     </message>
     <message>
         <source>%1[*] — AIEdit</source>
@@ -1606,6 +1923,22 @@
     <message>
         <source>%1 (%2 characters)</source>
         <translation>%1（%2 字）</translation>
+    </message>
+    <message>
+        <source>%1 was moved, but cannot be opened where it is now</source>
+        <translation>%1 已经移动，但在新的位置打不开</translation>
+    </message>
+    <message>
+        <source>What is in this folder? Say what it is for, how it is organized and which files matter most, and point out anything unusual. The summary was made on this computer from the names, sizes and first bytes of the files; say where it is not enough to tell.</source>
+        <translation>这个文件夹里是什么？请说说它是做什么用的、是怎样组织的、哪些文件最重要，并指出不寻常的地方。附带的摘要是在本机根据文件的名字、大小和开头的字节生成的；凭它不足以判断的地方，请说明。</translation>
+    </message>
+    <message>
+        <source>a summary of the folder %1: names, sizes and kinds of files, and the first lines of a few</source>
+        <translation>文件夹 %1 的摘要：文件的名字、大小和类型，以及其中几个文件的开头几行</translation>
+    </message>
+    <message>
+        <source>No Recent Folders</source>
+        <translation>没有最近打开的文件夹</translation>
     </message>
     <message>
         <source>About AIEdit</source>
@@ -1736,8 +2069,8 @@
         <translation>打开一个新窗口，而不是使用已经打开的窗口。</translation>
     </message>
     <message>
-        <source>Files to open.</source>
-        <translation>要打开的文件。</translation>
+        <source>Files to open, or a folder to show beside them.</source>
+        <translation>要打开的文件，或者要在旁边显示的文件夹。</translation>
     </message>
 </context>
 </TS>

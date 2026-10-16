@@ -9,6 +9,7 @@
 #include "ui/ContentsPanel.h"
 #include "ui/DataInspector.h"
 #include "ui/FindInFilesPanel.h"
+#include "ui/FolderPanel.h"
 #include "ui/HexView.h"
 #include "ui/Paths.h"
 #include "ui/SyntaxHighlighting.h"
@@ -222,10 +223,13 @@ void MainWindow::createWidgets()
     auto* openButton = new QPushButton(tr("Open File…"));
     openButton->setToolTip(QKeySequence(QKeySequence::Open).toString(QKeySequence::NativeText));
     connect(openButton, &QPushButton::clicked, this, &MainWindow::showOpenDialog);
+    auto* folderButton = new QPushButton(tr("Open Folder…"));
+    connect(folderButton, &QPushButton::clicked, this, &MainWindow::showOpenFolderDialog);
     auto* buttons = new QHBoxLayout;
     buttons->addStretch();
     buttons->addWidget(newButton);
     buttons->addWidget(openButton);
+    buttons->addWidget(folderButton);
     buttons->addStretch();
     m_welcome = new QWidget;
     auto* welcomeLayout = new QVBoxLayout(m_welcome);
@@ -253,9 +257,12 @@ void MainWindow::createWidgets()
         newTab->setText(QStringLiteral("+"));
     connect(newTab, &QToolButton::clicked, this, &MainWindow::newDocument);
     m_tabs->setCornerWidget(newTab, Qt::TopRightCorner);
+    // Double-clicking a tab keeps it, if it is the preview tab.
     connect(m_tabs, &QTabWidget::tabBarDoubleClicked, this, [this](int index) {
         if (index < 0)
             newDocument();
+        else
+            keepDocument(document(index));
     });
 
     m_stack = new QStackedWidget;
@@ -294,6 +301,36 @@ void MainWindow::createWidgets()
     m_contentsDock->setWidget(m_contents);
     addDockWidget(Qt::LeftDockWidgetArea, m_contentsDock);
     m_contentsDock->hide();
+
+    m_folders = new FolderPanel;
+    m_folders->setLegacyCodec(preferredLegacyCodec());
+    // Renaming or trashing would leave unsaved changes without a file.
+    m_folders->setUnsavedCheck([this](const QString& path) {
+        const QString prefix = path + QLatin1Char('/');
+        for (int i = 0; i < m_tabs->count(); ++i) {
+            const DocumentView* doc = document(i);
+            if (doc->isModified() && !doc->isUntitled() &&
+                (doc->filePath() == path || doc->filePath().startsWith(prefix)))
+                return doc->title();
+        }
+        return QString();
+    });
+    connect(m_folders, &FolderPanel::previewRequested, this, &MainWindow::previewFile);
+    connect(m_folders, &FolderPanel::openRequested, this, [this](const QString& path) {
+        if (openFile(path))
+            currentDocument()->setFocus();
+    });
+    connect(m_folders, &FolderPanel::findInFolderRequested, this, &MainWindow::showFindInFilesIn);
+    connect(m_folders, &FolderPanel::folderSummarized, this, &MainWindow::askAboutFolder);
+    connect(m_folders, &FolderPanel::pathRenamed, this, &MainWindow::documentsMoved);
+    connect(m_folders, &FolderPanel::pathTrashed, this, &MainWindow::documentsTrashed);
+    connect(m_folders, &FolderPanel::folderChanged, this, [this] { updateActions(); });
+    m_folderDock = new QDockWidget(tr("Folder"), this);
+    m_folderDock->setObjectName(QStringLiteral("folderDock"));
+    m_folderDock->setWidget(m_folders);
+    addDockWidget(Qt::LeftDockWidgetArea, m_folderDock);
+    tabifyDockWidget(m_contentsDock, m_folderDock);
+    m_folderDock->hide();
 
     m_findInFiles = new FindInFilesPanel;
     m_findInFiles->setLegacyCodec(preferredLegacyCodec());
@@ -359,6 +396,9 @@ void MainWindow::createActions()
     m_openAction = new QAction(tr("&Open…"), this);
     m_openAction->setShortcut(QKeySequence::Open);
     connect(m_openAction, &QAction::triggered, this, &MainWindow::showOpenDialog);
+    m_openFolderAction = new QAction(tr("Open &Folder…"), this);
+    m_openFolderAction->setToolTip(tr("Show a folder's files beside the documents"));
+    connect(m_openFolderAction, &QAction::triggered, this, &MainWindow::showOpenFolderDialog);
 
     m_closeAction = new QAction(tr("&Close Tab"), this);
     m_closeAction->setShortcut(QKeySequence::Close);
@@ -567,6 +607,10 @@ void MainWindow::createActions()
     m_aiSummarizeAction = aiAction(tr("AI &Summarize"), &AiPanel::summarizeSelection);
     m_aiAskAction = aiAction(tr("&Ask AI…"), &AiPanel::focusInput);
     m_aiIdentifyAction = aiAction(tr("What Is This &File?"), &AiPanel::identifyFile);
+    m_aiFolderAction = new QAction(tr("What Is in This Fol&der?"), this);
+    m_aiFolderAction->setToolTip(tr("The AI is told what the open folder holds: names, sizes and kinds of files, "
+                                    "and the first lines of a few. The files themselves are not sent."));
+    connect(m_aiFolderAction, &QAction::triggered, this, [this] { m_folders->summarize(m_folders->folder()); });
     // The chapter being read, by the contents of the book.
     m_aiChapterSummaryAction = new QAction(tr("Summarize This &Chapter"), this);
     connect(m_aiChapterSummaryAction, &QAction::triggered, this, [this] {
@@ -594,8 +638,11 @@ void MainWindow::createMenus()
     QMenu* file = menuBar()->addMenu(tr("&File"));
     file->addAction(m_newAction);
     file->addAction(m_openAction);
+    file->addAction(m_openFolderAction);
     m_recentMenu = file->addMenu(tr("Recen&t Files"));
     connect(m_recentMenu, &QMenu::aboutToShow, this, &MainWindow::populateRecentMenu);
+    m_recentFoldersMenu = file->addMenu(tr("Recent Fold&ers"));
+    connect(m_recentFoldersMenu, &QMenu::aboutToShow, this, &MainWindow::populateRecentFoldersMenu);
     file->addAction(m_saveAction);
     file->addAction(m_saveAsAction);
     file->addAction(m_reloadAction);
@@ -637,6 +684,9 @@ void MainWindow::createMenus()
     QAction* showContents = m_contentsDock->toggleViewAction();
     showContents->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_O));
     view->addAction(showContents);
+    QAction* showFolder = m_folderDock->toggleViewAction();
+    showFolder->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D)); // D for directory
+    view->addAction(showFolder);
     view->addSeparator();
     view->addAction(m_wordWrapAction);
     view->addAction(m_followAction);
@@ -668,6 +718,7 @@ void MainWindow::createMenus()
     ai->addAction(m_aiSummarizeAction);
     ai->addAction(m_aiAskAction);
     ai->addAction(m_aiIdentifyAction);
+    ai->addAction(m_aiFolderAction);
     ai->addSeparator();
     ai->addAction(m_aiChapterSummaryAction);
     ai->addAction(m_aiChapterTranslationAction);
@@ -865,7 +916,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
     int current = -1;
     for (int i = 0; i < m_tabs->count(); ++i) {
         const DocumentView* doc = document(i);
-        rememberDocument(doc);
+        rememberDocument(doc, doc != m_previewDoc);
         QVariantMap tab;
         if (!doc->isUntitled())
             tab.insert(QStringLiteral("path"), doc->filePath());
@@ -873,6 +924,8 @@ void MainWindow::closeEvent(QCloseEvent* event)
             tab.insert(QStringLiteral("backup"), m_backupInfo.value(doc).id);
         if (tab.isEmpty())
             continue;
+        if (doc == m_previewDoc)
+            tab.insert(QStringLiteral("preview"), true);
         if (doc == currentDocument())
             current = static_cast<int>(tabs.size());
         tabs << tab;
@@ -880,6 +933,7 @@ void MainWindow::closeEvent(QCloseEvent* event)
     QSettings settings;
     settings.setValue(QStringLiteral("session/tabs"), tabs);
     settings.setValue(QStringLiteral("session/currentTab"), current);
+    settings.setValue(QStringLiteral("session/folder"), m_folders->folder());
     settings.remove(QStringLiteral("session/open")); // as M5 kept it
     settings.remove(QStringLiteral("session/current"));
     writeSettings();
@@ -896,7 +950,7 @@ void MainWindow::dropEvent(QDropEvent* event)
 {
     for (const QUrl& url : event->mimeData()->urls()) {
         if (url.isLocalFile())
-            openFile(url.toLocalFile());
+            openPath(url.toLocalFile());
     }
     event->acceptProposedAction();
 }
@@ -920,36 +974,113 @@ DocumentView* MainWindow::currentDocument() const
 
 bool MainWindow::openFile(const QString& path)
 {
+    QString error;
+    if (showFile(path, false, &error))
+        return true;
+    QMessageBox::warning(this, tr("Cannot Open File"), error);
+    return false;
+}
+
+bool MainWindow::previewFile(const QString& path)
+{
+    QString error;
+    if (showFile(path, true, &error))
+        return true;
+    statusBar()->showMessage(error.simplified(), kStatusTimeoutMs);
+    return false;
+}
+
+bool MainWindow::openFolder(const QString& path)
+{
+    if (!m_folders->setFolder(path)) {
+        QMessageBox::warning(this, tr("Open Folder"),
+                             tr("%1 is not a folder, or no longer exists.").arg(QDir::toNativeSeparators(path)));
+        return false;
+    }
+    m_folderDock->show();
+    m_folderDock->raise();
+    m_lastDirectory = m_folders->folder();
+    return true;
+}
+
+bool MainWindow::openPath(const QString& path)
+{
+    return QFileInfo(path).isDir() ? openFolder(path) : openFile(path);
+}
+
+DocumentView* MainWindow::showFile(const QString& path, bool preview, QString* error)
+{
     const QFileInfo info(path);
     const QString filePath = info.canonicalFilePath().isEmpty() ? info.absoluteFilePath() : info.canonicalFilePath();
     for (int i = 0; i < m_tabs->count(); ++i) {
         if (document(i)->filePath() == filePath) {
             m_tabs->setCurrentIndex(i);
-            return true;
+            if (!preview)
+                keepDocument(document(i));
+            return document(i);
         }
     }
 
     std::error_code ec;
     std::shared_ptr<const core::FileSource> source = core::FileSource::open(toPath(filePath), ec);
     if (!source) {
-        QMessageBox::warning(this, tr("Cannot Open File"),
-                             tr("Cannot open %1:\n%2").arg(QDir::toNativeSeparators(filePath), describeError(ec)));
-        return false;
+        *error = tr("Cannot open %1:\n%2").arg(QDir::toNativeSeparators(filePath), describeError(ec));
+        return nullptr;
     }
 
     const core::FileTypeInfo type = core::detectFileType(source->bytes());
     const core::TextCodec& codec = core::defaultCodec(type, source->bytes(), preferredLegacyCodec());
     auto* doc = new DocumentView(source, type, codec);
-    addDocument(doc);
+    // A preview takes the place of the one before, unless that one was kept meanwhile.
+    DocumentView* replaced = preview && m_previewDoc && !m_previewDoc->isModified() ? m_previewDoc.data() : nullptr;
+    addDocument(doc, replaced ? m_tabs->indexOf(replaced) : -1, !preview);
+    if (replaced) {
+        rememberDocument(replaced, false);
+        discardDocument(replaced);
+    }
     for (const DocumentView::State& state : std::as_const(m_recentFiles)) {
         if (state.path == doc->filePath()) {
             doc->restoreState(state);
             break;
         }
     }
-    moveToFrontOfRecent(doc->filePath());
-    m_lastDirectory = QFileInfo(filePath).absolutePath();
-    return true;
+    if (preview) {
+        m_previewDoc = doc;
+        updateDocumentTitle(doc);
+    } else {
+        moveToFrontOfRecent(doc->filePath());
+        m_lastDirectory = QFileInfo(filePath).absolutePath();
+    }
+    return doc;
+}
+
+void MainWindow::keepDocument(DocumentView* doc)
+{
+    if (!doc || doc != m_previewDoc)
+        return;
+    m_previewDoc = nullptr;
+    updateDocumentTitle(doc);
+    if (!doc->isUntitled()) {
+        moveToFrontOfRecent(doc->filePath());
+        m_lastDirectory = QFileInfo(doc->filePath()).absolutePath();
+    }
+}
+
+void MainWindow::discardDocument(DocumentView* doc)
+{
+    const int index = m_tabs->indexOf(doc);
+    if (index < 0)
+        return;
+    if (doc == m_previewDoc)
+        m_previewDoc = nullptr;
+    dropBackup(doc);
+    // What it reports while going must not reach this window.
+    doc->disconnect(this);
+    doc->textView()->verticalScrollBar()->disconnect(this);
+    m_tabs->removeTab(index);
+    doc->deleteLater();
+    if (m_tabs->count() == 0)
+        m_stack->setCurrentWidget(m_welcome);
 }
 
 void MainWindow::restoreSession(bool reopenTabs)
@@ -966,6 +1097,9 @@ void MainWindow::restoreSession(bool reopenTabs)
     int current = -1;
     if (reopenTabs) {
         const QSettings settings;
+        if (const QString folder = settings.value(QStringLiteral("session/folder")).toString();
+            !folder.isEmpty() && QFileInfo(folder).isDir())
+            m_folders->setFolder(folder);
         QVariantList tabs = settings.value(QStringLiteral("session/tabs")).toList();
         int currentTab = settings.value(QStringLiteral("session/currentTab"), -1).toInt();
         if (!settings.contains(QStringLiteral("session/tabs"))) { // as M5 kept it: paths only
@@ -985,7 +1119,12 @@ void MainWindow::restoreSession(bool reopenTabs)
                 bringBack(*backup);
                 orphans.erase(backup);
             } else if (!path.isEmpty() && QFileInfo::exists(path)) { // files gone since are left out
-                openFile(path);
+                if (tab.value(QStringLiteral("preview")).toBool()) {
+                    QString error;
+                    showFile(path, true, &error);
+                } else {
+                    openFile(path);
+                }
             } else {
                 continue;
             }
@@ -1167,11 +1306,21 @@ QJsonObject MainWindow::backupMeta(const DocumentView* doc, int order) const
             {QStringLiteral("order"), order}};
 }
 
-void MainWindow::rememberDocument(const DocumentView* doc)
+void MainWindow::rememberDocument(const DocumentView* doc, bool toFront)
 {
     if (!doc || doc->isUntitled())
         return;
     const DocumentView::State state = doc->state();
+    if (!toFront) {
+        for (DocumentView::State& remembered : m_recentFiles) {
+            if (remembered.path == state.path) {
+                remembered = state;
+                saveRecentFiles();
+                break;
+            }
+        }
+        return;
+    }
     m_recentFiles.removeIf([&state](const DocumentView::State& s) { return s.path == state.path; });
     m_recentFiles.prepend(state);
     if (m_recentFiles.size() > kMaxRememberedFiles)
@@ -1250,13 +1399,17 @@ void MainWindow::newDocument()
     addDocument(doc);
 }
 
-void MainWindow::addDocument(DocumentView* doc)
+void MainWindow::addDocument(DocumentView* doc, int index, bool focus)
 {
     applyViewSettings(doc);
     doc->setContextActions({m_aiExplainAction, m_aiTranslateAction, m_aiSummarizeAction, m_aiAskAction},
                            {m_aiExplainAction, m_aiSummarizeAction, m_aiAskAction, m_aiIdentifyAction});
     connect(doc, &DocumentView::stateChanged, this, [this, doc] { documentStateChanged(doc); });
-    connect(doc, &DocumentView::modificationChanged, this, [this, doc] { updateDocumentTitle(doc); });
+    connect(doc, &DocumentView::modificationChanged, this, [this, doc](bool modified) {
+        if (modified)
+            keepDocument(doc); // an edited preview stays
+        updateDocumentTitle(doc);
+    });
     BackupInfo& backup = m_backupInfo[doc];
     if (backup.id.isEmpty())
         backup.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -1290,11 +1443,12 @@ void MainWindow::addDocument(DocumentView* doc)
     connect(doc, &DocumentView::statusMessage, this,
             [this](const QString& message) { statusBar()->showMessage(message, kStatusTimeoutMs); });
 
-    const int index = m_tabs->addTab(doc, doc->title());
+    const int at = index < 0 ? m_tabs->addTab(doc, doc->title()) : m_tabs->insertTab(index, doc, doc->title());
     updateDocumentTitle(doc);
-    m_tabs->setCurrentIndex(index);
+    m_tabs->setCurrentIndex(at);
     m_stack->setCurrentWidget(m_tabs);
-    doc->setFocus();
+    if (focus)
+        doc->setFocus();
 }
 
 void MainWindow::showOpenDialog()
@@ -1306,15 +1460,11 @@ void MainWindow::showOpenDialog()
 
 void MainWindow::closeTab(int index)
 {
-    QWidget* widget = m_tabs->widget(index);
-    if (!widget || !confirmClose(document(index)))
+    DocumentView* doc = document(index);
+    if (!doc || !confirmClose(doc))
         return;
-    rememberDocument(document(index));
-    dropBackup(document(index));
-    m_tabs->removeTab(index);
-    widget->deleteLater();
-    if (m_tabs->count() == 0)
-        m_stack->setCurrentWidget(m_welcome);
+    rememberDocument(doc, doc != m_previewDoc);
+    discardDocument(doc);
 }
 
 bool MainWindow::saveDocument(DocumentView* doc)
@@ -1347,6 +1497,7 @@ bool MainWindow::saveDocumentAs(DocumentView* doc)
                              tr("Cannot save %1:\n%2").arg(QDir::toNativeSeparators(path), error));
         return false;
     }
+    keepDocument(doc);
     m_lastDirectory = QFileInfo(path).absolutePath();
     moveToFrontOfRecent(doc->filePath());
     statusBar()->showMessage(tr("Saved %1").arg(QFileInfo(path).fileName()), kStatusTimeoutMs);
@@ -1373,8 +1524,15 @@ void MainWindow::updateDocumentTitle(DocumentView* doc)
     if (index < 0)
         return;
     const QString name = doc->title();
+    const bool preview = doc == m_previewDoc;
     m_tabs->setTabText(index, doc->isModified() ? QStringLiteral("*") + name : name);
-    m_tabs->setTabToolTip(index, doc->isUntitled() ? name : QDir::toNativeSeparators(doc->filePath()));
+    QString tip = doc->isUntitled() ? name : QDir::toNativeSeparators(doc->filePath());
+    if (preview)
+        tip += QLatin1Char('\n') + tr("Preview: the next file clicked in the folder takes this tab. Double-click the "
+                                      "tab to keep it.");
+    m_tabs->setTabToolTip(index, tip);
+    // Dimmed while it is a preview; an invalid colour is the usual one.
+    m_tabs->tabBar()->setTabTextColor(index, preview ? palette().color(QPalette::PlaceholderText) : QColor());
     if (doc == currentDocument()) {
         setWindowTitle(tr("%1[*] — AIEdit").arg(name));
         setWindowModified(doc->isModified());
@@ -1453,6 +1611,7 @@ void MainWindow::updateActions()
     m_reloadAction->setEnabled(onDisk);
     m_followAction->setEnabled(onDisk);
     m_viewModeGroup->setEnabled(hasDocument);
+    m_aiFolderAction->setEnabled(!m_folders->folder().isEmpty());
 }
 
 void MainWindow::setViewMode(DocumentView::ViewMode mode)
@@ -1695,15 +1854,22 @@ void MainWindow::askAboutChapter(int action, const QString& title, const QString
 void MainWindow::showFindInFiles()
 {
     if (!m_findInFilesDock->isVisible()) {
-        // Where the file being read is, and what is selected in it, as a start.
+        // The open folder, or where the file being read is, and what is selected in it, as a start.
+        const QString folder = m_folders->folder();
         if (const DocumentView* doc = currentDocument()) {
-            if (!doc->isUntitled())
+            const bool inFolder = !folder.isEmpty() &&
+                                  (doc->isUntitled() || doc->filePath().startsWith(folder + QLatin1Char('/')));
+            if (inFolder)
+                m_findInFiles->setFolder(folder);
+            else if (!doc->isUntitled())
                 m_findInFiles->setFolder(QFileInfo(doc->filePath()).absolutePath());
             if (doc->isTextActive()) {
                 const QString selected = doc->textView()->selectedText();
                 if (!selected.isEmpty() && selected.size() <= 256 && !selected.contains(QLatin1Char('\n')))
                     m_findInFiles->setQuery(selected);
             }
+        } else if (!folder.isEmpty()) {
+            m_findInFiles->setFolder(folder);
         }
         if (m_findInFiles->folder().isEmpty())
             m_findInFiles->setFolder(m_lastDirectory);
@@ -1729,6 +1895,113 @@ void MainWindow::openAtLine(const QString& path, std::uint64_t line, std::uint64
         doc->restoreState(state);
     }
     doc->textView()->setFocus();
+}
+
+void MainWindow::showFindInFilesIn(const QString& folder)
+{
+    m_findInFiles->setFolder(folder);
+    m_findInFilesDock->show();
+    m_findInFilesDock->raise();
+    m_findInFiles->focusQuery();
+}
+
+void MainWindow::documentsMoved(const QString& from, const QString& to)
+{
+    const QString prefix = from + QLatin1Char('/');
+    const auto moved = [&](const QString& path) -> QString {
+        return path == from || path.startsWith(prefix) ? to + path.mid(from.size()) : QString();
+    };
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        DocumentView* doc = document(i);
+        if (doc->isUntitled())
+            continue;
+        if (const QString path = moved(doc->filePath()); !path.isEmpty() && !doc->followMove(path))
+            statusBar()->showMessage(tr("%1 was moved, but cannot be opened where it is now").arg(doc->title()),
+                                     kStatusTimeoutMs);
+    }
+    // What is remembered of the files goes with them.
+    for (DocumentView::State& state : m_recentFiles)
+        if (const QString path = moved(state.path); !path.isEmpty())
+            state.path = path;
+    saveRecentFiles();
+}
+
+void MainWindow::documentsTrashed(const QString& path)
+{
+    const QString prefix = path + QLatin1Char('/');
+    const auto gone = [&](const QString& file) { return file == path || file.startsWith(prefix); };
+    // Unsaved changes stop the trash before it gets here, so the documents can just go.
+    for (int i = m_tabs->count() - 1; i >= 0; --i) {
+        DocumentView* doc = document(i);
+        if (!doc->isUntitled() && !doc->isModified() && gone(doc->filePath()))
+            discardDocument(doc);
+    }
+    m_recentFiles.removeIf([&gone](const DocumentView::State& state) { return gone(state.path); });
+    saveRecentFiles();
+}
+
+void MainWindow::askAboutFolder(const QString& folder, const QString& summary)
+{
+    QString name = QDir(folder).dirName();
+    if (name.isEmpty())
+        name = QDir::toNativeSeparators(folder);
+    const QString question =
+        tr("What is in this folder? Say what it is for, how it is organized and which files matter most, and point "
+           "out anything unusual. The summary was made on this computer from the names, sizes and first bytes of the "
+           "files; say where it is not enough to tell.");
+    const QString label =
+        tr("a summary of the folder %1: names, sizes and kinds of files, and the first lines of a few").arg(name);
+    m_aiDock->show();
+    m_aiDock->raise();
+    m_aiPanel->askAbout(question, label, summary);
+}
+
+void MainWindow::showOpenFolderDialog()
+{
+    QString start = m_folders->folder();
+    if (start.isEmpty())
+        start = m_lastDirectory;
+    const QString folder = QFileDialog::getExistingDirectory(this, tr("Open Folder"), start);
+    if (!folder.isEmpty())
+        openFolder(folder);
+}
+
+void MainWindow::populateRecentFoldersMenu()
+{
+    m_recentFoldersMenu->clear();
+    const QString home = QDir::homePath();
+    const QStringList folders = m_folders->recentFolders();
+    for (qsizetype i = 0; i < std::min(folders.size(), kRecentFilesInMenu); ++i) {
+        const QString folder = folders[i];
+        QString where = QDir::toNativeSeparators(QFileInfo(folder).absolutePath());
+        if (where.startsWith(QDir::toNativeSeparators(home)))
+            where.replace(0, QDir::toNativeSeparators(home).size(), QStringLiteral("~"));
+        const QString key = i < 9 ? QString::number(i + 1) : QStringLiteral("0");
+        QString name = QDir(folder).dirName();
+        if (name.isEmpty())
+            name = QDir::toNativeSeparators(folder);
+        name.replace(QLatin1Char('&'), QStringLiteral("&&"));
+        QAction* action = m_recentFoldersMenu->addAction(QStringLiteral("&%1  %2  (%3)").arg(key, name, where));
+        action->setToolTip(QDir::toNativeSeparators(folder));
+        connect(action, &QAction::triggered, this, [this, folder] {
+            if (!openFolder(folder))
+                m_folders->forgetFolder(folder);
+        });
+    }
+    if (folders.isEmpty()) {
+        m_recentFoldersMenu->addAction(tr("No Recent Folders"))->setEnabled(false);
+        return;
+    }
+    m_recentFoldersMenu->addSeparator();
+    m_recentFoldersMenu->addAction(tr("&Clear List"), this, [this] { m_folders->clearRecentFolders(); });
+}
+
+void MainWindow::changeEvent(QEvent* event)
+{
+    QMainWindow::changeEvent(event);
+    // The preview tab's dimmed text follows the colour scheme.
+    if (event->type() == QEvent::PaletteChange && m_previewDoc)
+        updateDocumentTitle(m_previewDoc);
 }
 
 void MainWindow::showAbout()

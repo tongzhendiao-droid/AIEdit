@@ -36,7 +36,8 @@ int main(int argc, char* argv[])
                                        QApplication::translate("main", "Open a separate window instead of using "
                                                                        "the one already open."));
     parser.addOption(newWindow);
-    parser.addPositionalArgument(QStringLiteral("files"), QApplication::translate("main", "Files to open."),
+    parser.addPositionalArgument(QStringLiteral("files"),
+                                 QApplication::translate("main", "Files to open, or a folder to show beside them."),
                                  QStringLiteral("[files...]"));
     parser.process(app);
 
@@ -55,17 +56,17 @@ int main(int argc, char* argv[])
     aiedit::ui::MainWindow window;
     QObject::connect(&instance, &aiedit::ui::SingleInstance::filesReceived, &window, [&window](const QStringList& paths) {
         for (const QString& path : paths)
-            window.openFile(path);
+            window.openPath(path);
         window.setWindowState((window.windowState() & ~Qt::WindowMinimized) | Qt::WindowActive);
         window.raise();
         window.activateWindow();
     });
     window.show();
-    // Started on its own, it comes back as it was left; given files, it opens just those.
-    // Unsaved changes come back either way.
+    // Started on its own, it comes back as it was left; given files (or a folder), it opens
+    // just those. Unsaved changes come back either way.
     window.restoreSession(files.isEmpty() && !parser.isSet(newWindow));
     for (const QString& path : files)
-        window.openFile(path);
+        window.openPath(path);
 
     return QApplication::exec();
 }

@@ -41,6 +41,17 @@ inline constexpr std::size_t kSniffSize = 64 * 1024;
 // binary formats by their magic bytes. Pass the whole file; only the first kSniffSize bytes are read.
 FileTypeInfo detectFileType(std::span<const std::uint8_t> data);
 
+// The format a file name's extension stands for, named as detectFileType() names formats, or
+// "text"; empty for an extension that promises nothing in particular, or none. "photo.PNG"
+// gives "PNG", "report.docx" gives "ZIP", "notes.txt" gives "text".
+std::string_view formatForName(std::string_view fileName);
+
+// What the content is when the file name says otherwise: a format name, or "text". Empty when
+// they agree, or when the name or the content says too little to tell (an extension that
+// promises nothing, a binary format without a known signature). "photo.png" holding a JPEG
+// gives "JPEG"; one holding an HTML error page gives "text".
+std::string_view contentMismatch(std::string_view fileName, const FileTypeInfo& type);
+
 // Strict UTF-8 validation (no overlong forms, surrogates or code points above U+10FFFF).
 // With allowTruncatedTail, a multi-byte sequence cut off by the end of the buffer is accepted.
 bool isValidUtf8(std::span<const std::uint8_t> data, bool allowTruncatedTail = false);

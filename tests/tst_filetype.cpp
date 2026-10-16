@@ -29,6 +29,10 @@ private slots:
     void detectLongUtf8CutMidCharacter();
     void utf8Validation_data();
     void utf8Validation();
+    void formatForName_data();
+    void formatForName();
+    void contentMismatch_data();
+    void contentMismatch();
 };
 
 void TestFileType::detect_data()
@@ -128,6 +132,70 @@ void TestFileType::utf8Validation()
     const std::span<const std::uint8_t> span{reinterpret_cast<const std::uint8_t*>(bytes.constData()),
                                              static_cast<std::size_t>(bytes.size())};
     QCOMPARE(isValidUtf8(span, truncatedOk), valid);
+}
+
+void TestFileType::formatForName_data()
+{
+    QTest::addColumn<QString>("name");
+    QTest::addColumn<QString>("format");
+
+    QTest::newRow("png") << "photo.png" << "PNG";
+    QTest::newRow("upper case") << "PHOTO.JPG" << "JPEG";
+    QTest::newRow("office") << "report.docx" << "ZIP";
+    QTest::newRow("text") << "notes.txt" << "text";
+    QTest::newRow("compressed tar") << "src.tar.gz" << "gzip";
+    QTest::newRow("unknown") << "data.dat" << "";
+    QTest::newRow("no extension") << "Makefile" << "";
+    QTest::newRow("dot file") << ".bashrc" << "";
+    QTest::newRow("trailing dot") << "odd." << "";
+}
+
+void TestFileType::formatForName()
+{
+    QFETCH(QString, name);
+    QFETCH(QString, format);
+    const QByteArray utf8 = name.toUtf8();
+    const std::string_view found =
+        aiedit::core::formatForName({utf8.constData(), static_cast<std::size_t>(utf8.size())});
+    QCOMPARE(QString::fromUtf8(found.data(), static_cast<qsizetype>(found.size())), format);
+}
+
+void TestFileType::contentMismatch_data()
+{
+    QTest::addColumn<QString>("name");
+    QTest::addColumn<QByteArray>("content");
+    QTest::addColumn<QString>("mismatch");
+
+    const QByteArray png("\x89PNG\r\n\x1A\n\0\0\0\rIHDR", 16);
+    const QByteArray jpeg("\xFF\xD8\xFF\xE0\0\x10JFIF\0", 11);
+    const QByteArray zip("PK\x03\x04\x14\0\0\0\x08\0", 10);
+    const QByteArray html("<!DOCTYPE html><html><body>404 Not Found</body></html>\n");
+    QByteArray unknown(64, '\0');
+    unknown[1] = '\x42';
+
+    QTest::newRow("as named") << "photo.png" << png << "";
+    QTest::newRow("JPEG named png") << "photo.png" << jpeg << "JPEG";
+    QTest::newRow("error page named png") << "photo.png" << html << "text";
+    QTest::newRow("docx is a zip") << "report.docx" << zip << "";
+    QTest::newRow("zip named txt") << "notes.txt" << zip << "ZIP";
+    QTest::newRow("text named txt") << "notes.txt" << html << "";
+    QTest::newRow("unknown binary named txt") << "notes.txt" << unknown << "";
+    QTest::newRow("unknown binary named png") << "photo.png" << unknown << "";
+    QTest::newRow("empty") << "photo.png" << QByteArray() << "";
+    QTest::newRow("no promise") << "data.dat" << zip << "";
+}
+
+void TestFileType::contentMismatch()
+{
+    QFETCH(QString, name);
+    QFETCH(QByteArray, content);
+    QFETCH(QString, mismatch);
+    const QByteArray utf8 = name.toUtf8();
+    const FileTypeInfo type = detectFileType(
+        {reinterpret_cast<const std::uint8_t*>(content.constData()), static_cast<std::size_t>(content.size())});
+    const std::string_view found =
+        aiedit::core::contentMismatch({utf8.constData(), static_cast<std::size_t>(utf8.size())}, type);
+    QCOMPARE(QString::fromUtf8(found.data(), static_cast<qsizetype>(found.size())), mismatch);
 }
 
 QTEST_APPLESS_MAIN(TestFileType)

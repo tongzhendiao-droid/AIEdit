@@ -109,6 +109,9 @@ public:
     // reason in `error`, if that failed.
     bool save(QString* error = nullptr);
     bool saveAs(const QString& path, QString* error = nullptr);
+    // The file was renamed or moved to `path` (from the folder panel): show it from there, where
+    // it was left. Only for a document without unsaved changes; false if it cannot be opened.
+    bool followMove(const QString& path);
     // Ends every line with `terminator` ("\n", "\r\n" or "\r"), as one edit to undo. False if
     // every line ended so already, or the document cannot be edited.
     bool convertLineEndings(const QString& terminator);
