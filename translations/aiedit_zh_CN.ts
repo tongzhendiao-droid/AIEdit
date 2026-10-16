@@ -2588,6 +2588,10 @@
         <translation>没有匹配的命令</translation>
     </message>
     <message>
+        <source>No file matches (what .gitignore names is left out)</source>
+        <translation>没有匹配的文件（.gitignore 里列出的文件不在其中）</translation>
+    </message>
+    <message>
         <source>No file matches</source>
         <translation>没有匹配的文件</translation>
     </message>

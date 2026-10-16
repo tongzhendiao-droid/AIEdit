@@ -26,6 +26,7 @@ qt_add_library(aiedit_ui STATIC
     FolderPanel.cpp FolderPanel.h
     FolderSummary.cpp FolderSummary.h
     FuzzyMatch.cpp FuzzyMatch.h
+    GitIgnore.cpp GitIgnore.h
     HexCompareView.cpp HexCompareView.h
     HexView.cpp HexView.h
     LineOperations.cpp LineOperations.h

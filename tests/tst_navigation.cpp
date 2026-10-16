@@ -1,7 +1,9 @@
 #include "ui/BackupStore.h"
 #include "ui/DocumentView.h"
+#include "ui/FolderModels.h"
 #include "ui/FolderPanel.h"
 #include "ui/FuzzyMatch.h"
+#include "ui/GitIgnore.h"
 #include "ui/MainWindow.h"
 #include "ui/QuickOpen.h"
 #include "ui/TabWidget.h"
@@ -41,6 +43,23 @@ QByteArray numberedLines(int count)
     return text;
 }
 
+// The files a listing of the folder gives, sorted, with git's ignoring when it applies.
+QStringList listed(const QString& folder)
+{
+    ui::GitIgnore ignore(folder);
+    ui::FileListHooks hooks;
+    QStringList paths;
+    hooks.found = [&paths](std::vector<ui::ListedFile>&& files, int) {
+        for (const ui::ListedFile& file : files)
+            paths << file.relativePath;
+    };
+    if (ignore.isActive())
+        hooks.skipped = [&ignore](const QString& path, bool isDir) { return ignore.isIgnored(path, isDir); };
+    ui::listFiles(folder, ui::NameFilter(), false, hooks);
+    paths.sort();
+    return paths;
+}
+
 } // namespace
 
 class TestNavigation : public QObject
@@ -56,6 +75,8 @@ private slots:
     void fuzzyPrefersWordStartsAndRuns();
     void opensFilesByName();
     void offersOpenAndRecentFilesFirst();
+    void leavesOutWhatGitIgnores();
+    void quickOpenLeavesOutWhatGitIgnores();
     void runsCommands();
     void goesToALine();
     void goesBackAndForward();
@@ -237,6 +258,57 @@ void TestNavigation::offersOpenAndRecentFilesFirst()
     QCOMPARE(quick->shownTexts(), QStringList{QStringLiteral("notes.log")});
     QTest::keyClick(quick->input(), Qt::Key_Return);
     QCOMPARE(window.currentDocument()->filePath(), recent);
+}
+
+void TestNavigation::leavesOutWhatGitIgnores()
+{
+    QVERIFY(QDir(root()).mkpath(QStringLiteral(".git")));
+    write(QStringLiteral(".gitignore"), "# build output\nbuild/\n*.o\n!keep.o\n/notes.txt\n"
+                                        "docs/**/draft.md\nlog?.txt\n[Tt]emp/\n  \n");
+    write(QStringLiteral("src/.gitignore"), "gen/\n");
+    for (const char* name : {"build/x.cpp", "src/a.cpp", "src/a.o", "src/keep.o", "notes.txt", "src/notes.txt",
+                             "src/gen/g.cpp", "docs/a/b/draft.md", "docs/draft.md", "docs/final.md", "log1.txt",
+                             "log10.txt", "Temp/t.txt", "temp/u.txt", "README.md"})
+        write(QString::fromLatin1(name));
+
+    QCOMPARE(listed(root()), (QStringList{QStringLiteral("README.md"), QStringLiteral("docs/final.md"),
+                                          QStringLiteral("log10.txt"), QStringLiteral("src/a.cpp"),
+                                          QStringLiteral("src/keep.o"), QStringLiteral("src/notes.txt")}));
+    // From a folder further down, the files above still count.
+    QCOMPARE(listed(QDir(root()).filePath(QStringLiteral("src"))),
+             (QStringList{QStringLiteral("a.cpp"), QStringLiteral("keep.o"), QStringLiteral("notes.txt")}));
+    // A folder git ignores, opened on purpose, shows all it has.
+    QCOMPARE(listed(QDir(root()).filePath(QStringLiteral("build"))), QStringList{QStringLiteral("x.cpp")});
+
+    // Outside a repository a .gitignore means nothing.
+    QTemporaryDir plain;
+    QFile ignoreFile(QDir(plain.path()).filePath(QStringLiteral(".gitignore")));
+    QVERIFY(ignoreFile.open(QIODevice::WriteOnly));
+    ignoreFile.write("*.o\n");
+    ignoreFile.close();
+    QFile object(QDir(plain.path()).filePath(QStringLiteral("a.o")));
+    QVERIFY(object.open(QIODevice::WriteOnly));
+    object.close();
+    QVERIFY(!ui::GitIgnore(plain.path()).isActive());
+    QCOMPARE(listed(plain.path()), QStringList{QStringLiteral("a.o")});
+}
+
+void TestNavigation::quickOpenLeavesOutWhatGitIgnores()
+{
+    QVERIFY(QDir(root()).mkpath(QStringLiteral(".git")));
+    write(QStringLiteral(".gitignore"), "build/\n");
+    write(QStringLiteral("build/main.cpp"));
+    write(QStringLiteral("src/main.cpp"));
+    ui::MainWindow window;
+    show(window);
+    QVERIFY(window.openFolder(root()));
+    ui::QuickOpen* quick = window.quickOpen();
+    quick->open();
+    QTRY_VERIFY(!quick->isListing());
+    QTest::keyClicks(quick->input(), QStringLiteral("main"));
+    QCOMPARE(quick->shownTexts(), QStringList{QStringLiteral("main.cpp")});
+    quick->input()->setText(QStringLiteral("zzzz"));
+    QCOMPARE(quick->note(), QStringLiteral("No file matches (what .gitignore names is left out)"));
 }
 
 void TestNavigation::runsCommands()

@@ -75,6 +75,9 @@ struct FileListHooks
     std::function<bool()> cancelled;
     // Files that passed, and how many files and folders have been looked at so far.
     std::function<void(std::vector<ListedFile>&& files, int visited)> found;
+    // Files and folders to leave out, a folder with all that is in it (such as what git ignores),
+    // by their path in the folder listed.
+    std::function<bool(const QString& relativePath, bool isDir)> skipped;
 };
 
 struct FileListSummary

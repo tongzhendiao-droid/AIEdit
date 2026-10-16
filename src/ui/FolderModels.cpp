@@ -187,12 +187,14 @@ FileListSummary listFiles(const QString& folder, const NameFilter& filter, bool 
                 summary.limited = true;
                 break;
             }
+            QString relative = root.relativeFilePath(entry.absoluteFilePath());
+            if (hooks.skipped && hooks.skipped(relative, entry.isDir()))
+                continue;
             if (entry.isDir()) {
                 if (!entry.isSymLink())
                     subfolders.push_back(entry.absoluteFilePath());
                 continue;
             }
-            QString relative = root.relativeFilePath(entry.absoluteFilePath());
             if (!filter.matches(relative, entry.fileName()))
                 continue;
             batch.push_back({entry, std::move(relative)});

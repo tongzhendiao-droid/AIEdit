@@ -21,8 +21,8 @@ namespace aiedit::ui {
 
 // Ctrl+P and Ctrl+Shift+P, over the top of the window as in VS Code and Sublime Text: a line to
 // type in, and what matches it, best first (see fuzzyMatch()).
-// - Files: those open, the recent ones and every file of the folder in the folder panel, by
-//   name or by path. With nothing typed, the open and recent ones, with the one after the
+// - Files: those open, the recent ones and every file of the folder in the folder panel (but
+//   for what .gitignore names, in a repository), by name or by path. With nothing typed, the open and recent ones, with the one after the
 //   current document selected: Enter goes back to it. "name:42" opens a file at line 42.
 // - After ">": commands, the actions of the menus, with their shortcuts.
 // - After ":": a line ("42"), or an offset ("0x1F"), in the current document.
@@ -86,6 +86,7 @@ private:
         QString folder;
         std::vector<Candidate> files;
         bool limited = false;
+        bool gitIgnored = false; // what .gitignore names was left out
     };
     class Delegate;
 

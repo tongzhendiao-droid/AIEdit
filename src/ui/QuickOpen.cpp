@@ -2,6 +2,7 @@
 
 #include "ui/FolderModels.h"
 #include "ui/FuzzyMatch.h"
+#include "ui/GitIgnore.h"
 
 #include <QAction>
 #include <QApplication>
@@ -341,6 +342,11 @@ void QuickOpen::listFolder()
         result.folder = folder;
         FileListHooks hooks;
         hooks.cancelled = [&promise] { return promise.isCanceled(); };
+        // What git ignores, build output and the like, is left out, as in VS Code.
+        GitIgnore ignore(folder);
+        result.gitIgnored = ignore.isActive();
+        if (ignore.isActive())
+            hooks.skipped = [&ignore](const QString& path, bool isDir) { return ignore.isIgnored(path, isDir); };
         hooks.found = [&result](std::vector<ListedFile>&& files, int) {
             for (ListedFile& file : files) {
                 Candidate candidate;
@@ -496,7 +502,9 @@ void QuickOpen::refilter()
 
     QString note;
     if (m_list->count() == 0 && (m_commands || !isListing()))
-        note = m_commands ? tr("No command matches") : tr("No file matches");
+        note = m_commands                                   ? tr("No command matches")
+               : folderListed && m_folderFiles.gitIgnored ? tr("No file matches (what .gitignore names is left out)")
+                                                            : tr("No file matches");
     else if (!m_commands && isListing())
         note = tr("Listing the files of %1…").arg(QDir(m_folder).dirName());
     else if (folderListed && m_folderFiles.limited)
