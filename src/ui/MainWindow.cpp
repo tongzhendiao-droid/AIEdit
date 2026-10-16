@@ -11,11 +11,13 @@
 #include "ui/HexCompareView.h"
 #include "ui/ContentsPanel.h"
 #include "ui/DataInspector.h"
+#include "ui/Desktop.h"
 #include "ui/FindInFilesPanel.h"
 #include "ui/FolderPanel.h"
 #include "ui/HexView.h"
 #include "ui/Paths.h"
 #include "ui/SyntaxHighlighting.h"
+#include "ui/TabWidget.h"
 #include "ui/TextDocument.h"
 #include "ui/TextView.h"
 
@@ -42,8 +44,11 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QMouseEvent>
+#include <QProcess>
 #include <QPushButton>
 #include <QRegularExpression>
+#include <QScopedValueRollback>
 #include <QScrollBar>
 #include <QSettings>
 #include <QSignalBlocker>
@@ -55,6 +60,7 @@
 #include <QUuid>
 
 #include <algorithm>
+#include <memory>
 
 namespace aiedit::ui {
 
@@ -116,15 +122,37 @@ QString lineEndingName(const core::LineEndings& endings)
 // How many files are remembered, and how many of them the File menu lists.
 constexpr qsizetype kMaxRememberedFiles = 50;
 constexpr qsizetype kRecentFilesInMenu = 10;
+constexpr qsizetype kMaxClosedTabs = 20; // to reopen
+constexpr qsizetype kMaxPlaces = 50;     // to go back to
+constexpr std::size_t kMaxBookmarks = 1000; // remembered of a file
+// Moving the caret further than this at once is a jump, which Back goes back from.
+constexpr std::uint64_t kJumpLines = 10;
+
+// An action's text as a command: without its mnemonic, "&Save" or "保存(&S)", nor its shortcut.
+QString plainText(const QString& text)
+{
+    static const QRegularExpression cjkMnemonic(QStringLiteral("\\(&[^&]\\)"));
+    static const QRegularExpression mnemonic(QStringLiteral("&(.)"));
+    QString plain = text.section(QLatin1Char('\t'), 0, 0);
+    plain.remove(cjkMnemonic);
+    plain.replace(mnemonic, QStringLiteral("\\1"));
+    return plain.trimmed();
+}
 
 QVariantMap toVariant(const DocumentView::State& state)
 {
-    return {{QStringLiteral("path"), state.path},
-            {QStringLiteral("cursor"), static_cast<qulonglong>(state.cursor)},
-            {QStringLiteral("top"), static_cast<qulonglong>(state.top)},
-            {QStringLiteral("mode"), static_cast<int>(state.mode)},
-            {QStringLiteral("codec"), state.codec},
-            {QStringLiteral("reading"), state.reading}};
+    QVariantMap map{{QStringLiteral("path"), state.path},
+                    {QStringLiteral("cursor"), static_cast<qulonglong>(state.cursor)},
+                    {QStringLiteral("top"), static_cast<qulonglong>(state.top)},
+                    {QStringLiteral("mode"), static_cast<int>(state.mode)},
+                    {QStringLiteral("codec"), state.codec},
+                    {QStringLiteral("reading"), state.reading}};
+    QVariantList bookmarks;
+    for (std::size_t i = 0; i < std::min(state.bookmarks.size(), kMaxBookmarks); ++i)
+        bookmarks << static_cast<qulonglong>(state.bookmarks[i]);
+    if (!bookmarks.isEmpty())
+        map.insert(QStringLiteral("bookmarks"), bookmarks);
+    return map;
 }
 
 DocumentView::State stateFromVariant(const QVariant& value)
@@ -137,6 +165,8 @@ DocumentView::State stateFromVariant(const QVariant& value)
     state.mode = static_cast<DocumentView::ViewMode>(std::clamp(map.value(QStringLiteral("mode")).toInt(), 0, 2));
     state.codec = map.value(QStringLiteral("codec")).toString();
     state.reading = map.value(QStringLiteral("reading")).toBool();
+    for (const QVariant& bookmark : map.value(QStringLiteral("bookmarks")).toList())
+        state.bookmarks.push_back(bookmark.toULongLong());
     return state;
 }
 
@@ -193,11 +223,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     createCodecMenu();
     readSettings();
     currentTabChanged();
+    updateSideBarAction();
     connect(QGuiApplication::clipboard(), &QClipboard::dataChanged, this,
             [this] { updateEditActions(currentDocument()); });
     m_backupTimer.setSingleShot(true);
     m_backupTimer.setInterval(kBackupDelayMs);
     connect(&m_backupTimer, &QTimer::timeout, this, &MainWindow::writeBackups);
+    qApp->installEventFilter(this); // the mouse's back and forward buttons
 }
 
 MainWindow::~MainWindow()
@@ -210,6 +242,11 @@ MainWindow::~MainWindow()
             continue;
         doc->disconnect(this);
         doc->textView()->verticalScrollBar()->disconnect(this);
+    }
+    // The docks hide as they go, which the side bar's toggle would hear.
+    for (QDockWidget* dock : findChildren<QDockWidget*>(Qt::FindDirectChildrenOnly)) {
+        dock->disconnect(this);
+        dock->toggleViewAction()->disconnect(this);
     }
 }
 
@@ -244,24 +281,16 @@ void MainWindow::createWidgets()
     welcomeLayout->addLayout(buttons);
     welcomeLayout->addStretch();
 
-    m_tabs = new QTabWidget;
-    m_tabs->setDocumentMode(true);
-    m_tabs->setTabsClosable(true);
-    m_tabs->setMovable(true);
-    m_tabs->tabBar()->setElideMode(Qt::ElideMiddle);
+    m_tabs = new TabWidget;
     connect(m_tabs, &QTabWidget::tabCloseRequested, this, &MainWindow::closeTab);
     connect(m_tabs, &QTabWidget::currentChanged, this, &MainWindow::currentTabChanged);
-    // A new tab from the + button, or by double-clicking the empty part of the tab bar.
-    auto* newTab = new QToolButton;
-    newTab->setAutoRaise(true);
-    newTab->setToolTip(tr("New file (%1)").arg(QKeySequence(QKeySequence::New).toString(QKeySequence::NativeText)));
-    if (const QIcon icon = QIcon::fromTheme(QStringLiteral("tab-new"), QIcon::fromTheme(QStringLiteral("list-add")));
-        !icon.isNull())
-        newTab->setIcon(icon);
-    else
-        newTab->setText(QStringLiteral("+"));
-    connect(newTab, &QToolButton::clicked, this, &MainWindow::newDocument);
-    m_tabs->setCornerWidget(newTab, Qt::TopRightCorner);
+    connect(m_tabs, &TabWidget::pinnedChanged, this, [this] { updateActions(); });
+    m_tabs->tabBar()->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_tabs->tabBar(), &QWidget::customContextMenuRequested, this, &MainWindow::showTabMenu);
+    // A new tab from the + after the last one, or by double-clicking the empty part of the bar.
+    m_tabs->newTabButton()->setToolTip(
+        tr("New file (%1)").arg(QKeySequence(QKeySequence::New).toString(QKeySequence::NativeText)));
+    connect(m_tabs, &TabWidget::newTabRequested, this, &MainWindow::newDocument);
     // Double-clicking a tab keeps it, if it is the preview tab.
     connect(m_tabs, &QTabWidget::tabBarDoubleClicked, this, [this](int index) {
         if (index < 0)
@@ -329,8 +358,31 @@ void MainWindow::createWidgets()
     connect(m_folders, &FolderPanel::folderSummarized, this, &MainWindow::askAboutFolder);
     connect(m_folders, &FolderPanel::pathRenamed, this, &MainWindow::documentsMoved);
     connect(m_folders, &FolderPanel::pathTrashed, this, &MainWindow::documentsTrashed);
-    connect(m_folders, &FolderPanel::folderChanged, this, [this] { updateActions(); });
+    connect(m_folders, &FolderPanel::folderChanged, this, [this](const QString& folder) {
+        m_quickOpen->setFolder(folder);
+        updateActions();
+    });
     connect(m_folders, &FolderPanel::compareRequested, this, &MainWindow::compareFiles);
+    // Ctrl+P, and Ctrl+Shift+P, over the top of the window.
+    m_quickOpen = new QuickOpen(this);
+    m_quickOpen->setFileSource([this] { return quickOpenFiles(); });
+    m_quickOpen->setCommandSource([this] { return quickOpenCommands(); });
+    connect(m_quickOpen, &QuickOpen::fileChosen, this, [this](const QString& path, std::optional<std::uint64_t> line) {
+        if (!openFile(path))
+            return;
+        DocumentView* doc = currentDocument();
+        if (line) {
+            if (doc->viewMode() == DocumentView::ViewMode::Hex)
+                doc->setViewMode(DocumentView::ViewMode::Text);
+            if (!doc->textView()->goToLine(*line))
+                statusBar()->showMessage(
+                    tr("Line %1 does not exist (yet)").arg(QLocale().toString(static_cast<qulonglong>(*line + 1))),
+                    kStatusTimeoutMs);
+        }
+        doc->setFocus();
+    });
+    connect(m_quickOpen, &QuickOpen::positionChosen, this, &MainWindow::goToPosition);
+
     m_folderDock = new QDockWidget(tr("Folder"), this);
     m_folderDock->setObjectName(QStringLiteral("folderDock"));
     m_folderDock->setWidget(m_folders);
@@ -381,7 +433,11 @@ void MainWindow::createWidgets()
     });
     m_lineEndingButton->setMenu(lineEndingMenu);
     m_linesLabel = new QLabel;
-    m_positionLabel = new QLabel;
+    m_positionLabel = new QToolButton;
+    m_positionLabel->setAutoRaise(true);
+    m_positionLabel->setToolTip(tr("Click to go to a line or an offset (%1)")
+                                    .arg(QKeySequence(Qt::CTRL | Qt::Key_G).toString(QKeySequence::NativeText)));
+    connect(m_positionLabel, &QToolButton::clicked, this, &MainWindow::goTo);
     m_selectionLabel = new QLabel;
     m_compareStatus = new QLabel;
     m_compareStatus->hide();
@@ -401,6 +457,13 @@ void MainWindow::createActions()
     m_newAction = new QAction(tr("&New"), this);
     m_newAction->setShortcut(QKeySequence::New);
     connect(m_newAction, &QAction::triggered, this, &MainWindow::newDocument);
+    // Another AIEdit, as in VS Code; it leaves this one's session alone.
+    m_newWindowAction = new QAction(tr("New &Window"), this);
+    m_newWindowAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_N));
+    connect(m_newWindowAction, &QAction::triggered, this, [this] {
+        if (!QProcess::startDetached(QCoreApplication::applicationFilePath(), {QStringLiteral("--new-window")}))
+            statusBar()->showMessage(tr("Cannot start another window"), kStatusTimeoutMs);
+    });
 
     m_openAction = new QAction(tr("&Open…"), this);
     m_openAction->setShortcut(QKeySequence::Open);
@@ -410,8 +473,21 @@ void MainWindow::createActions()
     connect(m_openFolderAction, &QAction::triggered, this, &MainWindow::showOpenFolderDialog);
 
     m_closeAction = new QAction(tr("&Close Tab"), this);
-    m_closeAction->setShortcut(QKeySequence::Close);
+    // Ctrl+W first, as in every editor; on some desktops, GNOME's among them, Qt has only Ctrl+F4.
+    QList<QKeySequence> closeKeys = QKeySequence::keyBindings(QKeySequence::Close);
+    closeKeys.removeAll(QKeySequence(Qt::CTRL | Qt::Key_W));
+    closeKeys.prepend(QKeySequence(Qt::CTRL | Qt::Key_W));
+    m_closeAction->setShortcuts(closeKeys);
     connect(m_closeAction, &QAction::triggered, this, [this] { closeTab(m_tabs->currentIndex()); });
+    m_closeAllAction = new QAction(tr("Close All Ta&bs"), this);
+    m_closeAllAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_W)); // as in Notepad++
+    m_closeAllAction->setToolTip(tr("Close every tab but the pinned ones"));
+    connect(m_closeAllAction, &QAction::triggered, this, [this] { closeTabs([](int) { return true; }); });
+    // Ctrl+Shift+T, as in browsers, Notepad++ and VS Code.
+    m_reopenTabAction = new QAction(tr("Reo&pen Closed Tab"), this);
+    m_reopenTabAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T));
+    m_reopenTabAction->setEnabled(false);
+    connect(m_reopenTabAction, &QAction::triggered, this, &MainWindow::reopenClosedTab);
 
     m_saveAction = new QAction(tr("&Save"), this);
     m_saveAction->setShortcut(QKeySequence::Save);
@@ -425,25 +501,18 @@ void MainWindow::createActions()
         if (DocumentView* doc = currentDocument())
             saveDocumentAs(doc);
     });
+    m_saveAllAction = new QAction(tr("Save A&ll"), this);
+    m_saveAllAction->setToolTip(tr("Save every document with unsaved changes"));
+    connect(m_saveAllAction, &QAction::triggered, this, &MainWindow::saveAll);
 
     m_reloadAction = new QAction(tr("&Reload"), this);
     m_reloadAction->setShortcut(QKeySequence(Qt::Key_F5));
-    connect(m_reloadAction, &QAction::triggered, this, [this] {
-        DocumentView* doc = currentDocument();
-        if (!doc)
-            return;
-        if (doc->isModified() &&
-            QMessageBox::question(this, tr("Reload"),
-                                  tr("Discard your changes to %1 and load it from disk again?").arg(doc->title()),
-                                  QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Discard)
-            return;
-        doc->reload();
-    });
+    connect(m_reloadAction, &QAction::triggered, this, [this] { reloadDocument(currentDocument()); });
 
     m_followAction = new QAction(tr("&Follow End of File"), this);
     m_followAction->setCheckable(true);
-    // T for tail -f; Ctrl+Shift+F is Find in Files, as in most editors.
-    m_followAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_T));
+    // F5 reloads once; Shift+F5 keeps reloading, as tail -f does.
+    m_followAction->setShortcut(QKeySequence(Qt::SHIFT | Qt::Key_F5));
     m_followAction->setToolTip(tr("Keep showing the end of the file as it grows, like tail -f"));
     connect(m_followAction, &QAction::toggled, this, [this](bool on) {
         if (DocumentView* doc = currentDocument())
@@ -456,6 +525,24 @@ void MainWindow::createActions()
     m_readingAction->setToolTip(tr("Read a book: no line numbers, the text in a column in the middle with room "
                                    "between the lines, and its contents beside it"));
     connect(m_readingAction, &QAction::triggered, this, &MainWindow::setReadingMode);
+
+    m_fullScreenAction = new QAction(tr("F&ull Screen"), this);
+    m_fullScreenAction->setCheckable(true);
+    m_fullScreenAction->setShortcut(QKeySequence(Qt::Key_F11));
+    // Back to maximized, if it was.
+    connect(m_fullScreenAction, &QAction::triggered, this,
+            [this] { setWindowState(windowState() ^ Qt::WindowFullScreen); });
+    // Ctrl+B, as VS Code shows and hides its side bar.
+    m_sideBarAction = new QAction(tr("Side &Bar"), this);
+    m_sideBarAction->setCheckable(true);
+    m_sideBarAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_B));
+    m_sideBarAction->setToolTip(tr("Show or hide the panels on the left, such as the folder and the contents"));
+    connect(m_sideBarAction, &QAction::triggered, this, &MainWindow::setSideBarVisible);
+    for (QDockWidget* dock : findChildren<QDockWidget*>(Qt::FindDirectChildrenOnly)) {
+        connect(dock->toggleViewAction(), &QAction::toggled, this, &MainWindow::updateSideBarAction);
+        connect(dock, &QDockWidget::dockLocationChanged, this, &MainWindow::updateSideBarAction);
+        connect(dock, &QDockWidget::topLevelChanged, this, &MainWindow::updateSideBarAction);
+    }
 
     m_wordWrapAction = new QAction(tr("&Word Wrap"), this);
     m_wordWrapAction->setCheckable(true);
@@ -514,11 +601,76 @@ void MainWindow::createActions()
     lineAction(tr("&Trim Trailing Whitespace"), LineOperation::TrimTrailingWhitespace);
     lineAction(tr("Move Line U&p"), LineOperation::MoveUp, QKeySequence(Qt::ALT | Qt::Key_Up));
     lineAction(tr("Move Line Do&wn"), LineOperation::MoveDown, QKeySequence(Qt::ALT | Qt::Key_Down));
+    // Ctrl+D as in Notepad++; Shift+Alt+Down and Up copy a line down or up, as in VS Code.
     lineAction(tr("Dup&licate Line"), LineOperation::Duplicate, QKeySequence(Qt::CTRL | Qt::Key_D));
+    m_lineActions.constLast()->setShortcuts(
+        {QKeySequence(Qt::CTRL | Qt::Key_D), QKeySequence(Qt::SHIFT | Qt::ALT | Qt::Key_Down)});
+    lineAction(tr("&Copy Line Up"), LineOperation::CopyUp, QKeySequence(Qt::SHIFT | Qt::ALT | Qt::Key_Up));
+    lineAction(tr("Delete L&ine"), LineOperation::Delete, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_K));
+    lineAction(tr("&Join Lines"), LineOperation::Join, QKeySequence(Qt::CTRL | Qt::Key_J));
+    lineAction(tr("Insert Line &Below"), LineOperation::InsertBelow, QKeySequence(Qt::CTRL | Qt::Key_Return));
+    m_lineActions.constLast()->setShortcuts(
+        {QKeySequence(Qt::CTRL | Qt::Key_Return), QKeySequence(Qt::CTRL | Qt::Key_Enter)});
+    lineAction(tr("Insert Line Abo&ve"), LineOperation::InsertAbove,
+               QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Return));
+    m_lineActions.constLast()->setShortcuts({QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Return),
+                                             QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Enter)});
+    m_selectLineAction = documentAction(
+        tr("Select Line"), [](DocumentView* doc) { doc->textView()->selectLines(); },
+        QKeySequence(Qt::CTRL | Qt::Key_L));
+    m_commentAction = documentAction(
+        tr("Toggle Co&mment"), [](DocumentView* doc) { doc->toggleComment(); },
+        QKeySequence(Qt::CTRL | Qt::Key_Slash));
+    // No keys for these: Ctrl+Shift+U is for typing Unicode characters on Linux.
+    m_caseActions << documentAction(tr("&UPPER CASE"), [](DocumentView* doc) { doc->convertCase(true); });
+    m_caseActions << documentAction(tr("&lower case"), [](DocumentView* doc) { doc->convertCase(false); });
 
-    m_goToAction = new QAction(tr("&Go To…"), this);
+    m_goToAction = new QAction(tr("Go to &Line or Offset…"), this);
     m_goToAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
     connect(m_goToAction, &QAction::triggered, this, &MainWindow::goTo);
+    m_quickOpenAction = new QAction(tr("Go to F&ile…"), this);
+    m_quickOpenAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
+    m_quickOpenAction->setToolTip(tr("Open a file by typing part of its name: one open, recent, or in the folder"));
+    connect(m_quickOpenAction, &QAction::triggered, this, [this] { m_quickOpen->open(); });
+    m_commandPaletteAction = new QAction(tr("Co&mmand Palette…"), this);
+    m_commandPaletteAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_P));
+    m_commandPaletteAction->setToolTip(tr("Do what the menus do by typing part of its name"));
+    connect(m_commandPaletteAction, &QAction::triggered, this,
+            [this] { m_quickOpen->open(QStringLiteral(">")); });
+    // Alt+Left and Alt+Right as in browsers, and the keys made for it.
+    m_backAction = new QAction(tr("&Back"), this);
+    m_backAction->setShortcuts({QKeySequence(Qt::ALT | Qt::Key_Left), QKeySequence(Qt::Key_Back)});
+    m_backAction->setToolTip(tr("Back to where the caret was before it jumped, or before another document"));
+    m_backAction->setEnabled(false);
+    connect(m_backAction, &QAction::triggered, this, &MainWindow::goBack);
+    m_forwardAction = new QAction(tr("&Forward"), this);
+    m_forwardAction->setShortcuts({QKeySequence(Qt::ALT | Qt::Key_Right), QKeySequence(Qt::Key_Forward)});
+    m_forwardAction->setEnabled(false);
+    connect(m_forwardAction, &QAction::triggered, this, &MainWindow::goForward);
+    // Ctrl+F2, F2 and Shift+F2 as in Notepad++.
+    const auto noBookmarks = [this](DocumentView* doc) {
+        statusBar()->showMessage(tr("No line of %1 is bookmarked").arg(doc->title()), kStatusTimeoutMs);
+    };
+    m_bookmarkActions << documentAction(
+        tr("Toggle Book&mark"), [](DocumentView* doc) { doc->textView()->toggleBookmark(); },
+        QKeySequence(Qt::CTRL | Qt::Key_F2));
+    m_bookmarkActions << documentAction(
+        tr("&Next Bookmark"),
+        [noBookmarks](DocumentView* doc) {
+            if (!doc->textView()->goToBookmark(true))
+                noBookmarks(doc);
+        },
+        QKeySequence(Qt::Key_F2));
+    m_bookmarkActions << documentAction(
+        tr("&Previous Bookmark"),
+        [noBookmarks](DocumentView* doc) {
+            if (!doc->textView()->goToBookmark(false))
+                noBookmarks(doc);
+        },
+        QKeySequence(Qt::SHIFT | Qt::Key_F2));
+    m_bookmarkActions << documentAction(
+        tr("&Clear Bookmarks"), [](DocumentView* doc) { doc->textView()->setBookmarks({}); },
+        QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F2));
 
     // F3 rather than QKeySequence::FindNext, which includes Ctrl+G on Linux.
     m_findAction = new QAction(tr("&Find…"), this);
@@ -556,6 +708,20 @@ void MainWindow::createActions()
         if (DocumentView* doc = currentDocument())
             doc->findNext(false);
     });
+    // Ctrl+F3 as in Notepad++ and VS Code.
+    m_findSelectionAction = new QAction(tr("Fin&d Next Selection"), this);
+    m_findSelectionAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F3));
+    m_findSelectionAction->setToolTip(tr("Find the selection, or the word at the caret, further on"));
+    connect(m_findSelectionAction, &QAction::triggered, this, [this] {
+        if (DocumentView* doc = currentDocument())
+            doc->findSelection(true);
+    });
+    m_findSelectionBackAction = new QAction(tr("Find Previous Selection"), this);
+    m_findSelectionBackAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F3));
+    connect(m_findSelectionBackAction, &QAction::triggered, this, [this] {
+        if (DocumentView* doc = currentDocument())
+            doc->findSelection(false);
+    });
 
     m_viewModeGroup = new QActionGroup(this);
     auto modeAction = [this](const QString& text, Qt::Key key, DocumentView::ViewMode mode) {
@@ -569,18 +735,61 @@ void MainWindow::createActions()
     m_hexModeAction = modeAction(tr("&Hex View"), Qt::Key_2, DocumentView::ViewMode::Hex);
     m_splitModeAction = modeAction(tr("&Side by Side"), Qt::Key_3, DocumentView::ViewMode::Split);
 
+    // Ctrl+Tab, and Ctrl+PgDn and Ctrl+PgUp as in browsers and most editors. The Back and
+    // Forward keys, which Qt gives these on some desktops, go back and forward instead.
+    const auto withKey = [](QKeySequence::StandardKey standard, const QKeySequence& extra) {
+        QList<QKeySequence> keys = QKeySequence::keyBindings(standard);
+        keys.removeIf([](const QKeySequence& key) {
+            return key == QKeySequence(Qt::Key_Back) || key == QKeySequence(Qt::Key_Forward);
+        });
+        if (!keys.contains(extra))
+            keys << extra;
+        return keys;
+    };
     m_nextTabAction = new QAction(tr("&Next Tab"), this);
-    m_nextTabAction->setShortcut(QKeySequence::NextChild);
+    m_nextTabAction->setShortcuts(withKey(QKeySequence::NextChild, QKeySequence(Qt::CTRL | Qt::Key_PageDown)));
     connect(m_nextTabAction, &QAction::triggered, this, [this] {
         if (m_tabs->count() > 1)
             m_tabs->setCurrentIndex((m_tabs->currentIndex() + 1) % m_tabs->count());
     });
     m_previousTabAction = new QAction(tr("&Previous Tab"), this);
-    m_previousTabAction->setShortcut(QKeySequence::PreviousChild);
+    m_previousTabAction->setShortcuts(withKey(QKeySequence::PreviousChild, QKeySequence(Qt::CTRL | Qt::Key_PageUp)));
     connect(m_previousTabAction, &QAction::triggered, this, [this] {
         if (m_tabs->count() > 1)
             m_tabs->setCurrentIndex((m_tabs->currentIndex() + m_tabs->count() - 1) % m_tabs->count());
     });
+    m_moveTabLeftAction = new QAction(tr("Move Tab &Left"), this);
+    m_moveTabLeftAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_PageUp));
+    connect(m_moveTabLeftAction, &QAction::triggered, this, [this] {
+        if (const int index = m_tabs->currentIndex(); index >= 0)
+            m_tabs->moveTab(index, index - 1);
+    });
+    m_moveTabRightAction = new QAction(tr("Move Tab &Right"), this);
+    m_moveTabRightAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_PageDown));
+    connect(m_moveTabRightAction, &QAction::triggered, this, [this] {
+        if (const int index = m_tabs->currentIndex(); index >= 0)
+            m_tabs->moveTab(index, index + 1);
+    });
+    m_pinTabAction = new QAction(tr("P&in Tab"), this);
+    m_pinTabAction->setCheckable(true);
+    m_pinTabAction->setToolTip(tr("Keep the tab first, and open when tabs are closed together"));
+    connect(m_pinTabAction, &QAction::triggered, this, [this](bool pin) {
+        DocumentView* doc = currentDocument();
+        m_tabs->setPinned(m_tabs->currentIndex(), pin);
+        if (pin)
+            keepDocument(doc);
+    });
+    // Alt+1 to Alt+8 go to that tab, Alt+9 to the last one, as in browsers.
+    for (int n = 1; n <= 9; ++n) {
+        auto* action = new QAction(n < 9 ? tr("Go to Tab %1").arg(n) : tr("Go to the Last Tab"), this);
+        action->setShortcut(QKeySequence(QKeyCombination(Qt::AltModifier, static_cast<Qt::Key>(Qt::Key_0 + n))));
+        connect(action, &QAction::triggered, this, [this, n] {
+            const int index = n < 9 ? n - 1 : m_tabs->count() - 1;
+            if (index >= 0 && index < m_tabs->count())
+                m_tabs->setCurrentIndex(index);
+        });
+        addAction(action);
+    }
 
     m_zoomInAction = new QAction(tr("Zoom &In"), this);
     m_zoomInAction->setShortcuts({QKeySequence::ZoomIn, QKeySequence(Qt::CTRL | Qt::Key_Equal)});
@@ -618,11 +827,11 @@ void MainWindow::createActions()
     m_aiIdentifyAction = aiAction(tr("What Is This &File?"), &AiPanel::identifyFile);
     m_compareSavedAction = new QAction(tr("With the &Saved Version"), this);
     m_compareSavedAction->setToolTip(tr("What has been changed in the document since it was saved"));
-    connect(m_compareSavedAction, &QAction::triggered, this, &MainWindow::compareWithSaved);
+    connect(m_compareSavedAction, &QAction::triggered, this, [this] { compareWithSaved(); });
     m_compareClipboardAction = new QAction(tr("With the Clip&board"), this);
     connect(m_compareClipboardAction, &QAction::triggered, this, &MainWindow::compareWithClipboard);
     m_compareFileAction = new QAction(tr("With Another &File…"), this);
-    connect(m_compareFileAction, &QAction::triggered, this, &MainWindow::compareWithFile);
+    connect(m_compareFileAction, &QAction::triggered, this, [this] { compareWithFile(currentDocument()); });
     m_compareTwoAction = new QAction(tr("&Two Files…"), this);
     connect(m_compareTwoAction, &QAction::triggered, this, &MainWindow::compareTwoFiles);
 
@@ -656,6 +865,7 @@ void MainWindow::createMenus()
 {
     QMenu* file = menuBar()->addMenu(tr("&File"));
     file->addAction(m_newAction);
+    file->addAction(m_newWindowAction);
     file->addAction(m_openAction);
     file->addAction(m_openFolderAction);
     m_recentMenu = file->addMenu(tr("Recen&t Files"));
@@ -668,8 +878,12 @@ void MainWindow::createMenus()
     compareMenu->addAction(m_compareTwoAction);
     file->addAction(m_saveAction);
     file->addAction(m_saveAsAction);
+    file->addAction(m_saveAllAction);
     file->addAction(m_reloadAction);
+    file->addSeparator();
     file->addAction(m_closeAction);
+    file->addAction(m_closeAllAction);
+    file->addAction(m_reopenTabAction);
     file->addSeparator();
     file->addAction(m_quitAction);
 
@@ -686,21 +900,28 @@ void MainWindow::createMenus()
     edit->addAction(m_copyOffsetAction);
     edit->addSeparator();
     edit->addAction(m_selectAllAction);
+    edit->addAction(m_selectLineAction);
     // On the selected lines, or on all of them.
     QMenu* lines = edit->addMenu(tr("Line Operation&s"));
     lines->addActions(m_lineActions.first(5));
     lines->addSeparator();
     lines->addActions(m_lineActions.sliced(5));
+    edit->addAction(m_commentAction);
+    QMenu* letterCase = edit->addMenu(tr("Convert Case"));
+    letterCase->addActions(m_caseActions);
     edit->addSeparator();
     edit->addAction(m_findAction);
     edit->addAction(m_findNextAction);
     edit->addAction(m_findPreviousAction);
+    edit->addAction(m_findSelectionAction);
+    edit->addAction(m_findSelectionBackAction);
     edit->addAction(m_replaceAction);
     edit->addAction(m_findInFilesAction);
     edit->addAction(m_filterAction);
-    edit->addAction(m_goToAction);
 
     QMenu* view = menuBar()->addMenu(tr("&View"));
+    view->addAction(m_commandPaletteAction);
+    view->addSeparator();
     view->addActions(m_viewModeGroup->actions());
     view->addSeparator();
     view->addAction(m_readingAction);
@@ -710,6 +931,8 @@ void MainWindow::createMenus()
     QAction* showFolder = m_folderDock->toggleViewAction();
     showFolder->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_D)); // D for directory
     view->addAction(showFolder);
+    view->addAction(m_sideBarAction);
+    view->addAction(m_fullScreenAction);
     view->addSeparator();
     view->addAction(m_wordWrapAction);
     view->addAction(m_followAction);
@@ -727,9 +950,18 @@ void MainWindow::createMenus()
     view->addAction(m_fontAction);
     view->addSeparator();
     view->addAction(m_inspectorDock->toggleViewAction());
-    view->addSeparator();
-    view->addAction(m_nextTabAction);
-    view->addAction(m_previousTabAction);
+
+    QMenu* go = menuBar()->addMenu(tr("&Go"));
+    go->addAction(m_backAction);
+    go->addAction(m_forwardAction);
+    go->addSeparator();
+    go->addAction(m_quickOpenAction);
+    go->addAction(m_goToAction);
+    go->addSeparator();
+    go->addActions(m_bookmarkActions);
+    go->addSeparator();
+    QMenu* tabs = go->addMenu(tr("&Tabs"));
+    tabs->addActions({m_nextTabAction, m_previousTabAction, m_moveTabLeftAction, m_moveTabRightAction, m_pinTabAction});
 
     QMenu* ai = menuBar()->addMenu(tr("&AI"));
     QAction* showAi = m_aiDock->toggleViewAction();
@@ -950,16 +1182,20 @@ void MainWindow::closeEvent(QCloseEvent* event)
             continue;
         if (doc == m_previewDoc)
             tab.insert(QStringLiteral("preview"), true);
+        if (m_tabs->isPinned(i))
+            tab.insert(QStringLiteral("pinned"), true);
         if (doc == currentDocument())
             current = static_cast<int>(tabs.size());
         tabs << tab;
     }
     QSettings settings;
-    settings.setValue(QStringLiteral("session/tabs"), tabs);
-    settings.setValue(QStringLiteral("session/currentTab"), current);
-    settings.setValue(QStringLiteral("session/folder"), m_folders->folder());
-    settings.remove(QStringLiteral("session/open")); // as M5 kept it
-    settings.remove(QStringLiteral("session/current"));
+    if (!m_secondary) {
+        settings.setValue(QStringLiteral("session/tabs"), tabs);
+        settings.setValue(QStringLiteral("session/currentTab"), current);
+        settings.setValue(QStringLiteral("session/folder"), m_folders->folder());
+        settings.remove(QStringLiteral("session/open")); // as M5 kept it
+        settings.remove(QStringLiteral("session/current"));
+    }
     writeSettings();
     event->accept();
 }
@@ -1064,10 +1300,13 @@ DocumentView* MainWindow::showFile(const QString& path, bool preview, QString* e
     }
     for (const DocumentView::State& state : std::as_const(m_recentFiles)) {
         if (state.path == doc->filePath()) {
+            const QScopedValueRollback guard(m_navigating, true); // where it was left is no jump
             doc->restoreState(state);
             break;
         }
     }
+    if (doc == currentDocument())
+        m_here = placeOf(doc);
     if (preview) {
         m_previewDoc = doc;
         updateDocumentTitle(doc);
@@ -1114,11 +1353,13 @@ void MainWindow::restoreSession(bool reopenTabs)
     QStringList changedOnDisk;
     QStringList gone;
     const auto bringBack = [&](const BackupStore::Entry& entry) {
-        if (DocumentView* doc = restoreBackup(entry, &changedOnDisk, &gone))
+        DocumentView* doc = restoreBackup(entry, &changedOnDisk, &gone);
+        if (doc)
             restored << doc;
+        return doc;
     };
 
-    int current = -1;
+    QPointer<DocumentView> current;
     if (reopenTabs) {
         const QSettings settings;
         if (const QString folder = settings.value(QStringLiteral("session/folder")).toString();
@@ -1139,21 +1380,23 @@ void MainWindow::restoreSession(bool reopenTabs)
             const QString path = tab.value(QStringLiteral("path")).toString();
             const auto backup = std::find_if(orphans.begin(), orphans.end(),
                                              [&id](const BackupStore::Entry& entry) { return entry.id == id; });
+            DocumentView* opened = nullptr;
             if (!id.isEmpty() && backup != orphans.end()) {
-                bringBack(*backup);
+                opened = bringBack(*backup);
                 orphans.erase(backup);
             } else if (!path.isEmpty() && QFileInfo::exists(path)) { // files gone since are left out
-                if (tab.value(QStringLiteral("preview")).toBool()) {
-                    QString error;
-                    showFile(path, true, &error);
-                } else {
-                    openFile(path);
-                }
-            } else {
-                continue;
+                const bool preview = tab.value(QStringLiteral("preview")).toBool();
+                QString error;
+                opened = showFile(path, preview, &error);
+                if (!opened && !preview)
+                    QMessageBox::warning(this, tr("Cannot Open File"), error);
             }
+            if (!opened)
+                continue;
+            if (tab.value(QStringLiteral("pinned")).toBool())
+                m_tabs->setPinned(m_tabs->indexOf(opened), true);
             if (i == currentTab)
-                current = m_tabs->currentIndex();
+                current = opened;
         }
     }
     // Left by a crash, by another window, or by a start with files to open: they come back too.
@@ -1172,8 +1415,14 @@ void MainWindow::restoreSession(bool reopenTabs)
     }
     if (safe)
         m_backups.discardTaken();
-    if (current >= 0)
-        m_tabs->setCurrentIndex(current);
+    if (current)
+        m_tabs->setCurrentWidget(current);
+    m_back.clear();
+    m_forward.clear();
+    if (DocumentView* doc = currentDocument())
+        m_here = placeOf(doc);
+    m_backAction->setEnabled(false);
+    m_forwardAction->setEnabled(false);
 
     QStringList notes;
     if (!restored.isEmpty())
@@ -1484,21 +1733,272 @@ void MainWindow::showOpenDialog()
         openFile(path);
 }
 
-void MainWindow::closeTab(int index)
+bool MainWindow::closeTab(int index)
 {
     QWidget* widget = m_tabs->widget(index);
     DocumentView* doc = document(index);
     if (!widget || (doc && !confirmClose(doc)))
-        return;
+        return false;
     if (!doc) { // a comparison
         m_tabs->removeTab(index);
         widget->deleteLater();
         if (m_tabs->count() == 0)
             m_stack->setCurrentWidget(m_welcome);
-        return;
+        return true;
+    }
+    if (!doc->isUntitled()) {
+        index = m_tabs->indexOf(doc); // as it is now, after any question
+        m_closedTabs.append({doc->state(), index, m_tabs->isPinned(index)});
+        if (m_closedTabs.size() > kMaxClosedTabs)
+            m_closedTabs.removeFirst();
+        m_reopenTabAction->setEnabled(true);
     }
     rememberDocument(doc, doc != m_previewDoc);
     discardDocument(doc);
+    return true;
+}
+
+bool MainWindow::closeTabs(const std::function<bool(int index)>& pick)
+{
+    QList<QPointer<QWidget>> tabs;
+    for (int i = 0; i < m_tabs->count(); ++i)
+        if (!m_tabs->isPinned(i) && pick(i))
+            tabs << m_tabs->widget(i);
+    for (const QPointer<QWidget>& tab : std::as_const(tabs)) {
+        const int index = tab ? m_tabs->indexOf(tab) : -1;
+        if (index >= 0 && !closeTab(index))
+            return false;
+    }
+    return true;
+}
+
+void MainWindow::reopenClosedTab()
+{
+    while (!m_closedTabs.isEmpty()) {
+        const ClosedTab closed = m_closedTabs.takeLast();
+        m_reopenTabAction->setEnabled(!m_closedTabs.isEmpty());
+        if (!QFileInfo::exists(closed.state.path))
+            continue; // gone since: the tab closed before it, then
+        bool open = false;
+        for (int i = 0; i < m_tabs->count() && !open; ++i)
+            open = document(i) && document(i)->filePath() == closed.state.path;
+        QString error;
+        DocumentView* doc = showFile(closed.state.path, false, &error);
+        if (!doc) {
+            QMessageBox::warning(this, tr("Cannot Open File"), error);
+            return;
+        }
+        if (open)
+            return; // opened again meanwhile: just shown
+        // Where it was, as it was.
+        doc->restoreState(closed.state);
+        if (closed.pinned)
+            m_tabs->setPinned(m_tabs->indexOf(doc), true);
+        m_tabs->moveTab(m_tabs->indexOf(doc), closed.index);
+        return;
+    }
+    statusBar()->showMessage(tr("No closed tab to reopen"), kStatusTimeoutMs);
+}
+
+void MainWindow::saveAll()
+{
+    int saved = 0;
+    for (int i = 0; i < m_tabs->count(); ++i) {
+        DocumentView* doc = document(i);
+        if (!doc || !doc->isModified())
+            continue;
+        if (doc->isUntitled())
+            m_tabs->setCurrentIndex(i); // the document being asked about
+        if (!saveDocument(doc))
+            return; // it failed, after saying why, or was cancelled
+        ++saved;
+    }
+    statusBar()->showMessage(saved > 0 ? tr("Saved %n document(s)", "", saved) : tr("Nothing to save"),
+                             kStatusTimeoutMs);
+}
+
+void MainWindow::reloadDocument(DocumentView* doc)
+{
+    if (!doc || doc->isUntitled())
+        return;
+    if (doc->isModified() &&
+        QMessageBox::question(this, tr("Reload"),
+                              tr("Discard your changes to %1 and load it from disk again?").arg(doc->title()),
+                              QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Discard)
+        return;
+    doc->reload();
+}
+
+void MainWindow::showTabMenu(const QPoint& pos)
+{
+    const std::unique_ptr<QMenu> menu(tabMenu(m_tabs->tabBar()->tabAt(pos)));
+    menu->exec(m_tabs->tabBar()->mapToGlobal(pos));
+}
+
+QMenu* MainWindow::tabMenu(int index)
+{
+    auto* menu = new QMenu(this);
+    menu->setToolTipsVisible(true);
+    QWidget* page = m_tabs->widget(index);
+    if (!page) { // the empty part of the bar
+        menu->addActions({m_newAction, m_reopenTabAction});
+        menu->addSeparator();
+        menu->addAction(m_closeAllAction);
+        return menu;
+    }
+
+    // The actions work on the tab clicked, which need not be the current one, and which may be
+    // gone by the time one is picked.
+    const QPointer<QWidget> tab(page);
+    const auto add = [this, tab](QMenu* to, const QString& text, auto handler, const QKeySequence& keys = {}) {
+        QString label = text;
+        if (!keys.isEmpty()) // shown beside it; the key itself belongs to the window's action
+            label += QLatin1Char('\t') + keys.toString(QKeySequence::NativeText);
+        return to->addAction(label, this, [this, tab, handler] {
+            if (const int at = tab ? m_tabs->indexOf(tab) : -1; at >= 0)
+                handler(at);
+        });
+    };
+    // Whether a bulk close would close any tab: pinned ones stay.
+    const auto any = [this](const std::function<bool(int)>& pick) {
+        for (int i = 0; i < m_tabs->count(); ++i)
+            if (!m_tabs->isPinned(i) && pick(i))
+                return true;
+        return false;
+    };
+    const auto saved = [this](int i) { return !document(i) || !document(i)->isModified(); };
+    DocumentView* doc = document(index);
+    const QString path = doc && !doc->isUntitled() ? doc->filePath() : QString();
+
+    add(menu, tr("&Close"), [this](int at) { closeTab(at); }, m_closeAction->shortcut());
+    add(menu, tr("Close &Others"), [this](int at) {
+        m_tabs->setCurrentIndex(at);
+        closeTabs([at](int i) { return i != at; });
+    })->setEnabled(any([index](int i) { return i != index; }));
+    add(menu, tr("Close to the &Left"), [this](int at) {
+        closeTabs([at](int i) { return i < at; });
+    })->setEnabled(any([index](int i) { return i < index; }));
+    add(menu, tr("Close to the &Right"), [this](int at) {
+        closeTabs([at](int i) { return i > at; });
+    })->setEnabled(any([index](int i) { return i > index; }));
+    QAction* closeSaved = add(menu, tr("Close &Saved"), [this, saved](int) { closeTabs(saved); });
+    closeSaved->setToolTip(tr("Close the tabs without unsaved changes"));
+    closeSaved->setEnabled(any(saved));
+    add(menu, tr("Close &All"), [this](int) { closeTabs([](int) { return true; }); }, m_closeAllAction->shortcut())
+        ->setEnabled(any([](int) { return true; }));
+    menu->addAction(m_reopenTabAction);
+    menu->addSeparator();
+
+    const bool pinned = m_tabs->isPinned(index);
+    add(menu, pinned ? tr("Un&pin Tab") : tr("&Pin Tab"), [this, pinned](int at) {
+        DocumentView* pinning = document(at);
+        m_tabs->setPinned(at, !pinned);
+        if (!pinned)
+            keepDocument(pinning); // a pinned tab is no preview
+    })->setToolTip(tr("A pinned tab stays first, and open when tabs are closed together"));
+    if (doc && doc == m_previewDoc)
+        add(menu, tr("&Keep Open"), [this](int at) { keepDocument(document(at)); })
+            ->setToolTip(tr("This tab shows the file clicked in the folder; kept, it stays when another is clicked"));
+    menu->addSeparator();
+
+    const auto copy = [](const QString& text) { QGuiApplication::clipboard()->setText(text); };
+    add(menu, tr("Copy &Path"), [path, copy](int) { copy(QDir::toNativeSeparators(path)); })
+        ->setEnabled(!path.isEmpty());
+    add(menu, tr("Copy File &Name"), [path, copy](int) { copy(QFileInfo(path).fileName()); })
+        ->setEnabled(!path.isEmpty());
+    const QString folder = m_folders->folder();
+    const bool inFolder = !path.isEmpty() && !folder.isEmpty() && path.startsWith(folder + QLatin1Char('/'));
+    QAction* relative = add(menu, tr("Copy Relative Pa&th"), [path, folder, copy](int) {
+        copy(QDir::toNativeSeparators(QDir(folder).relativeFilePath(path)));
+    });
+    relative->setEnabled(inFolder);
+    relative->setToolTip(tr("The path from the folder open in the folder panel"));
+    add(menu, tr("Show in File &Manager"), [path](int) { showInFileManager(path); })->setEnabled(!path.isEmpty());
+    add(menu, tr("Show in &Folder Panel"), [this, path](int) { showInFolderPanel(path); })
+        ->setEnabled(!path.isEmpty());
+    menu->addSeparator();
+
+    add(menu, tr("Compare with the Sa&ved Version"), [this](int at) { compareWithSaved(document(at)); })
+        ->setEnabled(!path.isEmpty());
+    QMenu* with = menu->addMenu(tr("Compare &With"));
+    with->setEnabled(doc != nullptr);
+    for (int i = 0; doc && i < m_tabs->count(); ++i) {
+        DocumentView* other = document(i);
+        if (!other || other == doc)
+            continue;
+        QString title = other->title();
+        title.replace(QLatin1Char('&'), QStringLiteral("&&"));
+        const QPointer<DocumentView> second(other);
+        add(with, title, [this, second](int at) {
+            if (DocumentView* first = document(at); first && second)
+                compare(documentSide(first), documentSide(second));
+        })->setToolTip(other->isUntitled() ? other->title() : QDir::toNativeSeparators(other->filePath()));
+    }
+    if (!with->isEmpty())
+        with->addSeparator();
+    if (doc)
+        add(with, tr("Another &File…"), [this](int at) { compareWithFile(document(at)); });
+    menu->addSeparator();
+
+    add(menu, tr("Re&name…"), [this, path](int) { m_folders->renamePath(path); })->setEnabled(!path.isEmpty());
+    add(menu, tr("Rel&oad"), [this](int at) { reloadDocument(document(at)); }, m_reloadAction->shortcut())
+        ->setEnabled(!path.isEmpty());
+    return menu;
+}
+
+void MainWindow::setSideBarVisible(bool visible)
+{
+    const QList<QDockWidget*> docks = findChildren<QDockWidget*>(Qt::FindDirectChildrenOnly);
+    if (!visible) {
+        // Those open on the left, the one in front last, to come back in front.
+        m_hiddenSidePanels.clear();
+        QDockWidget* front = nullptr;
+        for (QDockWidget* dock : docks) {
+            if (dock->isFloating() || dockWidgetArea(dock) != Qt::LeftDockWidgetArea ||
+                !dock->toggleViewAction()->isChecked())
+                continue;
+            if (dock->isVisible() && !front)
+                front = dock;
+            else
+                m_hiddenSidePanels << dock;
+        }
+        if (front)
+            m_hiddenSidePanels << front;
+        for (const QPointer<QDockWidget>& dock : std::as_const(m_hiddenSidePanels))
+            dock->hide();
+    } else {
+        if (m_hiddenSidePanels.isEmpty())
+            m_hiddenSidePanels << m_folderDock;
+        for (const QPointer<QDockWidget>& dock : std::as_const(m_hiddenSidePanels)) {
+            if (dock) {
+                dock->show();
+                dock->raise();
+            }
+        }
+        m_hiddenSidePanels.clear();
+    }
+    updateSideBarAction();
+}
+
+void MainWindow::updateSideBarAction()
+{
+    bool shown = false;
+    for (QDockWidget* dock : findChildren<QDockWidget*>(Qt::FindDirectChildrenOnly))
+        shown = shown || (!dock->isFloating() && dockWidgetArea(dock) == Qt::LeftDockWidgetArea &&
+                          dock->toggleViewAction()->isChecked());
+    m_sideBarAction->setChecked(shown);
+}
+
+void MainWindow::showInFolderPanel(const QString& path)
+{
+    const QString folder = m_folders->folder();
+    if (folder.isEmpty() || !path.startsWith(folder + QLatin1Char('/'))) {
+        if (!openFolder(QFileInfo(path).absolutePath()))
+            return;
+    }
+    m_folderDock->show();
+    m_folderDock->raise();
+    m_folders->select(path);
 }
 
 bool MainWindow::saveDocument(DocumentView* doc)
@@ -1576,6 +2076,9 @@ void MainWindow::updateDocumentTitle(DocumentView* doc)
 void MainWindow::currentTabChanged()
 {
     DocumentView* doc = currentDocument();
+    m_recentDocs.removeIf([doc](const QPointer<DocumentView>& recent) { return !recent || recent == doc; });
+    if (doc)
+        m_recentDocs.prepend(doc);
     m_inspector->setSource(doc ? doc->source() : nullptr);
     m_contents->setDocument(doc);
     if (doc) {
@@ -1615,6 +2118,7 @@ void MainWindow::documentStateChanged(DocumentView* doc)
     updateCursorStatus();
     updateTextStatus();
     m_aiPanel->refreshContext();
+    notePlace();
 }
 
 void MainWindow::updateEditActions(DocumentView* doc)
@@ -1633,17 +2137,28 @@ void MainWindow::updateEditActions(DocumentView* doc)
     m_pasteAction->setEnabled(editing && clipboard && clipboard->hasText());
     for (QAction* action : std::as_const(m_lineActions))
         action->setEnabled(editing);
+    for (QAction* action : std::as_const(m_caseActions))
+        action->setEnabled(editing);
+    m_commentAction->setEnabled(editing);
+    m_selectLineAction->setEnabled(doc && doc->isTextActive());
 }
 
 void MainWindow::updateActions()
 {
     DocumentView* doc = currentDocument();
     const bool hasDocument = doc != nullptr;
-    for (QAction* action : {m_closeAction, m_saveAction, m_saveAsAction, m_copyOffsetAction, m_goToAction, m_findAction,
-                            m_findNextAction, m_findPreviousAction, m_replaceAction, m_filterAction, m_aiAskAction,
-                            m_aiIdentifyAction, m_readingAction}) {
+    for (QAction* action : {m_saveAction, m_saveAsAction, m_copyOffsetAction, m_goToAction, m_findAction,
+                            m_findNextAction, m_findPreviousAction, m_findSelectionAction, m_findSelectionBackAction,
+                            m_replaceAction, m_filterAction, m_aiAskAction, m_aiIdentifyAction, m_readingAction}) {
         action->setEnabled(hasDocument);
     }
+    for (QAction* action : std::as_const(m_bookmarkActions))
+        action->setEnabled(hasDocument);
+    // Comparisons are tabs too.
+    const bool hasTab = m_tabs->currentIndex() >= 0;
+    for (QAction* action : {m_closeAction, m_closeAllAction, m_moveTabLeftAction, m_moveTabRightAction, m_pinTabAction})
+        action->setEnabled(hasTab);
+    m_pinTabAction->setChecked(hasTab && m_tabs->isPinned(m_tabs->currentIndex()));
     // A new document has no file on disk to reload or follow yet.
     const bool onDisk = hasDocument && !doc->isUntitled();
     m_reloadAction->setEnabled(onDisk);
@@ -1790,7 +2305,15 @@ void MainWindow::goTo()
     if (!ok || input.isEmpty())
         return;
     m_lastGoTo = input;
+    goToPosition(input);
+}
 
+void MainWindow::goToPosition(const QString& input)
+{
+    DocumentView* doc = currentDocument();
+    if (!doc || doc->source()->size() == 0)
+        return;
+    const bool text = doc->isTextActive();
     // In the text view a plain number is a line; anything that looks hexadecimal is an offset.
     const bool looksLikeOffset = input.contains(QLatin1Char('x'), Qt::CaseInsensitive) ||
                                  input.endsWith(QLatin1Char('h'), Qt::CaseInsensitive);
@@ -1823,6 +2346,171 @@ void MainWindow::goTo()
         doc->hexView()->goTo(*offset);
         doc->hexView()->setFocus();
     }
+}
+
+// Back and forward ---------------------------------------------------------------------------------
+
+MainWindow::Place MainWindow::placeOf(DocumentView* doc) const
+{
+    Place place;
+    place.doc = doc;
+    if (!doc->isUntitled())
+        place.path = doc->filePath();
+    place.offset = doc->cursorOffset();
+    const core::LineIndex& index = doc->textDocument()->index();
+    if (index.rowCount() > 0)
+        place.line = index.row(index.rowIndexAt(place.offset)).line;
+    return place;
+}
+
+void MainWindow::notePlace()
+{
+    DocumentView* doc = currentDocument();
+    if (m_navigating || !doc)
+        return;
+    // Moving a few lines moves the place; a jump, or another document, leaves a new one behind.
+    const Place now = placeOf(doc);
+    const std::uint64_t moved = now.line > m_here.line ? now.line - m_here.line : m_here.line - now.line;
+    if ((m_here.doc != doc || moved > kJumpLines) && (m_here.doc || !m_here.path.isEmpty())) {
+        m_back.append(m_here);
+        if (m_back.size() > kMaxPlaces)
+            m_back.removeFirst();
+        m_forward.clear();
+        m_forwardAction->setEnabled(false);
+        m_backAction->setEnabled(true);
+    }
+    m_here = now;
+}
+
+bool MainWindow::goToPlace(const Place& place)
+{
+    const QScopedValueRollback guard(m_navigating, true);
+    DocumentView* doc = place.doc;
+    if (doc && m_tabs->indexOf(doc) < 0)
+        doc = nullptr; // its tab was closed; it goes shortly
+    if (!doc) { // closed since: open it again
+        if (place.path.isEmpty() || !QFileInfo::exists(place.path))
+            return false;
+        QString error;
+        doc = showFile(place.path, false, &error);
+        if (!doc)
+            return false;
+    }
+    m_tabs->setCurrentWidget(doc);
+    if (doc->isTextActive())
+        doc->textView()->goToOffset(place.offset);
+    else
+        doc->hexView()->goTo(place.offset);
+    doc->setFocus();
+    m_here = placeOf(doc);
+    return true;
+}
+
+void MainWindow::goBack()
+{
+    notePlace(); // where the caret is now, to come forward to
+    while (!m_back.isEmpty()) {
+        const Place here = m_here;
+        if (goToPlace(m_back.takeLast())) {
+            m_forward.append(here);
+            break;
+        }
+    }
+    m_backAction->setEnabled(!m_back.isEmpty());
+    m_forwardAction->setEnabled(!m_forward.isEmpty());
+}
+
+void MainWindow::goForward()
+{
+    notePlace();
+    while (!m_forward.isEmpty()) {
+        const Place here = m_here;
+        if (goToPlace(m_forward.takeLast())) {
+            m_back.append(here);
+            break;
+        }
+    }
+    m_backAction->setEnabled(!m_back.isEmpty());
+    m_forwardAction->setEnabled(!m_forward.isEmpty());
+}
+
+bool MainWindow::eventFilter(QObject* watched, QEvent* event)
+{
+    // The mouse's back and forward buttons, anywhere in the window; a quick second press comes
+    // as a double-click.
+    const bool pressed = event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonDblClick;
+    if (pressed && watched->isWidgetType() && static_cast<QWidget*>(watched)->window() == this) {
+        const Qt::MouseButton button = static_cast<QMouseEvent*>(event)->button();
+        if (button == Qt::BackButton || button == Qt::ForwardButton) {
+            if (button == Qt::BackButton)
+                goBack();
+            else
+                goForward();
+            return true;
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
+// Quick open -----------------------------------------------------------------------------------------
+
+QList<QuickOpen::Item> MainWindow::quickOpenFiles() const
+{
+    QList<QuickOpen::Item> items;
+    const auto add = [&items](const QString& path, int rank, bool current) {
+        QuickOpen::Item item;
+        item.path = path;
+        item.rank = rank;
+        item.current = current;
+        items << item;
+    };
+    // The documents shown most recently first, then any other open ones, then recent files.
+    for (const QPointer<DocumentView>& doc : m_recentDocs)
+        if (doc && !doc->isUntitled())
+            add(doc->filePath(), 2, doc == currentDocument());
+    for (int i = 0; i < m_tabs->count(); ++i)
+        if (const DocumentView* doc = document(i); doc && !doc->isUntitled())
+            add(doc->filePath(), 2, false);
+    for (const DocumentView::State& state : m_recentFiles)
+        if (QFileInfo::exists(state.path))
+            add(state.path, 1, false);
+    return items;
+}
+
+QList<QuickOpen::Item> MainWindow::quickOpenCommands()
+{
+    QList<QuickOpen::Item> items;
+    // What the menus offer as they would open now: those filled or updated as they open are.
+    std::function<void(QMenu*, const QString&)> collect = [&](QMenu* menu, const QString& where) {
+        emit menu->aboutToShow();
+        for (QAction* action : menu->actions()) {
+            if (action->isSeparator() || !action->isVisible())
+                continue;
+            const QString text = plainText(action->text());
+            if (QMenu* sub = action->menu()) {
+                if (sub != m_recentMenu && sub != m_recentFoldersMenu) // files, which Ctrl+P has
+                    collect(sub, where + QStringLiteral(" › ") + text);
+                continue;
+            }
+            if (!action->isEnabled() || text.isEmpty())
+                continue;
+            QuickOpen::Item item;
+            item.text = text;
+            item.detail = where;
+            item.action = action;
+            item.shortcut = action->shortcut().toString(QKeySequence::NativeText);
+            item.checkable = action->isCheckable();
+            item.checked = action->isChecked();
+            items << item;
+        }
+    };
+    for (QAction* top : menuBar()->actions())
+        if (QMenu* menu = top->menu())
+            collect(menu, plainText(top->text()));
+    // And those of the status bar.
+    collect(m_codecButton->menu(), tr("Encoding"));
+    collect(m_lineEndingButton->menu(), tr("Line Endings"));
+    return items;
 }
 
 void MainWindow::runAiAction(void (AiPanel::*action)())
@@ -2112,9 +2800,10 @@ CompareSide MainWindow::documentSide(DocumentView* doc) const
     return side;
 }
 
-CompareTab* MainWindow::compareWithSaved()
+CompareTab* MainWindow::compareWithSaved(DocumentView* doc)
 {
-    DocumentView* doc = currentDocument();
+    if (!doc)
+        doc = currentDocument();
     if (!doc || doc->isUntitled())
         return nullptr;
     QString error;
@@ -2147,9 +2836,8 @@ CompareTab* MainWindow::compareWithClipboard()
     return compare(documentSide(doc), std::move(side));
 }
 
-void MainWindow::compareWithFile()
+void MainWindow::compareWithFile(DocumentView* doc)
 {
-    DocumentView* doc = currentDocument();
     if (!doc)
         return;
     const QString path = QFileDialog::getOpenFileName(this, tr("Compare %1 With").arg(doc->title()), m_lastDirectory);
@@ -2203,6 +2891,8 @@ void MainWindow::applyCompareSettings(CompareTab* tab) const
 void MainWindow::changeEvent(QEvent* event)
 {
     QMainWindow::changeEvent(event);
+    if (event->type() == QEvent::WindowStateChange && m_fullScreenAction)
+        m_fullScreenAction->setChecked(isFullScreen());
     // The preview tab's dimmed text follows the colour scheme.
     if (event->type() == QEvent::PaletteChange && m_previewDoc)
         updateDocumentTitle(m_previewDoc);

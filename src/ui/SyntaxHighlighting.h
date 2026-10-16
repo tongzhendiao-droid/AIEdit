@@ -28,6 +28,21 @@ QList<SyntaxInfo> availableSyntaxes();
 QString syntaxForFileName(const QString& fileName);
 QString translatedSyntaxName(const QString& name);
 
+// How a language writes comments: what comments out the rest of a line ("//", "#"), and what
+// goes around a block ("/*" and "*/"); empty where it has none.
+struct CommentMarkers
+{
+    QString line;
+    bool lineAtStart = false; // the line marker goes at the very start, not after the indentation
+    QString blockStart;
+    QString blockEnd;
+
+    bool isEmpty() const { return line.isEmpty() && (blockStart.isEmpty() || blockEnd.isEmpty()); }
+};
+// From the syntax's definition; without the library, or for a syntax without comments, from
+// the file's name.
+CommentMarkers commentMarkers(const QString& syntaxName, const QString& fileName);
+
 // Colour schemes: KSyntaxHighlighting's themes (Monokai, Solarized, …), or without it a light
 // and a dark one of AIEdit's own. A scheme colours the whole application, the syntax included;
 // without one, everything follows the system.

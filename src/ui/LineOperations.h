@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ui/SyntaxHighlighting.h"
+
 #include <QByteArray>
 
 #include <cstdint>
@@ -18,7 +20,12 @@ enum class LineOperation
     TrimTrailingWhitespace,
     MoveUp,
     MoveDown,
-    Duplicate, // a copy of the lines goes below them
+    Duplicate, // a copy of the lines goes below them, and the selection with it
+    CopyUp,    // the same, the selection staying above
+    Delete,
+    Join,        // with the line after, or the selected ones together: a space for each break
+    InsertBelow, // an empty line, indented as the one next to it, with the caret
+    InsertAbove,
 };
 
 // What a line operation does: [start, end) becomes `bytes`, as one edit, after which
@@ -38,6 +45,13 @@ struct LineEdit
 // which are never decoded and encoded again, so bytes that the codec cannot read survive.
 // Line breaks stay where they were: sorting moves the text of the lines, not their endings.
 std::optional<LineEdit> lineOperation(LineOperation operation, const TextDocument& document,
+                                      std::uint64_t first, std::uint64_t last, std::uint64_t selectionStart,
+                                      std::uint64_t selectionEnd);
+
+// Comments the lines out, with the line marker after the indentation they share (or the block
+// markers around each), or takes the comments out if every line with text has one. Blank lines
+// stay as they are. As bytes, too: only the markers are encoded.
+std::optional<LineEdit> toggleComment(const TextDocument& document, const CommentMarkers& markers,
                                       std::uint64_t first, std::uint64_t last, std::uint64_t selectionStart,
                                       std::uint64_t selectionEnd);
 

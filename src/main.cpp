@@ -54,6 +54,7 @@ int main(int argc, char* argv[])
     }
 
     aiedit::ui::MainWindow window;
+    window.setSecondary(parser.isSet(newWindow));
     QObject::connect(&instance, &aiedit::ui::SingleInstance::filesReceived, &window, [&window](const QStringList& paths) {
         for (const QString& path : paths)
             window.openPath(path);

@@ -793,6 +793,14 @@
         <translation>没有以空格或制表符结尾的行</translation>
     </message>
     <message>
+        <source>Plain text has no comments; choose a language first</source>
+        <translation>纯文本没有注释；请先选择语言</translation>
+    </message>
+    <message>
+        <source>%1 has no comments</source>
+        <translation>%1 没有注释语法</translation>
+    </message>
+    <message>
         <source>Binary files can only be viewed here</source>
         <translation>二进制文件只能查看，不能在这里编辑</translation>
     </message>
@@ -1645,6 +1653,18 @@
         <translation>跟随文件末尾(&amp;F)</translation>
     </message>
     <message>
+        <source>Close every tab but the pinned ones</source>
+        <translation>关闭除固定标签页以外的所有标签页</translation>
+    </message>
+    <message>
+        <source>Save A&amp;ll</source>
+        <translation>全部保存(&amp;L)</translation>
+    </message>
+    <message>
+        <source>Save every document with unsaved changes</source>
+        <translation>保存所有有未保存修改的文档</translation>
+    </message>
+    <message>
         <source>Keep showing the end of the file as it grows, like tail -f</source>
         <translation>像 tail -f 那样，文件增长时始终显示末尾</translation>
     </message>
@@ -1655,6 +1675,18 @@
     <message>
         <source>Read a book: no line numbers, the text in a column in the middle with room between the lines, and its contents beside it</source>
         <translation>读书用：不显示行号，正文居中成一栏、行距加大，旁边显示目录</translation>
+    </message>
+    <message>
+        <source>F&amp;ull Screen</source>
+        <translation>全屏(&amp;U)</translation>
+    </message>
+    <message>
+        <source>Side &amp;Bar</source>
+        <translation>侧边栏(&amp;B)</translation>
+    </message>
+    <message>
+        <source>Show or hide the panels on the left, such as the folder and the contents</source>
+        <translation>显示或隐藏左侧的面板，比如文件夹和目录</translation>
     </message>
     <message>
         <source>&amp;Word Wrap</source>
@@ -1741,8 +1773,88 @@
         <translation>复制行(&amp;L)</translation>
     </message>
     <message>
-        <source>&amp;Go To…</source>
-        <translation>转到(&amp;G)…</translation>
+        <source>&amp;Copy Line Up</source>
+        <translation>向上复制行(&amp;C)</translation>
+    </message>
+    <message>
+        <source>Delete L&amp;ine</source>
+        <translation>删除行(&amp;I)</translation>
+    </message>
+    <message>
+        <source>&amp;Join Lines</source>
+        <translation>合并行(&amp;J)</translation>
+    </message>
+    <message>
+        <source>Insert Line &amp;Below</source>
+        <translation>在下方插入行(&amp;B)</translation>
+    </message>
+    <message>
+        <source>Insert Line Abo&amp;ve</source>
+        <translation>在上方插入行(&amp;V)</translation>
+    </message>
+    <message>
+        <source>Select Line</source>
+        <translation>选中行</translation>
+    </message>
+    <message>
+        <source>Toggle Co&amp;mment</source>
+        <translation>注释/取消注释(&amp;M)</translation>
+    </message>
+    <message>
+        <source>&amp;UPPER CASE</source>
+        <translation>大写(&amp;U)</translation>
+    </message>
+    <message>
+        <source>&amp;lower case</source>
+        <translation>小写(&amp;L)</translation>
+    </message>
+    <message>
+        <source>Go to F&amp;ile…</source>
+        <translation>转到文件(&amp;I)…</translation>
+    </message>
+    <message>
+        <source>Open a file by typing part of its name: one open, recent, or in the folder</source>
+        <translation>输入文件名的一部分来打开文件：已打开的、最近打开的，或文件夹里的</translation>
+    </message>
+    <message>
+        <source>Co&amp;mmand Palette…</source>
+        <translation>命令面板(&amp;M)…</translation>
+    </message>
+    <message>
+        <source>Do what the menus do by typing part of its name</source>
+        <translation>输入菜单命令名称的一部分来执行它</translation>
+    </message>
+    <message>
+        <source>&amp;Back</source>
+        <translation>后退(&amp;B)</translation>
+    </message>
+    <message>
+        <source>Back to where the caret was before it jumped, or before another document</source>
+        <translation>回到光标跳转之前，或切换到另一个文档之前的位置</translation>
+    </message>
+    <message>
+        <source>&amp;Forward</source>
+        <translation>前进(&amp;F)</translation>
+    </message>
+    <message>
+        <source>No line of %1 is bookmarked</source>
+        <translation>%1 里没有书签</translation>
+    </message>
+    <message>
+        <source>Toggle Book&amp;mark</source>
+        <translation>设置/取消书签(&amp;M)</translation>
+    </message>
+    <message>
+        <source>&amp;Next Bookmark</source>
+        <translation>下一个书签(&amp;N)</translation>
+    </message>
+    <message>
+        <source>&amp;Previous Bookmark</source>
+        <translation>上一个书签(&amp;P)</translation>
+    </message>
+    <message>
+        <source>&amp;Clear Bookmarks</source>
+        <translation>清除书签(&amp;C)</translation>
     </message>
     <message>
         <source>&amp;Find…</source>
@@ -1777,6 +1889,18 @@
         <translation>查找上一个(&amp;V)</translation>
     </message>
     <message>
+        <source>Fin&amp;d Next Selection</source>
+        <translation>查找下一个选中的内容(&amp;D)</translation>
+    </message>
+    <message>
+        <source>Find the selection, or the word at the caret, further on</source>
+        <translation>向后查找选中的文字，或光标所在的词</translation>
+    </message>
+    <message>
+        <source>Find Previous Selection</source>
+        <translation>查找上一个选中的内容</translation>
+    </message>
+    <message>
         <source>&amp;Text View</source>
         <translation>文本视图(&amp;T)</translation>
     </message>
@@ -1795,6 +1919,30 @@
     <message>
         <source>&amp;Previous Tab</source>
         <translation>上一个标签页(&amp;P)</translation>
+    </message>
+    <message>
+        <source>Move Tab &amp;Left</source>
+        <translation>标签页左移(&amp;L)</translation>
+    </message>
+    <message>
+        <source>Move Tab &amp;Right</source>
+        <translation>标签页右移(&amp;R)</translation>
+    </message>
+    <message>
+        <source>P&amp;in Tab</source>
+        <translation>固定标签页(&amp;I)</translation>
+    </message>
+    <message>
+        <source>Keep the tab first, and open when tabs are closed together</source>
+        <translation>让标签页排在最前，批量关闭标签页时保留它</translation>
+    </message>
+    <message>
+        <source>Go to Tab %1</source>
+        <translation>转到第 %1 个标签页</translation>
+    </message>
+    <message>
+        <source>Go to the Last Tab</source>
+        <translation>转到最后一个标签页</translation>
     </message>
     <message>
         <source>Zoom &amp;In</source>
@@ -1913,6 +2061,10 @@
         <translation>行操作(&amp;S)</translation>
     </message>
     <message>
+        <source>Convert Case</source>
+        <translation>大小写转换</translation>
+    </message>
+    <message>
         <source>&amp;View</source>
         <translation>视图(&amp;V)</translation>
     </message>
@@ -1923,6 +2075,14 @@
     <message>
         <source>&amp;Color Scheme</source>
         <translation>配色方案(&amp;C)</translation>
+    </message>
+    <message>
+        <source>&amp;Go</source>
+        <translation>转到(&amp;G)</translation>
+    </message>
+    <message>
+        <source>&amp;Tabs</source>
+        <translation>标签页(&amp;T)</translation>
     </message>
     <message>
         <source>&amp;AI</source>
@@ -2045,8 +2205,138 @@
         <translation>未命名 %1</translation>
     </message>
     <message>
+        <source>Click to go to a line or an offset (%1)</source>
+        <translation>单击转到某一行或偏移（%1）</translation>
+    </message>
+    <message>
+        <source>New &amp;Window</source>
+        <translation>新建窗口(&amp;W)</translation>
+    </message>
+    <message>
+        <source>Cannot start another window</source>
+        <translation>无法打开新窗口</translation>
+    </message>
+    <message>
+        <source>Close All Ta&amp;bs</source>
+        <translation>关闭所有标签页(&amp;B)</translation>
+    </message>
+    <message>
+        <source>Reo&amp;pen Closed Tab</source>
+        <translation>重新打开关闭的标签页(&amp;P)</translation>
+    </message>
+    <message>
+        <source>Go to &amp;Line or Offset…</source>
+        <translation>转到行或偏移(&amp;L)…</translation>
+    </message>
+    <message>
         <source>Open Files</source>
         <translation>打开文件</translation>
+    </message>
+    <message>
+        <source>No closed tab to reopen</source>
+        <translation>没有可以重新打开的标签页</translation>
+    </message>
+    <message numerus="yes">
+        <source>Saved %n document(s)</source>
+        <translation>
+            <numerusform>已保存 %n 个文档</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Nothing to save</source>
+        <translation>没有需要保存的内容</translation>
+    </message>
+    <message>
+        <source>&amp;Close</source>
+        <translation>关闭(&amp;C)</translation>
+    </message>
+    <message>
+        <source>Close &amp;Others</source>
+        <translation>关闭其他标签页(&amp;O)</translation>
+    </message>
+    <message>
+        <source>Close to the &amp;Left</source>
+        <translation>关闭左侧标签页(&amp;L)</translation>
+    </message>
+    <message>
+        <source>Close to the &amp;Right</source>
+        <translation>关闭右侧标签页(&amp;R)</translation>
+    </message>
+    <message>
+        <source>Close &amp;Saved</source>
+        <translation>关闭已保存的标签页(&amp;S)</translation>
+    </message>
+    <message>
+        <source>Close the tabs without unsaved changes</source>
+        <translation>关闭没有未保存修改的标签页</translation>
+    </message>
+    <message>
+        <source>Close &amp;All</source>
+        <translation>全部关闭(&amp;A)</translation>
+    </message>
+    <message>
+        <source>Un&amp;pin Tab</source>
+        <translation>取消固定(&amp;P)</translation>
+    </message>
+    <message>
+        <source>&amp;Pin Tab</source>
+        <translation>固定标签页(&amp;P)</translation>
+    </message>
+    <message>
+        <source>A pinned tab stays first, and open when tabs are closed together</source>
+        <translation>固定的标签页排在最前，批量关闭标签页时会保留</translation>
+    </message>
+    <message>
+        <source>&amp;Keep Open</source>
+        <translation>保留此标签页(&amp;K)</translation>
+    </message>
+    <message>
+        <source>This tab shows the file clicked in the folder; kept, it stays when another is clicked</source>
+        <translation>这个标签页显示在文件夹里单击的文件；保留后，再单击别的文件也不会被替换</translation>
+    </message>
+    <message>
+        <source>Copy &amp;Path</source>
+        <translation>复制路径(&amp;P)</translation>
+    </message>
+    <message>
+        <source>Copy File &amp;Name</source>
+        <translation>复制文件名(&amp;N)</translation>
+    </message>
+    <message>
+        <source>Copy Relative Pa&amp;th</source>
+        <translation>复制相对路径(&amp;T)</translation>
+    </message>
+    <message>
+        <source>The path from the folder open in the folder panel</source>
+        <translation>相对于文件夹面板中打开的文件夹的路径</translation>
+    </message>
+    <message>
+        <source>Show in File &amp;Manager</source>
+        <translation>在文件管理器中显示(&amp;M)</translation>
+    </message>
+    <message>
+        <source>Show in &amp;Folder Panel</source>
+        <translation>在文件夹面板中显示(&amp;F)</translation>
+    </message>
+    <message>
+        <source>Compare with the Sa&amp;ved Version</source>
+        <translation>与磁盘上的版本比较(&amp;V)</translation>
+    </message>
+    <message>
+        <source>Compare &amp;With</source>
+        <translation>与…比较(&amp;W)</translation>
+    </message>
+    <message>
+        <source>Another &amp;File…</source>
+        <translation>另一个文件(&amp;F)…</translation>
+    </message>
+    <message>
+        <source>Re&amp;name…</source>
+        <translation>重命名(&amp;N)…</translation>
+    </message>
+    <message>
+        <source>Rel&amp;oad</source>
+        <translation>重新加载(&amp;O)</translation>
     </message>
     <message>
         <source>Cannot Save</source>
@@ -2137,6 +2427,14 @@
     <message>
         <source>%1 is past the end of the file; moved to the last byte</source>
         <translation>%1 超出文件末尾，已移到最后一个字节</translation>
+    </message>
+    <message>
+        <source>Encoding</source>
+        <translation>编码</translation>
+    </message>
+    <message>
+        <source>Line Endings</source>
+        <translation>换行符</translation>
     </message>
     <message>
         <source>Summarize this chapter: what happens, who is in it, and what stands out.</source>
@@ -2280,6 +2578,48 @@
     </message>
 </context>
 <context>
+    <name>aiedit::ui::QuickOpen</name>
+    <message>
+        <source>A file&apos;s name; &gt; for commands, : for a line</source>
+        <translation>输入文件名；输入 &gt; 查找命令，输入 : 跳到某一行</translation>
+    </message>
+    <message>
+        <source>No command matches</source>
+        <translation>没有匹配的命令</translation>
+    </message>
+    <message>
+        <source>No file matches</source>
+        <translation>没有匹配的文件</translation>
+    </message>
+    <message>
+        <source>Listing the files of %1…</source>
+        <translation>正在列出 %1 里的文件…</translation>
+    </message>
+    <message>
+        <source>Only the first %1 files of the folder are offered</source>
+        <translation>只列出了文件夹里的前 %1 个文件</translation>
+    </message>
+    <message>
+        <source>Type a line number, or an offset such as 0x1F</source>
+        <translation>输入行号，或 0x1F 这样的偏移</translation>
+    </message>
+    <message>
+        <source>Go to line %1</source>
+        <translation>转到第 %1 行</translation>
+    </message>
+    <message>
+        <source>Go to %1</source>
+        <translation>转到 %1</translation>
+    </message>
+</context>
+<context>
+    <name>aiedit::ui::TabWidget</name>
+    <message>
+        <source>Pinned: closing tabs together leaves it open. Click to unpin it.</source>
+        <translation>已固定：批量关闭标签页时会保留它。单击取消固定。</translation>
+    </message>
+</context>
+<context>
     <name>aiedit::ui::TextView</name>
     <message>
         <source>The selection is too large to copy (limit: %1)</source>
@@ -2298,6 +2638,14 @@
     <message>
         <source>These characters cannot be written in this file&apos;s encoding (%1)</source>
         <translation>这些字符无法用这个文件的编码（%1）表示</translation>
+    </message>
+    <message>
+        <source>Bookmark on line %1 removed</source>
+        <translation>已取消第 %1 行的书签</translation>
+    </message>
+    <message>
+        <source>Line %1 bookmarked</source>
+        <translation>已在第 %1 行设置书签</translation>
     </message>
     <message>
         <source>Undo</source>

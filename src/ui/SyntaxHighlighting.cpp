@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QFileInfo>
 #include <QPalette>
 #include <QRegularExpression>
 
@@ -199,6 +200,83 @@ QString translatedSyntaxName(const QString& name)
 #else
     return name;
 #endif
+}
+
+CommentMarkers commentMarkers(const QString& syntaxName, const QString& fileName)
+{
+    CommentMarkers markers;
+#ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
+    if (const KSyntaxHighlighting::Definition definition = repository().definitionForName(syntaxName);
+        definition.isValid()) {
+        markers.line = definition.singleLineCommentMarker();
+        markers.lineAtStart =
+            definition.singleLineCommentPosition() == KSyntaxHighlighting::CommentPosition::StartOfLine;
+        const auto block = definition.multiLineCommentMarker();
+        markers.blockStart = block.first;
+        markers.blockEnd = block.second;
+        if (!markers.isEmpty())
+            return markers;
+    }
+#else
+    Q_UNUSED(syntaxName);
+#endif
+    // The common languages, by name.
+    const QFileInfo info(fileName);
+    const QString name = info.fileName().toLower();
+    const QString suffix = info.suffix().toLower();
+    static const QStringList slashes{QStringLiteral("c"),     QStringLiteral("h"),     QStringLiteral("cc"),
+                                     QStringLiteral("cpp"),   QStringLiteral("cxx"),   QStringLiteral("hpp"),
+                                     QStringLiteral("hh"),    QStringLiteral("hxx"),   QStringLiteral("java"),
+                                     QStringLiteral("js"),    QStringLiteral("mjs"),   QStringLiteral("ts"),
+                                     QStringLiteral("tsx"),   QStringLiteral("jsx"),   QStringLiteral("cs"),
+                                     QStringLiteral("go"),    QStringLiteral("rs"),    QStringLiteral("swift"),
+                                     QStringLiteral("kt"),    QStringLiteral("kts"),   QStringLiteral("scala"),
+                                     QStringLiteral("dart"),  QStringLiteral("php"),   QStringLiteral("groovy"),
+                                     QStringLiteral("gradle"), QStringLiteral("proto"), QStringLiteral("jsonc"),
+                                     QStringLiteral("scss"),  QStringLiteral("less"),  QStringLiteral("qml")};
+    static const QStringList hashes{QStringLiteral("py"),   QStringLiteral("sh"),     QStringLiteral("bash"),
+                                    QStringLiteral("zsh"),  QStringLiteral("rb"),     QStringLiteral("pl"),
+                                    QStringLiteral("pm"),   QStringLiteral("r"),      QStringLiteral("yaml"),
+                                    QStringLiteral("yml"),  QStringLiteral("toml"),   QStringLiteral("conf"),
+                                    QStringLiteral("cfg"),  QStringLiteral("cmake"),  QStringLiteral("mk"),
+                                    QStringLiteral("ps1"),  QStringLiteral("tcl"),    QStringLiteral("jl"),
+                                    QStringLiteral("nim"),  QStringLiteral("properties")};
+    static const QStringList dashes{QStringLiteral("sql"), QStringLiteral("lua"), QStringLiteral("hs"),
+                                    QStringLiteral("ada"), QStringLiteral("vhd"), QStringLiteral("vhdl")};
+    static const QStringList semicolons{QStringLiteral("ini"), QStringLiteral("asm"), QStringLiteral("s"),
+                                        QStringLiteral("lisp"), QStringLiteral("el"), QStringLiteral("clj"),
+                                        QStringLiteral("scm")};
+    static const QStringList percents{QStringLiteral("tex"), QStringLiteral("sty"), QStringLiteral("m"),
+                                      QStringLiteral("erl")};
+    static const QStringList markup{QStringLiteral("html"), QStringLiteral("htm"), QStringLiteral("xml"),
+                                    QStringLiteral("xhtml"), QStringLiteral("svg"), QStringLiteral("md"),
+                                    QStringLiteral("vue"), QStringLiteral("ui")};
+    if (slashes.contains(suffix)) {
+        markers.line = QStringLiteral("//");
+        markers.blockStart = QStringLiteral("/*");
+        markers.blockEnd = QStringLiteral("*/");
+    } else if (hashes.contains(suffix) || name == QLatin1String("makefile") || name == QLatin1String("dockerfile") ||
+               name == QLatin1String("cmakelists.txt")) {
+        markers.line = QStringLiteral("#");
+    } else if (dashes.contains(suffix)) {
+        markers.line = QStringLiteral("--");
+    } else if (semicolons.contains(suffix)) {
+        markers.line = QStringLiteral(";");
+    } else if (percents.contains(suffix)) {
+        markers.line = QStringLiteral("%");
+    } else if (suffix == QLatin1String("bat") || suffix == QLatin1String("cmd")) {
+        markers.line = QStringLiteral("REM");
+        markers.lineAtStart = true;
+    } else if (suffix == QLatin1String("vb") || suffix == QLatin1String("vbs") || suffix == QLatin1String("bas")) {
+        markers.line = QStringLiteral("'");
+    } else if (suffix == QLatin1String("css")) {
+        markers.blockStart = QStringLiteral("/*");
+        markers.blockEnd = QStringLiteral("*/");
+    } else if (markup.contains(suffix)) {
+        markers.blockStart = QStringLiteral("<!--");
+        markers.blockEnd = QStringLiteral("-->");
+    }
+    return markers;
 }
 
 QList<ColorScheme> availableColorSchemes()

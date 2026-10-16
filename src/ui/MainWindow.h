@@ -3,12 +3,14 @@
 #include "ui/BackupStore.h"
 #include "ui/Compare.h"
 #include "ui/DocumentView.h"
+#include "ui/QuickOpen.h"
 
 #include <QHash>
 #include <QMainWindow>
 #include <QPointer>
 #include <QTimer>
 
+#include <functional>
 #include <string_view>
 #include <system_error>
 
@@ -17,7 +19,6 @@ class QActionGroup;
 class QDockWidget;
 class QLabel;
 class QStackedWidget;
-class QTabWidget;
 class QToolButton;
 
 namespace aiedit::core {
@@ -33,6 +34,7 @@ class ContentsPanel;
 class DataInspector;
 class FindInFilesPanel;
 class FolderPanel;
+class TabWidget;
 
 class MainWindow : public QMainWindow
 {
@@ -57,8 +59,9 @@ public:
     // be had.
     CompareTab* compare(CompareSide left, CompareSide right);
     CompareTab* compareFiles(const QString& left, const QString& right);
-    // The current document, as it is being edited, against its file on disk or the clipboard.
-    CompareTab* compareWithSaved();
+    // A document as it is being edited (the current one by default) against its file on disk;
+    // the current document against the clipboard.
+    CompareTab* compareWithSaved(DocumentView* doc = nullptr);
     CompareTab* compareWithClipboard();
     CompareTab* currentCompareTab() const;
     // Brings back the unsaved changes that windows which have ended left behind, and with
@@ -66,6 +69,9 @@ public:
     void restoreSession(bool reopenTabs = true);
     // Backs up unsaved changes now rather than shortly, and waits until they are written.
     void flushBackups();
+    // A window of its own (aiedit --new-window) leaves the session to the first one: what it has
+    // open does not come back next time, though its unsaved changes do.
+    void setSecondary(bool secondary) { m_secondary = secondary; }
 
     int documentCount() const;
     DocumentView* document(int index) const;
@@ -73,11 +79,16 @@ public:
     // The tab the folder panel previews files in; nullptr when there is none.
     DocumentView* previewDocument() const { return m_previewDoc; }
     DataInspector* dataInspector() const { return m_inspector; }
+    // What right-clicking a tab offers, for that tab (or the empty part of the bar, for -1). The
+    // caller owns the menu.
+    QMenu* tabMenu(int index);
+    QuickOpen* quickOpen() const { return m_quickOpen; }
 
     // The legacy encoding to try first for non-UTF-8 text, from the user's locale.
     static std::string_view preferredLegacyCodec();
 
 protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void changeEvent(QEvent* event) override;
     void closeEvent(QCloseEvent* event) override;
     void dragEnterEvent(QDragEnterEvent* event) override;
@@ -103,7 +114,19 @@ private:
     DocumentView* showFile(const QString& path, bool preview, QString* error);
     // Puts the document in a tab at `index` (-1: last) and makes it the current one.
     void addDocument(DocumentView* doc, int index = -1, bool focus = true);
-    void closeTab(int index);
+    // False if it was kept: its unsaved changes were to be saved, and that was cancelled.
+    bool closeTab(int index);
+    // Closes the tabs `pick` chooses, but not pinned ones; false if one of them was kept.
+    bool closeTabs(const std::function<bool(int index)>& pick);
+    void reopenClosedTab();
+    void saveAll();
+    void reloadDocument(DocumentView* doc);
+    void showTabMenu(const QPoint& pos);
+    // Selects the file in the folder panel, opening its folder there if need be.
+    void showInFolderPanel(const QString& path);
+    // The panels on the left (the folder, the contents): hidden together, and shown again.
+    void setSideBarVisible(bool visible);
+    void updateSideBarAction();
     // Removes a tab without asking anything, as when its file went to the trash.
     void discardDocument(DocumentView* doc);
     // The preview tab becomes an ordinary one.
@@ -129,6 +152,25 @@ private:
     void populateRecentMenu();
     void currentTabChanged();
     void goTo();
+    // A line (+/- for relative), or an offset such as 0x1F, in the current document.
+    void goToPosition(const QString& input);
+    // Ctrl+P, and with ">" Ctrl+Shift+P: what it offers.
+    QList<QuickOpen::Item> quickOpenFiles() const;
+    QList<QuickOpen::Item> quickOpenCommands();
+    // Back and forward, through the places jumped from: where the caret was before it moved
+    // more than a few lines at once, or before another document was shown.
+    struct Place
+    {
+        QPointer<DocumentView> doc;
+        QString path; // to open it again, once closed
+        std::uint64_t offset = 0;
+        std::uint64_t line = 0;
+    };
+    Place placeOf(DocumentView* doc) const;
+    void notePlace();
+    void goBack();
+    void goForward();
+    bool goToPlace(const Place& place);
     void setViewMode(DocumentView::ViewMode mode);
     void setCodec(const core::TextCodec& codec);
     // Writes the current document in another codec, asking first if anything would be lost.
@@ -161,8 +203,8 @@ private:
     void askAboutFolder(const QString& folder, const QString& summary);
     void showOpenFolderDialog();
     void populateRecentFoldersMenu();
-    // The current document against a file picked; two files picked.
-    void compareWithFile();
+    // A document against a file picked; two files picked.
+    void compareWithFile(DocumentView* doc);
     void compareTwoFiles();
     // A document as a side of a comparison: its text as it is now, edits included.
     CompareSide documentSide(DocumentView* doc) const;
@@ -181,7 +223,7 @@ private:
 
     QStackedWidget* m_stack = nullptr;
     QWidget* m_welcome = nullptr;
-    QTabWidget* m_tabs = nullptr;
+    TabWidget* m_tabs = nullptr;
     QDockWidget* m_inspectorDock = nullptr;
     DataInspector* m_inspector = nullptr;
     QDockWidget* m_aiDock = nullptr;
@@ -192,7 +234,13 @@ private:
     ContentsPanel* m_contents = nullptr;
     QDockWidget* m_folderDock = nullptr;
     FolderPanel* m_folders = nullptr;
+    QuickOpen* m_quickOpen = nullptr;
     QPointer<DocumentView> m_previewDoc;
+    QList<QPointer<DocumentView>> m_recentDocs; // most recently shown first
+    QList<Place> m_back;
+    QList<Place> m_forward;
+    Place m_here;              // where the caret is, as noted last
+    bool m_navigating = false; // going back or forward: no place is noted
 
     QLabel* m_typeLabel = nullptr;
     QLabel* m_sizeLabel = nullptr;
@@ -200,7 +248,7 @@ private:
     QToolButton* m_syntaxButton = nullptr;
     QToolButton* m_lineEndingButton = nullptr;
     QLabel* m_linesLabel = nullptr;
-    QLabel* m_positionLabel = nullptr;
+    QToolButton* m_positionLabel = nullptr; // clicking it goes to a line
     QLabel* m_selectionLabel = nullptr;
     QLabel* m_compareStatus = nullptr; // what the comparison in the current tab found
 
@@ -214,11 +262,18 @@ private:
     QAction* m_cutAction = nullptr;
     QAction* m_pasteAction = nullptr;
     QAction* m_closeAction = nullptr;
+    QAction* m_closeAllAction = nullptr;
+    QAction* m_reopenTabAction = nullptr;
+    QAction* m_saveAllAction = nullptr;
     QAction* m_reloadAction = nullptr;
     QAction* m_followAction = nullptr;
     QAction* m_wordWrapAction = nullptr;
     QAction* m_readingAction = nullptr;
     QAction* m_quitAction = nullptr;
+    QAction* m_newWindowAction = nullptr;
+    QAction* m_fullScreenAction = nullptr;
+    QAction* m_sideBarAction = nullptr;
+    QList<QPointer<QDockWidget>> m_hiddenSidePanels; // by the side bar's toggle, to show again
     QAction* m_copyAction = nullptr;
     QAction* m_copyHexAction = nullptr;
     QAction* m_copyTextAction = nullptr;
@@ -226,15 +281,28 @@ private:
     QAction* m_copyOffsetAction = nullptr;
     QAction* m_selectAllAction = nullptr;
     QAction* m_goToAction = nullptr;
+    QAction* m_quickOpenAction = nullptr;
+    QAction* m_commandPaletteAction = nullptr;
+    QAction* m_backAction = nullptr;
+    QAction* m_forwardAction = nullptr;
+    QList<QAction*> m_bookmarkActions; // toggle, next, previous, clear
+    QAction* m_findSelectionAction = nullptr;
+    QAction* m_findSelectionBackAction = nullptr;
     QAction* m_findAction = nullptr;
     QAction* m_findNextAction = nullptr;
     QAction* m_findPreviousAction = nullptr;
     QAction* m_replaceAction = nullptr;
     QAction* m_filterAction = nullptr;
     QAction* m_findInFilesAction = nullptr;
-    QList<QAction*> m_lineActions; // sorting and cleaning, then moving and copying
+    QList<QAction*> m_lineActions; // sorting and cleaning, then moving, copying and the rest
+    QAction* m_selectLineAction = nullptr;
+    QAction* m_commentAction = nullptr;
+    QList<QAction*> m_caseActions; // upper, lower
     QAction* m_nextTabAction = nullptr;
     QAction* m_previousTabAction = nullptr;
+    QAction* m_moveTabLeftAction = nullptr;
+    QAction* m_moveTabRightAction = nullptr;
+    QAction* m_pinTabAction = nullptr;
     QActionGroup* m_viewModeGroup = nullptr;
     QAction* m_textModeAction = nullptr;
     QAction* m_hexModeAction = nullptr;
@@ -260,9 +328,18 @@ private:
     QAction* m_aboutAction = nullptr;
     QAction* m_aboutQtAction = nullptr;
 
+    bool m_secondary = false;
     int m_bytesPerRow = 16;
     int m_untitledCount = 0;
     QList<DocumentView::State> m_recentFiles;
+    // Closed tabs to reopen, the last closed last.
+    struct ClosedTab
+    {
+        DocumentView::State state;
+        int index = 0;
+        bool pinned = false;
+    };
+    QList<ClosedTab> m_closedTabs;
     QMenu* m_recentMenu = nullptr;
     QMenu* m_recentFoldersMenu = nullptr;
     QMenu* m_schemeMenu = nullptr;

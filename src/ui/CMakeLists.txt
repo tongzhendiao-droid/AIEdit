@@ -12,6 +12,7 @@ qt_add_library(aiedit_ui STATIC
     Contents.cpp Contents.h
     ContentsPanel.cpp ContentsPanel.h
     DataInspector.cpp DataInspector.h
+    Desktop.cpp Desktop.h
     DocumentView.cpp DocumentView.h
     FieldMark.h
     FileSearch.cpp FileSearch.h
@@ -24,17 +25,20 @@ qt_add_library(aiedit_ui STATIC
     FolderModels.cpp FolderModels.h
     FolderPanel.cpp FolderPanel.h
     FolderSummary.cpp FolderSummary.h
+    FuzzyMatch.cpp FuzzyMatch.h
     HexCompareView.cpp HexCompareView.h
     HexView.cpp HexView.h
     LineOperations.cpp LineOperations.h
     LogFilter.cpp LogFilter.h
     MainWindow.cpp MainWindow.h
     Paths.h
+    QuickOpen.cpp QuickOpen.h
     RowScrollBar.cpp RowScrollBar.h
     Replace.cpp Replace.h
     SearchJob.cpp SearchJob.h
     SingleInstance.cpp SingleInstance.h
     SyntaxHighlighting.cpp SyntaxHighlighting.h
+    TabWidget.cpp TabWidget.h
     TextDecoder.cpp TextDecoder.h
     TextDocument.cpp TextDocument.h
     TextView.cpp TextView.h
