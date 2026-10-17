@@ -185,26 +185,26 @@ cmake --build build -j
 
 **Windows**
 
-需要 Visual Studio 2022 或更新的版本（含「使用 C++ 的桌面开发」）、Qt 6.8 或更高的 MSVC 版本、git 和 Perl（比如 Strawberry Perl）。以下命令在「x64 Native Tools PowerShell」里运行，Qt 的路径换成你自己的。
+需要 Visual Studio 2022 或更新的版本（含「使用 C++ 的桌面开发」）、Qt 6.8 或更高的 MSVC 版本、git 和 Perl（比如 Strawberry Perl）。以下命令在「x64 Native Tools Command Prompt」里运行，Qt 的路径换成你自己的。
 
 先编译可选的库（KSyntaxHighlighting、uchardet、Capstone），只需要一次：
 
-```powershell
-packaging\windows\build-deps.ps1 -Qt C:\Qt\6.10.3\msvc2022_64 -Prefix C:\aiedit-deps
+```bat
+powershell -ExecutionPolicy Bypass -File packaging\windows\build-deps.ps1 -Qt C:\Qt\6.10.3\msvc2022_64 -Prefix C:\aiedit-deps
 ```
 
-```powershell
+```bat
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=C:\Qt\6.10.3\msvc2022_64;C:\aiedit-deps"
 ```
 
-```powershell
+```bat
 cmake --build build
 ```
 
 打安装包和 zip（需要 Inno Setup 6），结果在 `dist` 里：
 
-```powershell
-packaging\windows\package.ps1
+```bat
+powershell -ExecutionPolicy Bypass -File packaging\windows\package.ps1
 ```
 
 ## 安装到桌面（Linux）

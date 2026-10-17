@@ -47,10 +47,11 @@ jobs:
           version: '6.10.*'
           cache: true
       - uses: ilammy/msvc-dev-cmd@v1
-      # KSyntaxHighlighting, uchardet and Capstone: built once, kept until the script changes.
+      # KSyntaxHighlighting, uchardet and Capstone: built once and kept, also when a later step
+      # fails, until the script changes.
       - name: Restore the libraries
         id: deps
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: ${{ runner.temp }}\aiedit-deps
           key: windows-deps-qt6.10-${{ hashFiles('packaging/windows/build-deps.ps1') }}
@@ -59,6 +60,12 @@ jobs:
         run: >-
           packaging/windows/build-deps.ps1 -Qt "$env:QT_ROOT_DIR" -Prefix "$env:RUNNER_TEMP\aiedit-deps"
           -WorkDir "$env:RUNNER_TEMP\aiedit-deps-src"
+      - name: Keep the libraries
+        if: steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}\aiedit-deps
+          key: ${{ steps.deps.outputs.cache-primary-key }}
       - name: Configure
         run: >-
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
