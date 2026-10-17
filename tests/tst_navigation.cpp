@@ -290,6 +290,7 @@ void TestNavigation::leavesOutWhatGitIgnores()
     QVERIFY(ignoreFile.open(QIODevice::WriteOnly));
     ignoreFile.write("*.o\n");
     ignoreFile.close();
+    QVERIFY(markHidden(ignoreFile.fileName()));
     QFile object(QDir(plain.path()).filePath(QStringLiteral("a.o")));
     QVERIFY(object.open(QIODevice::WriteOnly));
     object.close();
