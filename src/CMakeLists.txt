@@ -81,7 +81,7 @@ if(WIN32)
     qt_generate_deploy_app_script(TARGET aiedit
         OUTPUT_SCRIPT deploy_script
         NO_COMPILER_RUNTIME
-        DEPLOY_TOOL_OPTIONS --no-opengl-sw --no-system-d3d-compiler --translations zh_CN)
+        DEPLOY_TOOL_OPTIONS --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler --translations zh_CN)
     install(SCRIPT "${deploy_script}")
     set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ${CMAKE_INSTALL_BINDIR})
     include(InstallRequiredSystemLibraries)

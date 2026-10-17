@@ -69,6 +69,19 @@ jobs:
         run: |
           $env:PATH = "$env:QT_ROOT_DIR\bin;$env:RUNNER_TEMP\aiedit-deps\bin;$env:PATH"
           ctest --test-dir build --output-on-failure
+          if ($LASTEXITCODE -eq 0) { exit 0 }
+          # Again one by one, each writing to a file, which keeps what a test said before it
+          # ended, however it ended.
+          $env:QT_QPA_PLATFORM = 'offscreen'
+          foreach ($line in Get-Content build\Testing\Temporary\LastTestsFailed.log) {
+            $name = ($line -split ':')[1]
+            $program = (Get-ChildItem build -Recurse -Filter "$name.exe" | Select-Object -First 1).FullName
+            $log = "$env:RUNNER_TEMP\$name.txt"
+            & $program -o "$log,txt"
+            Write-Host ("===== {0}: exit code {1} (0x{1:X8})" -f $name, $LASTEXITCODE)
+            Get-Content $log -ErrorAction SilentlyContinue | Select-String -NotMatch '^(PASS|QDEBUG|QINFO)' | Out-Host
+          }
+          exit 1
       - name: Package
         run: packaging/windows/package.ps1 -Build build -Output dist
       # The packed folder runs on its own: with only Windows on PATH, aiedit.exe is still running

@@ -14,6 +14,8 @@
 #include <QTest>
 #include <QTreeWidget>
 
+#include "HiddenFile.h"
+
 #include <fstream>
 
 using namespace aiedit;
@@ -85,6 +87,8 @@ void TestFindInFiles::init()
     write(QStringLiteral("sub/d.log"), "ERROR below\n");
     write(QStringLiteral(".hidden/e.log"), "ERROR hidden\n"); // hidden folders are left out
     write(QStringLiteral(".f.log"), "ERROR hidden too\n");
+    QVERIFY(markHidden(m_dir.filePath(QStringLiteral(".hidden"))));
+    QVERIFY(markHidden(m_dir.filePath(QStringLiteral(".f.log"))));
     write(QStringLiteral("g.md"), "ERROR in another kind of file\n");
 }
 

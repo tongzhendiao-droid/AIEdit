@@ -95,6 +95,16 @@ QString decodeWithCodePage(const core::TextCodec& codec, QByteArrayView bytes, b
     bool bad = false;
     appendDecoded(codec, {reinterpret_cast<const std::uint8_t*>(bytes.data()), static_cast<std::size_t>(bytes.size())},
                   out, bad);
+    // Bytes a single-byte code page leaves undefined come out as private-use characters (0xD2 of
+    // windows-1253 as U+F8FA), which none of them has otherwise: they are U+FFFD, as from ICU.
+    if (codec.scheme == core::CharScheme::SingleByte) {
+        for (QChar& c : out) {
+            if (c.unicode() >= 0xE000 && c.unicode() <= 0xF8FF) {
+                c = QChar(kReplacement);
+                bad = true;
+            }
+        }
+    }
     if (malformed)
         *malformed = bad;
     return out;

@@ -28,6 +28,7 @@
 #include <QToolButton>
 #include <QTreeView>
 
+#include "HiddenFile.h"
 #include "MockChatServer.h"
 
 #include <fstream>
@@ -260,6 +261,8 @@ void TestFolders::leavesHiddenFilesOut()
     write(QStringLiteral(".hidden/a.log"), "line\n");
     write(QStringLiteral(".b.log"), "line\n");
     write(QStringLiteral("c.log"), "line\n");
+    QVERIFY(markHidden(QDir(root()).filePath(QStringLiteral(".hidden"))));
+    QVERIFY(markHidden(QDir(root()).filePath(QStringLiteral(".b.log"))));
     QStringList listed;
     ui::FileListHooks hooks;
     hooks.found = [&listed](std::vector<ui::ListedFile>&& files, int) {
