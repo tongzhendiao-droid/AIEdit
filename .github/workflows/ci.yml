@@ -77,16 +77,17 @@ jobs:
           $env:PATH = "$env:QT_ROOT_DIR\bin;$env:RUNNER_TEMP\aiedit-deps\bin;$env:PATH"
           ctest --test-dir build --output-on-failure
           if ($LASTEXITCODE -eq 0) { exit 0 }
-          # Again one by one, each writing to a file, which keeps what a test said before it
-          # ended, however it ended.
+          # What ctest did not show: each failed test's own log, then the test once more, to
+          # tell a failure from a flaky one.
           $env:QT_QPA_PLATFORM = 'offscreen'
           foreach ($line in Get-Content build\Testing\Temporary\LastTestsFailed.log) {
             $name = ($line -split ':')[1]
+            Write-Host "===== $name"
+            Get-Content "build\test-logs\$name.txt" -ErrorAction SilentlyContinue |
+              Select-String -NotMatch '^(PASS|QDEBUG|QINFO)|propagateSizeHints' | Out-Host
             $program = (Get-ChildItem build -Recurse -Filter "$name.exe" | Select-Object -First 1).FullName
-            $log = "$env:RUNNER_TEMP\$name.txt"
-            & $program -o "$log,txt"
-            Write-Host ("===== {0}: exit code {1} (0x{1:X8})" -f $name, $LASTEXITCODE)
-            Get-Content $log -ErrorAction SilentlyContinue | Select-String -NotMatch '^(PASS|QDEBUG|QINFO)' | Out-Host
+            & $program -o "$env:RUNNER_TEMP\$name.txt,txt"
+            Write-Host ("===== {0} again: exit code {1}" -f $name, $LASTEXITCODE)
           }
           exit 1
       - name: Package

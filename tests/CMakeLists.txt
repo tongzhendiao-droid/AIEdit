@@ -1,10 +1,13 @@
 find_package(Qt6 REQUIRED COMPONENTS Test Network)
 
-# aiedit_add_test(<name> <libraries...>) builds <name>.cpp as a Qt Test executable.
+# aiedit_add_test(<name> <libraries...>) builds <name>.cpp as a Qt Test executable. Under ctest
+# it also writes its log to test-logs/<name>.txt, for when its output to ctest is lost (seen on
+# Windows CI).
 function(aiedit_add_test name)
     add_executable(${name} ${name}.cpp)
     target_link_libraries(${name} PRIVATE Qt6::Test aiedit_warnings ${ARGN})
-    add_test(NAME ${name} COMMAND ${name})
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/test-logs")
+    add_test(NAME ${name} COMMAND ${name} -o "${CMAKE_BINARY_DIR}/test-logs/${name}.txt,txt" -o "-,txt")
     set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endfunction()
 
