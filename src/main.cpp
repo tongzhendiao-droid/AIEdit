@@ -17,12 +17,18 @@ int main(int argc, char* argv[])
     QApplication::setApplicationVersion(QStringLiteral(AIEDIT_VERSION));
     // Matches aiedit.desktop, so the desktop shows the right name and icon (Wayland app id).
     QApplication::setDesktopFileName(QStringLiteral("aiedit"));
+#ifdef Q_OS_WIN
+    QApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/aiedit.ico")));
+#else
     QApplication::setWindowIcon(QIcon::fromTheme(QStringLiteral("aiedit"), QIcon(QStringLiteral(":/icons/aiedit.svg"))));
+#endif
 
-    // Qt's own strings (standard buttons, file dialogs), then ours. Both are optional.
+    // Qt's own strings (standard buttons, file dialogs), then ours. Both are optional. Qt's are in
+    // qtbase_*.qm, or where windeployqt put them together, qt_*.qm.
     QTranslator qtTranslator;
-    if (qtTranslator.load(QLocale(), QStringLiteral("qtbase"), QStringLiteral("_"),
-                          QLibraryInfo::path(QLibraryInfo::TranslationsPath)))
+    const QString qtTranslations = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
+    if (qtTranslator.load(QLocale(), QStringLiteral("qtbase"), QStringLiteral("_"), qtTranslations) ||
+        qtTranslator.load(QLocale(), QStringLiteral("qt"), QStringLiteral("_"), qtTranslations))
         QApplication::installTranslator(&qtTranslator);
     QTranslator appTranslator;
     if (appTranslator.load(QLocale(), QStringLiteral("aiedit"), QStringLiteral("_"), QStringLiteral(":/i18n")))

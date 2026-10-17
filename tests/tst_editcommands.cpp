@@ -157,12 +157,14 @@ void TestEditCommands::insertsLinesAboveAndBelow()
     QCOMPARE(view->cursorOffset(), 2u);
 
     // After the last line, without a line break of its own: typing goes on the new line.
+    // A file without line breaks gets the system's (CRLF on Windows).
+    const std::string eol = ui::TextDocument::defaultLineTerminator().toStdString();
     const auto last = documentWith(QStringLiteral("insert2.txt"), "x");
     last->textView()->setReadOnly(false);
     last->textView()->setCursorOffset(0);
     QVERIFY(last->applyLineOperation(ui::LineOperation::InsertBelow));
     QTest::keyClicks(last->textView(), QStringLiteral("y"));
-    QCOMPARE(contents(*last), std::string("x\ny\n"));
+    QCOMPARE(contents(*last), "x" + eol + "y" + eol);
 
     // As after Enter at the end of such a file.
     const auto enter = documentWith(QStringLiteral("insert3.txt"), "x");
@@ -170,7 +172,7 @@ void TestEditCommands::insertsLinesAboveAndBelow()
     enter->textView()->setCursorOffset(1);
     QTest::keyClick(enter->textView(), Qt::Key_Return);
     QTest::keyClicks(enter->textView(), QStringLiteral("y"));
-    QCOMPARE(contents(*enter), std::string("x\ny\n"));
+    QCOMPARE(contents(*enter), "x" + eol + "y" + eol);
 }
 
 void TestEditCommands::togglesComments_data()

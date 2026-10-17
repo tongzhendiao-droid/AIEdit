@@ -2,12 +2,12 @@
 
 #include "core/FileSource.h"
 #include "core/FileType.h"
+#include "ui/Desktop.h"
 #include "ui/SyntaxHighlighting.h"
 
 #include <QApplication>
 #include <QClipboard>
 #include <QContextMenuEvent>
-#include <QFontDatabase>
 #include <QKeyEvent>
 #include <QLocale>
 #include <QMenu>
@@ -47,7 +47,7 @@ HexView::HexView(QWidget* parent) : QAbstractScrollArea(parent), m_rows(vertical
 
     setFocusPolicy(Qt::StrongFocus);
     viewport()->setCursor(Qt::IBeamCursor);
-    setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    setFont(fixedFont());
     updateMetrics();
     updateColors();
     updateScrollBars();

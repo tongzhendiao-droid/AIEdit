@@ -55,6 +55,7 @@ src/
   ui/     Qt Widgets
     HexView      十六进制视图
     TextDocument 某种编码下的文本：解码器 + 后台建索引
+    Codec        编码和解码：Qt 和 ICU，没有 ICU 时用 Windows 的代码页
     TextDecoder  逐字符解码，记录每个 UTF-16 单元来自哪些字节
     TextView     文本视图（QTextLayout 排版、语法高亮）
     SearchJob    搜索任务（后台线程）
@@ -70,17 +71,17 @@ src/
     AiSettingsDialog
     SingleInstance 单实例：再次启动时把文件交给已打开的窗口（QLocalServer，每个用户一个）
     MainWindow, DataInspector
-packaging/  桌面集成：.desktop 模板、SVG 图标、register.sh（默认程序、右键菜单）
+packaging/  桌面集成：Linux 的 .desktop 模板和 register.sh（默认程序、右键菜单）；Windows 的图标、依赖构建脚本和安装包
 tests/    Qt Test；GUI 测试以 offscreen 方式运行
 translations/  界面翻译（.ts）
 ```
 
 要点：
-- **FileSource**：普通文件用 mmap（Windows 用 `MapViewOfFile`）；报告大小为 0 但有内容的文件（`/proc`、`/sys`）退回到读入内存。FIFO 和设备文件直接拒绝，用 `O_NONBLOCK` 打开，避免卡住。
+- **FileSource**：普通文件用 mmap（Windows 用 `MapViewOfFile`）；报告大小为 0 但有内容的文件（`/proc`、`/sys`）退回到读入内存。FIFO 和设备文件直接拒绝，用 `O_NONBLOCK` 打开，避免卡住。Windows 上 64 MiB 以内的文件读进内存（见「Windows 版」）。
 - **文件被截断（MappingGuard）**：其他进程截断已映射的文件时（比如 logrotate 的 copytruncate），读到新末尾之后的页会触发 SIGBUS。AIEdit 登记了自己的每个映射，SIGBUS 落在这些映射里时，信号处理函数把出错页到映射末尾换成全零的匿名页，读取继续进行；同时文件监视发现文件变小，马上重新加载。落在别处的 SIGBUS 照常交给原来的处理方式。Windows 不允许截断已映射的文件，不需要这一层。
 - **LineIndex**：一行超过 4 KiB 时，在字符边界上拆成多个显示行，所以超长行（比如压缩过的 JSON）也能流畅显示。拆分规则是确定性的，从任意一行的开头往后扫，得到的结果和索引完全一致。
 - **自动换行**（默认打开，`Alt+Z` 切换）：同一行拆出来的显示行合在一起排版，最多 16 个（64 KiB），所以长段落在 4 KiB 的拆分点不会断开。纵向滚动条仍然按显示行计数，不用把整个文件排一遍版；方向键、翻页、滚轮、滚动条箭头和鼠标都按屏幕上的行移动。折行处的同一个偏移既是上一行的末尾，也是下一行的开头，光标会记住它属于哪一边，所以 End 和点击行尾能停在上一行最后一个字之后。
-- **TextDecoder**：ICU 支持的旧编码（GB18030、Big5……）通过 `QStringDecoder` 解码，并缓存每个字符的解码结果；UTF-8/16/32 自己解码。控制字符显示为 ␀、␛ 这类可见符号（Unicode 的行分隔符和段分隔符显示为 ␤、¶，否则排版会在那里断行），同时保持字节和字符的一一对应。
+- **TextDecoder**：GB18030、Big5 这些旧编码通过 `Codec` 解码（ICU，或 Windows 的代码页），并缓存每个字符的解码结果；UTF-8/16/32 自己解码。控制字符显示为 ␀、␛ 这类可见符号（Unicode 的行分隔符和段分隔符显示为 ␤、¶，否则排版会在那里断行），同时保持字节和字符的一一对应。
 - **搜索**：精确文本先编码成文件的编码，再按字节搜索，落在字符中间的假匹配会被跳过；十六进制模式也走字节搜索。忽略大小写和正则表达式则按约 1 MiB 的行块解码，再用 `QRegularExpression` 匹配，所以所有编码都能用。
 - **语法高亮**：4 MiB 以内的文件从文件开头开始精确计算高亮状态，每 64 行存一个检查点；更大的文件只往回看 256 行，结果是近似的，但开销与文件大小无关。
 - **重新加载**：监视文件变化（`QFileSystemWatcher`）。文件增长时等写入告一段落（250 ms）再加载；文件变小时立即重新映射，缩短旧映射越过文件末尾的时间窗口。跟随模式下，每次加载后跳到文件末尾。
@@ -262,6 +263,34 @@ translations/  界面翻译（.ts）
   - 确认期间文档被改过时不应用，提示重新让 AI 改。
 - **字节不变**：没改的地方原样保留字节，AI 改过的行按文档的编码和换行符写回；编码写不出的字符会提示，什么都不写。
 - 不做：一次改多个文件（留给 M12 的多步调查）、不确认就直接应用。
+
+## Windows 版（M9）
+
+目标：Windows 上和 Linux 一样好用，装好就能用，测试在 CI 里跑。
+
+- **编码**（`ui/Codec`）：所有编码、解码都经过它。Qt 自己转换 Unicode 和 Latin-1，其他编码靠 ICU；Qt 官方的 Windows 版没有 ICU，这时改用 Windows 的代码页：GB18030 是 54936，Big5 是 950，Shift_JIS 是 932，EUC-JP 是 20932，其余是 125x、28592 这些。EUC-KR 用 949，它多出来的字符按 EUC-KR 的字节结构排除。
+  - 字符边界由 AIEdit 按编码的字节结构自己判断，系统只把完整的字符映射成 Unicode，所以坏字节不会吞掉后面的换行符。映射不了的字符是 U+FFFD。
+  - 写入后检查能不能原样读回，所以系统的「近似替换」（ā 写成 a，¥ 写成 \）算作写不出。
+  - 逐字解码时，ICU 给某些编码的坏字节用的 U+001A 也统一成 U+FFFD。
+- **文件**：Windows 不允许截断或替换已经映射的文件，所以 AIEdit 开着一个文件时，别的程序保存不了它。在 Windows 上，64 MiB 以内的文件改为读进内存，不映射，也不占着文件；更大的文件照旧映射（多是日志和转储，别的程序往后追加不受影响）。
+- **习惯**：
+  - 旧编码默认跟系统的代码页（「非 Unicode 程序的语言」）走，不只看界面语言：代码页 936 用 GB18030，950 用 Big5，以此类推。
+  - 编辑区默认用 Cascadia Mono 或 Consolas（至少 10 磅），不用 Qt 给的 Courier New。
+  - 没有换行符的文件（包括新文档）按回车插入 CRLF。
+  - 已经开着窗口时，从资源管理器再打开文件，窗口会到前台（`AllowSetForegroundWindow`），而不只是任务栏图标闪一下。
+- **依赖**：`packaging/windows/build-deps.ps1` 从各自的 git 仓库取固定的提交，用 MSVC 编译：
+  - KSyntaxHighlighting 6.24，连同 KDE 的 CMake 模块。
+  - uchardet 和 Capstone（只编 x86、ARM、ARM64、RISC-V），静态链接进 aiedit.exe。
+- **打包**（`packaging/windows/package.ps1`）：
+  - `cmake --install` 生成一个能直接运行的文件夹：Qt 的库、插件和中文翻译（windeployqt），KSyntaxHighlighting，编译器的运行库（不用另装 VC++ 运行库）。aiedit.exe 带图标和版本信息，「打开方式」里显示的名字也取自这里。
+  - Inno Setup 安装包，中文和英文界面。默认只为当前用户安装，不需要管理员权限，也可以选为所有用户安装。
+  - 安装时可选：文件、文件夹和文件夹空白处的右键菜单「用 AIEdit 打开」（Windows 11 上在「显示更多选项」里）；在「打开方式」里列出 AIEdit（文本、日志、数据、源码和二进制文件），并登记到「设置 → 默认应用」，在那里可以把它设为默认程序（Windows 不让程序自己设）。卸载时这些都会删掉。
+  - 同样的文件也打成 zip，解压就能用。
+- **CI**：
+  - 用 MSVC 和 Ninja 编译，警告当错误；跑全部测试。
+  - 打包后只留系统目录在 PATH 里，启动打好的程序，确认不缺 DLL；再静默安装、检查注册表、卸载。
+  - 安装包和 zip 作为构建产物保存 30 天。
+- 不做：代码签名（没有证书，SmartScreen 会提示），MSIX 打包和 Windows 11 的新右键菜单（都需要包标识），自动更新。
 
 ## AI 功能（M3a、M3b 已完成）
 

@@ -181,7 +181,10 @@ std::unique_ptr<FileSource> FileSource::open(const std::filesystem::path& path, 
 
     std::unique_ptr<FileSource> source(new FileSource(path));
     const auto size = static_cast<std::uint64_t>(fileSize.QuadPart);
-    if (size > 0) {
+    // Windows lets nobody cut short or replace a file while it is mapped, so other programs
+    // could not save over a file open here. Files up to kMaxCopySize are read into memory instead;
+    // bigger ones are mostly logs and dumps that programs append to, which a mapping allows.
+    if (size > kMaxCopySize) {
         std::error_code mapError;
         if (const HANDLE mapping = ::CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, 0, nullptr)) {
             // The view keeps the mapping object alive, so both handles can be closed right away.

@@ -1,5 +1,7 @@
 #include "ui/SingleInstance.h"
 
+#include "ui/Desktop.h"
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLocalSocket>
@@ -47,6 +49,7 @@ bool SingleInstance::forward(const QStringList& files) const
     socket.connectToServer(m_name);
     if (!socket.waitForConnected(kConnectTimeoutMs))
         return false;
+    allowActivationByOthers(); // so that the window that takes the files can come to the front
     socket.write(QJsonDocument(QJsonArray::fromStringList(files)).toJson(QJsonDocument::Compact));
     if (!socket.waitForBytesWritten(kWriteTimeoutMs))
         return false;

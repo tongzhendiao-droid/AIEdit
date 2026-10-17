@@ -1,13 +1,13 @@
 #include "ui/TextView.h"
 
 #include "core/TextCodec.h"
+#include "ui/Desktop.h"
 #include "ui/SyntaxHighlighting.h"
 #include "ui/TextDocument.h"
 
 #include <QApplication>
 #include <QClipboard>
 #include <QContextMenuEvent>
-#include <QFontDatabase>
 #include <QInputMethod>
 #include <QInputMethodEvent>
 #include <QKeyEvent>
@@ -93,7 +93,7 @@ TextView::TextView(QWidget* parent) : QAbstractScrollArea(parent), m_rows(vertic
 {
     setFocusPolicy(Qt::StrongFocus);
     viewport()->setCursor(Qt::IBeamCursor);
-    setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    setFont(fixedFont());
     updateMetrics();
     updateColors();
     updateScrollBars();

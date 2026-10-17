@@ -1,4 +1,6 @@
+#include "core/TextCodec.h"
 #include "ui/AiPanel.h"
+#include "ui/Codec.h"
 #include "ui/DocumentView.h"
 #include "ui/FileTypeSniffer.h"
 #include "ui/FolderModels.h"
@@ -18,7 +20,6 @@
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QStatusBar>
-#include <QStringEncoder>
 #include <QStyle>
 #include <QTabBar>
 #include <QTabWidget>
@@ -169,7 +170,8 @@ void TestFolders::sniffsTypesFromContent()
     QString chinese;
     for (int i = 0; i < 20; ++i)
         chinese += QStringLiteral("话说天下大势，分久必合，合久必分。周末七国分争，并入于秦。\n");
-    const QString legacy = write(QStringLiteral("old.txt"), QStringEncoder("GB18030").encode(chinese));
+    const QByteArray gbk = ui::Codec(*core::findCodec("GB18030")).encode(chinese).value_or(QByteArray());
+    const QString legacy = write(QStringLiteral("old.txt"), gbk);
     const QString empty = write(QStringLiteral("empty.log"), {});
 
     using ui::FileTypeSniffer;

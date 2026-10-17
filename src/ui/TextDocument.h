@@ -65,8 +65,11 @@ public:
     void setSaved();
     // Text in the document's codec, if it can be written in it.
     std::optional<QByteArray> encode(const QString& text) const;
-    // What Enter inserts: the line terminator the file uses.
+    // What Enter inserts: the line terminator the file uses, or for a file without any the
+    // system's (defaultLineTerminator()).
     QString lineTerminator() const;
+    // CRLF on Windows, LF elsewhere.
+    static QString defaultLineTerminator();
     // Ends every line with `terminator` ("\n", "\r\n" or "\r"), as one edit. False if every
     // line ended so already.
     bool convertLineEndings(const QString& terminator);

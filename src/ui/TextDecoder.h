@@ -1,10 +1,10 @@
 #pragma once
 
 #include "core/TextCodec.h"
+#include "ui/Codec.h"
 
 #include <QHash>
 #include <QString>
-#include <QStringDecoder>
 
 #include <array>
 #include <cstdint>
@@ -52,7 +52,7 @@ private:
 
     core::TextCodec m_codec;
     std::array<char16_t, 256> m_singleByte{}; // lookup table for single-byte codecs
-    mutable QStringDecoder m_decoder;
+    Codec m_converter;
     mutable QHash<quint32, char32_t> m_cache; // legacy multi-byte characters, keyed by their bytes
 };
 

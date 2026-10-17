@@ -1,5 +1,7 @@
 #include "ui/FolderSummary.h"
 
+#include "core/TextCodec.h"
+#include "ui/Codec.h"
 #include "ui/Collation.h"
 #include "ui/FileTypeSniffer.h"
 
@@ -10,7 +12,6 @@
 #include <QHash>
 #include <QLocale>
 #include <QSet>
-#include <QStringDecoder>
 
 #include <algorithm>
 #include <deque>
@@ -117,7 +118,10 @@ QStringList firstLines(const QString& path, const QString& codec, int count)
     if (!file.open(QIODevice::ReadOnly))
         return {};
     const QByteArray head = file.read(kPreviewBytes);
-    QStringDecoder decoder(codec.toLatin1().constData());
+    const QByteArray name = codec.toLatin1();
+    const core::TextCodec* known =
+        core::findCodec(std::string_view(name.constData(), static_cast<std::size_t>(name.size())));
+    const Codec decoder(known ? *known : core::utf8Codec());
     QString text = decoder.isValid() ? decoder.decode(head) : QString::fromUtf8(head);
     if (text.startsWith(QChar(0xFEFF)))
         text.remove(0, 1);

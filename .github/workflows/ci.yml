@@ -38,7 +38,7 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
   windows:
-    name: Windows (MSVC, build only)
+    name: Windows (MSVC, all tests, installer)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -46,7 +46,62 @@ jobs:
         with:
           version: '6.10.*'
           cache: true
+      - uses: ilammy/msvc-dev-cmd@v1
+      # KSyntaxHighlighting, uchardet and Capstone: built once, kept until the script changes.
+      - name: Restore the libraries
+        id: deps
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}\aiedit-deps
+          key: windows-deps-qt6.10-${{ hashFiles('packaging/windows/build-deps.ps1') }}
+      - name: Build the libraries
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: >-
+          packaging/windows/build-deps.ps1 -Qt "$env:QT_ROOT_DIR" -Prefix "$env:RUNNER_TEMP\aiedit-deps"
+          -WorkDir "$env:RUNNER_TEMP\aiedit-deps-src"
       - name: Configure
-        run: cmake -S . -B build
+        run: >-
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
+          "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR;$env:RUNNER_TEMP\aiedit-deps"
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build
+      - name: Test
+        run: |
+          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:RUNNER_TEMP\aiedit-deps\bin;$env:PATH"
+          ctest --test-dir build --output-on-failure
+      - name: Package
+        run: packaging/windows/package.ps1 -Build build -Output dist
+      # The packed folder runs on its own: with only Windows on PATH, aiedit.exe is still running
+      # after five seconds (a missing DLL ends it at once).
+      - name: Start the packed program
+        run: |
+          if (-not (Test-Path dist\AIEdit\bin\KF6SyntaxHighlighting.dll)) { throw 'KSyntaxHighlighting is missing' }
+          $env:PATH = "$env:SystemRoot\system32;$env:SystemRoot"
+          Remove-Item Env:QT_PLUGIN_PATH, Env:QML2_IMPORT_PATH -ErrorAction SilentlyContinue
+          $program = Start-Process dist\AIEdit\bin\aiedit.exe -ArgumentList '--new-window', "$PWD\README.md" -PassThru
+          Start-Sleep -Seconds 5
+          if ($program.HasExited) { throw "aiedit.exe ended with exit code $($program.ExitCode)" }
+          Stop-Process -Id $program.Id
+      # Installs for the current user, checks what it registered, and uninstalls again.
+      - name: Install and uninstall
+        run: |
+          $setup = (Get-ChildItem dist\*-setup.exe).FullName
+          $target = "$env:RUNNER_TEMP\AIEdit-installed"
+          Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/CURRENTUSER', "/DIR=$target" -Wait
+          if (-not (Test-Path "$target\bin\aiedit.exe")) { throw 'aiedit.exe was not installed' }
+          $menu = (Get-ItemProperty -LiteralPath 'HKCU:\Software\Classes\*\shell\AIEdit\command').'(default)'
+          if ($menu -ne "`"$target\bin\aiedit.exe`" `"%1`"") { throw "Right-click menu: $menu" }
+          if ($null -eq (Get-ItemProperty -LiteralPath 'HKCU:\Software\Classes\.log\OpenWithProgids').'AIEdit.File') { throw 'Not in Open with for .log' }
+          if (-not (Get-ItemProperty -LiteralPath 'HKCU:\Software\RegisteredApplications').AIEdit) { throw 'Not in Default apps' }
+          Start-Process "$target\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART' -Wait
+          if (Test-Path -LiteralPath 'HKCU:\Software\Classes\*\shell\AIEdit') { throw 'The right-click menu is still there' }
+          $left = Get-ItemProperty -LiteralPath 'HKCU:\Software\Classes\.log\OpenWithProgids' -ErrorAction SilentlyContinue
+          if ($left -and $null -ne $left.'AIEdit.File') { throw '.log still lists AIEdit' }
+          if (Test-Path "$target\bin\aiedit.exe") { throw 'aiedit.exe is still installed' }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AIEdit-windows-x64
+          path: |
+            dist/*-setup.exe
+            dist/*.zip
+          retention-days: 30

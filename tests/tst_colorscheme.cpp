@@ -1,5 +1,6 @@
 #include "core/FileSource.h"
 #include "core/TextCodec.h"
+#include "ui/Desktop.h"
 #include "ui/DocumentView.h"
 #include "ui/HexView.h"
 #include "ui/MainWindow.h"
@@ -225,7 +226,7 @@ void TestColorScheme::remembersTheChoice()
 
 void TestColorScheme::remembersTheEditorFont()
 {
-    const QString standard = QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
+    const QString standard = ui::fixedFont().family();
     QString other;
     for (const QString& family : QFontDatabase::families()) {
         if (family != standard && QFontDatabase::isFixedPitch(family)) {

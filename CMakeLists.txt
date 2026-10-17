@@ -16,16 +16,38 @@ endif()
 
 option(AIEDIT_BUILD_TESTS "Build the unit tests" ON)
 
+if(WIN32)
+    enable_language(RC) # the icon and version of aiedit.exe
+endif()
+
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Widgets Concurrent Network)
 qt_standard_project_setup()
 
 # Optional: better charset detection, syntax highlighting (the engine Kate uses), and
-# disassembling the code around differences between binaries (Capstone).
+# disassembling the code around differences between binaries (Capstone). On Windows,
+# packaging/windows/build-deps.ps1 builds all three; add its prefix to CMAKE_PREFIX_PATH.
 find_package(uchardet CONFIG QUIET)
 find_package(KF6SyntaxHighlighting 6.0 CONFIG QUIET)
+# Capstone by pkg-config where it has that (its .pc file points into include/capstone, while the
+# code includes <capstone/capstone.h>, which only works where include/ is searched anyway), else
+# by its header and library.
 find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
+if(PkgConfig_FOUND AND NOT WIN32)
     pkg_check_modules(CAPSTONE QUIET IMPORTED_TARGET capstone)
+endif()
+if(CAPSTONE_FOUND)
+    set(AIEDIT_CAPSTONE PkgConfig::CAPSTONE)
+else()
+    find_path(CAPSTONE_INCLUDE_DIR capstone/capstone.h)
+    find_library(CAPSTONE_LIBRARY capstone)
+    if(CAPSTONE_INCLUDE_DIR AND CAPSTONE_LIBRARY)
+        add_library(aiedit_capstone UNKNOWN IMPORTED)
+        set_target_properties(aiedit_capstone PROPERTIES
+            IMPORTED_LOCATION "${CAPSTONE_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${CAPSTONE_INCLUDE_DIR}")
+        set(AIEDIT_CAPSTONE aiedit_capstone)
+        set(CAPSTONE_FOUND TRUE)
+    endif()
 endif()
 message(STATUS "uchardet: ${uchardet_FOUND}, KF6SyntaxHighlighting: ${KF6SyntaxHighlighting_FOUND}, "
                "Capstone: ${CAPSTONE_FOUND}")

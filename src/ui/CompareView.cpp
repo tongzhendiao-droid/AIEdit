@@ -1,13 +1,13 @@
 #include "ui/CompareView.h"
 
 #include "core/FileSource.h"
+#include "ui/Desktop.h"
 #include "ui/SyntaxHighlighting.h"
 #include "ui/TextDecoder.h"
 
 #include <QApplication>
 #include <QClipboard>
 #include <QContextMenuEvent>
-#include <QFontDatabase>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QPainter>
@@ -54,7 +54,7 @@ CompareView::CompareView(QWidget* parent)
     : QAbstractScrollArea(parent), m_scroll(verticalScrollBar()), m_texts(kCachedLines), m_inline(kCachedInline)
 {
     setFocusPolicy(Qt::StrongFocus);
-    setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    setFont(fixedFont());
     viewport()->setCursor(Qt::IBeamCursor);
     updateMetrics();
     updateColors();

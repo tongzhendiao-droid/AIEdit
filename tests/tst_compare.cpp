@@ -1,6 +1,8 @@
 #include "core/Disassembler.h"
 #include "core/FileSource.h"
+#include "core/TextCodec.h"
 #include "ui/AiPanel.h"
+#include "ui/Codec.h"
 #include "ui/Compare.h"
 #include "ui/CompareTab.h"
 #include "ui/CompareView.h"
@@ -21,7 +23,6 @@
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QStatusBar>
-#include <QStringEncoder>
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
@@ -194,12 +195,14 @@ void TestCompare::comparesTextInDifferentCodecs()
 {
     // A GBK file and its UTF-8 copy hold the same text.
     const QString text = QStringLiteral("话说天下大势，分久必合，合久必分。\n周末七国分争，并入于秦。\n");
-    const QByteArray gbk = QStringEncoder("GB18030").encode(text);
+    const QByteArray gbk = ui::Codec(*core::findCodec("GB18030")).encode(text).value_or(QByteArray());
     const ui::TextComparison same = ui::compareText(side(gbk, "GB18030"), side(text.toUtf8()), {});
     QVERIFY(!same.identicalBytes);
     QVERIFY(same.hunks.empty());
 
-    const QByteArray changed = QStringEncoder("GB18030").encode(QString(text).replace(QStringLiteral("秦"), QStringLiteral("汉")));
+    const QByteArray changed = ui::Codec(*core::findCodec("GB18030"))
+                                   .encode(QString(text).replace(QStringLiteral("秦"), QStringLiteral("汉")))
+                                   .value_or(QByteArray());
     QVERIFY((ui::compareText(side(changed, "GB18030"), side(text.toUtf8()), {}).hunks == Hunks{{1, 1, 1, 1}}));
 }
 

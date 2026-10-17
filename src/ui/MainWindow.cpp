@@ -175,6 +175,8 @@ DocumentView::State stateFromVariant(const QVariant& value)
 
 std::string_view MainWindow::preferredLegacyCodec()
 {
+    if (const std::string_view system = systemLegacyCodec(); !system.empty())
+        return system;
     const QLocale locale;
     switch (locale.language()) {
     case QLocale::Chinese: {
@@ -213,7 +215,7 @@ std::string_view MainWindow::preferredLegacyCodec()
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 {
-    const QFont fixed = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    const QFont fixed = fixedFont();
     m_defaultPointSize = fixed.pointSize() > 0 ? fixed.pointSize() : 10;
     m_pointSize = m_defaultPointSize;
 
@@ -1099,7 +1101,7 @@ void MainWindow::chooseColorScheme(const QString& name)
 
 void MainWindow::chooseEditorFont()
 {
-    QFont current = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    QFont current = fixedFont();
     if (const DocumentView* doc = currentDocument())
         current = doc->textView()->font();
     bool ok = false;
@@ -2258,7 +2260,7 @@ void MainWindow::applyViewSettings(DocumentView* doc) const
             view->setFont(readingFont());
             continue;
         }
-        QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        QFont font = fixedFont();
         if (!m_fontFamily.isEmpty())
             font.setFamily(m_fontFamily);
         font.setPointSize(m_pointSize);
@@ -2955,7 +2957,7 @@ void MainWindow::applyViewSettingsToTabs()
 
 void MainWindow::applyCompareSettings(CompareTab* tab) const
 {
-    QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    QFont font = fixedFont();
     if (!m_fontFamily.isEmpty())
         font.setFamily(m_fontFamily);
     font.setPointSize(m_pointSize);

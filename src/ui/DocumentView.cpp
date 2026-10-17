@@ -6,6 +6,7 @@
 #include "ui/AiEdit.h"
 #include "ui/AiEditBar.h"
 #include "ui/AiPanel.h"
+#include "ui/Codec.h"
 #include "ui/FilterPanel.h"
 #include "ui/FilterRuleWriter.h"
 #include "ui/FindBar.h"
@@ -24,8 +25,6 @@
 #include <QLocale>
 #include <QPointer>
 #include <QSaveFile>
-#include <QStringDecoder>
-#include <QStringEncoder>
 #include <QScopedValueRollback>
 #include <QSplitter>
 #include <QTimer>
@@ -1212,21 +1211,23 @@ DocumentView::Conversion DocumentView::saveWithCodec(const core::TextCodec& code
 {
     // The text as it reads now (unsaved edits included), without its old byte order mark.
     const auto bytes = m_source->bytes().subspan(static_cast<std::size_t>(m_textDocument->textStart()));
-    QStringDecoder decoder(m_textDocument->codec().name.data());
-    const QString text =
-        decoder.decode(QByteArrayView(reinterpret_cast<const char*>(bytes.data()), static_cast<qsizetype>(bytes.size())));
-    if (decoder.hasError() && !replaceUnreadable)
+    bool unreadable = false;
+    const QString text = Codec(m_textDocument->codec())
+                             .decode(QByteArrayView(reinterpret_cast<const char*>(bytes.data()),
+                                                    static_cast<qsizetype>(bytes.size())),
+                                     &unreadable);
+    if (unreadable && !replaceUnreadable)
         return Conversion::Unreadable;
 
     // UTF-16 and UTF-32 need their byte order mark to be recognised; UTF-8 and the rest do not.
     const bool wide = codec.scheme == core::CharScheme::Utf16LE || codec.scheme == core::CharScheme::Utf16BE ||
                       codec.scheme == core::CharScheme::Utf32LE || codec.scheme == core::CharScheme::Utf32BE;
-    QStringEncoder encoder(codec.name.data(), wide ? QStringConverter::Flag::WriteBom : QStringConverter::Flag::Default);
-    const QByteArray converted = encoder.encode(text);
-    if (encoder.hasError())
+    const std::optional<QByteArray> converted =
+        Codec(codec, wide ? QStringConverter::Flag::WriteBom : QStringConverter::Flag::Default).encode(text);
+    if (!converted)
         return Conversion::Unwritable;
-    if (!writeBytes(filePath(), {reinterpret_cast<const std::uint8_t*>(converted.constData()),
-                                 static_cast<std::size_t>(converted.size())},
+    if (!writeBytes(filePath(), {reinterpret_cast<const std::uint8_t*>(converted->constData()),
+                                 static_cast<std::size_t>(converted->size())},
                     error))
         return Conversion::Failed;
 

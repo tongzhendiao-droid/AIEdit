@@ -312,10 +312,11 @@ void TestEditing::editsAnEmptyFile()
     QTest::keyClicks(&view, "abc");
     QTest::keyClick(&view, Qt::Key_Return);
     // Past the last line break there is no line on screen: the new line gets one too, and
-    // typing goes on there.
-    QCOMPARE(contents(document), std::string("abc\n\n"));
+    // typing goes on there. Lines end as is usual on the system (CRLF on Windows).
+    const std::string eol = ui::TextDocument::defaultLineTerminator().toStdString();
+    QCOMPARE(contents(document), "abc" + eol + eol);
     QTest::keyClicks(&view, "d");
-    QCOMPARE(contents(document), std::string("abc\nd\n"));
+    QCOMPARE(contents(document), "abc" + eol + "d" + eol);
 }
 
 void TestEditing::inputMethodComposesThenCommits()

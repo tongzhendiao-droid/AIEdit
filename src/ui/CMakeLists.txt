@@ -7,6 +7,7 @@ qt_add_library(aiedit_ui STATIC
     AiTools.cpp AiTools.h
     BackupStore.cpp BackupStore.h
     ChatClient.cpp ChatClient.h
+    Codec.cpp Codec.h
     Collation.h
     Compare.cpp Compare.h
     CompareTab.cpp CompareTab.h

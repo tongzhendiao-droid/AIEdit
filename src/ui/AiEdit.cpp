@@ -2,6 +2,7 @@
 
 #include "core/FileSource.h"
 #include "core/LineIndex.h"
+#include "ui/Codec.h"
 #include "ui/FilterRuleWriter.h"
 #include "ui/TextDecoder.h"
 
@@ -10,7 +11,6 @@
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QRegularExpression>
-#include <QStringEncoder>
 
 #include <algorithm>
 #include <utility>
@@ -354,7 +354,7 @@ std::optional<QByteArray> applyEditRule(const EditRule& rule, const SearchContex
                                                                           : QRegularExpression::CaseInsensitiveOption);
 
     const TextDecoder decoder(context.codec);
-    QStringEncoder encoder(context.codec.name.data());
+    const Codec encoder(context.codec);
     const auto bytesOf = [&data](std::uint64_t from, std::uint64_t to) {
         return QByteArrayView(reinterpret_cast<const char*>(data.data()) + from, static_cast<qsizetype>(to - from));
     };
@@ -383,14 +383,14 @@ std::optional<QByteArray> applyEditRule(const EditRule& rule, const SearchContex
             out += bytesOf(line.start, line.end);
             return true;
         }
-        const QByteArray encoded = encoder.encode(changed);
-        if (encoder.hasError()) {
+        const std::optional<QByteArray> encoded = encoder.encode(changed);
+        if (!encoded) {
             if (error)
                 *error = QCoreApplication::translate("AiEdit", "line %1 as changed cannot be written in %2")
                              .arg(QString::number(line.number + 1), QString::fromLatin1(context.codec.name.data()));
             return false;
         }
-        out += encoded;
+        out += *encoded;
         out += bytesOf(line.contentEnd, line.end);
         return true;
     };

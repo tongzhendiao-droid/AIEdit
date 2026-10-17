@@ -2,11 +2,11 @@
 
 #include "core/FileSource.h"
 #include "ui/Paths.h"
+#include "ui/Codec.h"
 #include "ui/TextDecoder.h"
 
 #include <QFileInfo>
 #include <QLocale>
-#include <QStringDecoder>
 
 #include <algorithm>
 #include <cstring>
@@ -81,17 +81,10 @@ std::optional<LineKeys> lineKeys(const CompareSide& side, const CompareOptions& 
         if (stopped())
             return std::nullopt;
 
-    // Qt's decoder is much the faster; without ICU (Windows) it lacks the CJK codecs, which the
-    // text view's own decoder has.
-    QStringDecoder fast(codec.name.data(), QStringConverter::Flag::Stateless);
-    std::optional<TextDecoder> slow;
-    if (decode && !fast.isValid())
-        slow.emplace(codec);
+    const Codec converter(codec);
     const auto text = [&](std::span<const std::uint8_t> part) {
-        if (slow)
-            return slow->decodePlain(part);
-        return QString(fast.decode(QByteArrayView(reinterpret_cast<const char*>(part.data()),
-                                                  static_cast<qsizetype>(part.size()))));
+        return converter.decode(
+            QByteArrayView(reinterpret_cast<const char*>(part.data()), static_cast<qsizetype>(part.size())));
     };
 
     LineKeys result;

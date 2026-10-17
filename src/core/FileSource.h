@@ -23,7 +23,8 @@ std::error_code make_error_code(FileError e);
 //
 // Regular files are memory-mapped, so opening costs the same for 1 KB and 100 GB.
 // Files that report size 0 but still have content (/proc, /sys) or that live on file
-// systems without mmap support are read into memory instead, up to kMaxReadSize.
+// systems without mmap support are read into memory instead, up to kMaxReadSize. On Windows,
+// so are files up to kMaxCopySize: there nobody can truncate or replace a mapped file.
 //
 // If another process truncates a mapped file, the bytes past its new end read as zeros (see
 // MappingGuard) until the file is opened again.
@@ -31,6 +32,7 @@ class FileSource
 {
 public:
     static constexpr std::uint64_t kMaxReadSize = 256ull * 1024 * 1024;
+    static constexpr std::uint64_t kMaxCopySize = 64ull * 1024 * 1024;
 
     static std::unique_ptr<FileSource> open(const std::filesystem::path& path, std::error_code& ec);
     // Bytes held in memory, such as an edited document's; path() names the file they belong to.

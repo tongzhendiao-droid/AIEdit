@@ -30,6 +30,7 @@ class TestFileSource : public QObject
 
 private slots:
     void mapsRegularFile();
+    void letsOthersRewriteAnOpenFile();
     void opensEmptyFile();
     void reportsMissingFile();
     void rejectsDirectory();
@@ -53,11 +54,39 @@ void TestFileSource::mapsRegularFile()
     const auto source = FileSource::open(path, ec);
     QVERIFY2(source, ec.message().c_str());
     QVERIFY(!ec);
+#ifdef Q_OS_WIN
+    QVERIFY(!source->isMapped()); // a small file is read: see letsOthersRewriteAnOpenFile()
+#else
     QVERIFY(source->isMapped());
+#endif
     QCOMPARE(source->size(), content.size());
     QCOMPARE(source->path(), path);
     const auto bytes = source->bytes();
     QVERIFY(std::equal(bytes.begin(), bytes.end(), reinterpret_cast<const std::uint8_t*>(content.data())));
+}
+
+void TestFileSource::letsOthersRewriteAnOpenFile()
+{
+    // What an editor does to save a file that is open here: write it again from the start, or
+    // write a new one and rename it over the old one. Windows refuses both while it is mapped.
+    QTemporaryDir dir;
+    const auto path = writeFile(dir, "notes.txt", "old text\n");
+    std::error_code ec;
+    const auto source = FileSource::open(path, ec);
+    QVERIFY(source);
+
+    std::ofstream rewritten(path, std::ios::binary | std::ios::trunc);
+    QVERIFY(rewritten.is_open());
+    rewritten << "new";
+    rewritten.close();
+    QVERIFY(!rewritten.fail());
+    std::filesystem::rename(writeFile(dir, "notes.txt.new", "newer text\n"), path, ec);
+    QVERIFY2(!ec, ec.message().c_str());
+#ifdef Q_OS_WIN
+    // Read into memory, the text is still the one opened.
+    QCOMPARE(std::string(reinterpret_cast<const char*>(source->bytes().data()), source->size()),
+             std::string("old text\n"));
+#endif
 }
 
 void TestFileSource::opensEmptyFile()
