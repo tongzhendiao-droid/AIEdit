@@ -5,6 +5,7 @@
 #include "ui/LineOperations.h"
 
 #include <QByteArray>
+#include <QDateTime>
 #include <QFileSystemWatcher>
 #include <QFutureWatcher>
 #include <QTimer>
@@ -284,6 +285,24 @@ private:
     QFutureWatcher<RuleRun> m_ruleWatcher;
     QFileSystemWatcher m_watcher;
     QTimer m_reloadTimer; // coalesces bursts of change notifications
+    // The file's size and modification time as last seen, looked at every second for changes the
+    // watcher misses: Windows reports a file that grows late, if at all, while its writer keeps
+    // it open, and network folders may report nothing.
+    // The look happens in the background: on a network drive that has gone away it can take long.
+    struct DiskState
+    {
+        QString path;
+        qint64 size = -1; // -1: no file
+        QDateTime modified;
+
+        bool operator==(const DiskState&) const = default;
+    };
+    static DiskState diskState(const QString& path);
+    DiskState diskState() const;
+    QTimer m_pollTimer;
+    QFutureWatcher<DiskState> m_pollWatcher;
+    bool m_polling = false; // a look is under way
+    DiskState m_diskState;
 };
 
 } // namespace aiedit::ui

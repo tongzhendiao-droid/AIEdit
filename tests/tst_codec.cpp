@@ -50,6 +50,7 @@ class TestCodec : public QObject
     Q_OBJECT
 
 private slots:
+    void namesTheEngines();
     void convertsEveryCodec();
     void convertsText_data();
     void convertsText();
@@ -60,6 +61,17 @@ private slots:
     void handlesByteOrderMarks();
     void decodesCharacterByCharacter();
 };
+
+void TestCodec::namesTheEngines()
+{
+    // For the log: which codecs Qt converts here, and which the system's code pages do.
+    QStringList pages;
+    for (const core::TextCodec& known : core::knownCodecs()) {
+        if (Codec(known).usesCodePage())
+            pages << QString::fromLatin1(known.name.data());
+    }
+    qInfo("Converted by code pages: %s", pages.isEmpty() ? "none" : qPrintable(pages.join(QStringLiteral(", "))));
+}
 
 void TestCodec::convertsEveryCodec()
 {

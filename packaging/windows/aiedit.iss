@@ -36,7 +36,8 @@ PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-MinVersion=10.0
+; Windows 10 1809, the oldest Qt 6 runs on.
+MinVersion=10.0.17763
 WizardStyle=modern
 SetupIconFile=aiedit.ico
 UninstallDisplayIcon={app}\bin\aiedit.exe

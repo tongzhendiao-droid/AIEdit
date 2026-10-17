@@ -83,6 +83,10 @@ if(WIN32)
         NO_COMPILER_RUNTIME
         DEPLOY_TOOL_OPTIONS --no-opengl-sw --no-system-d3d-compiler --no-system-dxc-compiler --translations zh_CN)
     install(SCRIPT "${deploy_script}")
+    # windeployqt copies Windows' own icuuc.dll, which Qt links. Newer Windows' only passes calls
+    # on to icu.dll, which Windows 10 1809 lacks, so the copy keeps AIEdit from starting there;
+    # every Windows Qt runs on has an icuuc.dll of its own.
+    install(CODE "file(REMOVE \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_BINDIR}/icuuc.dll\")")
     set(CMAKE_INSTALL_SYSTEM_RUNTIME_DESTINATION ${CMAKE_INSTALL_BINDIR})
     include(InstallRequiredSystemLibraries)
 endif()
