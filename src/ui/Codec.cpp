@@ -72,15 +72,16 @@ void appendDecoded(const core::TextCodec& codec, std::span<const std::uint8_t> d
     std::size_t start = 0;
     for (std::size_t i = 0; i < data.size();) {
         const std::size_t length = core::charLength(data.subspan(i), codec.scheme);
-        // Not part of a character by the codec's structure: given on its own, it cannot take the
-        // byte after it (a line break) along.
+        // Not part of a character by the codec's structure: malformed, whatever a code page
+        // would make of it alone (some map lone lead bytes to characters).
         const bool stray = length == 1 && !isSingleByteCharacter(codec.scheme, data[i]);
         if (stray || i - start >= kMaxChunk) {
             run(start, i);
             start = i;
         }
         if (stray) {
-            single(i, 1);
+            out += QChar(kReplacement);
+            malformed = true;
             start = i + 1;
         }
         i += length;

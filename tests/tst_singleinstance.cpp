@@ -6,7 +6,20 @@
 #include <QSignalSpy>
 #include <QTest>
 
+#include <future>
+
 using aiedit::ui::SingleInstance;
+
+namespace {
+
+// What a second launch does, from another thread: it is another process, and this thread has to
+// take the connection meanwhile. (A Windows pipe holds little, so a write waits for the reader.)
+std::future<bool> forwardFromElsewhere(const SingleInstance& instance, const QStringList& files)
+{
+    return std::async(std::launch::async, [&instance, files] { return instance.forward(files); });
+}
+
+} // namespace
 
 class TestSingleInstance : public QObject
 {
@@ -33,13 +46,15 @@ void TestSingleInstance::forwardsFilesToTheRunningInstance()
 
     const SingleInstance second(uniqueName("forward"));
     const QStringList files{QStringLiteral("/tmp/a.log"), QStringLiteral("/home/user/文档/说明.txt")};
-    QVERIFY(second.forward(files));
+    std::future<bool> forwarded = forwardFromElsewhere(second, files);
     QVERIFY(received.wait());
+    QVERIFY(forwarded.get());
     QCOMPARE(received.first().first().toStringList(), files);
 
     // An empty list (launched without files) still reaches it, to bring the window forward.
-    QVERIFY(second.forward({}));
+    forwarded = forwardFromElsewhere(second, {});
     QVERIFY(received.wait());
+    QVERIFY(forwarded.get());
     QVERIFY(received.last().first().toStringList().isEmpty());
 }
 
@@ -62,8 +77,10 @@ void TestSingleInstance::takesOverAStaleSocket()
     QVERIFY(!instance.forward({}));
     QVERIFY(instance.listen());
     QSignalSpy received(&instance, &SingleInstance::filesReceived);
-    QVERIFY(SingleInstance(name).forward({QStringLiteral("/tmp/after-crash")}));
+    const SingleInstance second(name);
+    std::future<bool> forwarded = forwardFromElsewhere(second, {QStringLiteral("/tmp/after-crash")});
     QVERIFY(received.wait());
+    QVERIFY(forwarded.get());
 }
 
 QTEST_GUILESS_MAIN(TestSingleInstance)

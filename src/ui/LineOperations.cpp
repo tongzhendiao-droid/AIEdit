@@ -147,8 +147,12 @@ std::optional<LineEdit> lineOperation(LineOperation operation, const TextDocumen
         keys.reserve(lines.size());
         for (std::size_t i = 0; i < lines.size(); ++i) {
             const QByteArrayView text = content(i);
-            keys.push_back(collator.sortKey(document.decoder().decodePlain(
-                {reinterpret_cast<const std::uint8_t*>(text.data()), static_cast<std::size_t>(text.size())})));
+            // Folded first: Windows' collation still puts "apple" before "Apple" when told to
+            // ignore case, and lines that differ only in case keep their order.
+            keys.push_back(collator.sortKey(
+                document.decoder()
+                    .decodePlain({reinterpret_cast<const std::uint8_t*>(text.data()), static_cast<std::size_t>(text.size())})
+                    .toCaseFolded()));
         }
         std::vector<std::size_t> order(lines.size());
         std::iota(order.begin(), order.end(), 0);

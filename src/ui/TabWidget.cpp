@@ -185,12 +185,16 @@ void TabWidget::placeNewTabButton()
 {
     if (!m_newTab)
         return; // the bar is being set up
-    const QSize hint = m_newTab->sizeHint();
-    const int side = std::max(hint.width(), hint.height());
-    static_cast<Room*>(m_room)->setSize(QSize(side + 2 * kGap, side));
-
     const QTabBar* bar = tabBar();
     const QRect area = bar->geometry();
+    // Square, and no taller than the bar (some styles' tool buttons are), so that it sits in the
+    // middle of it.
+    const QSize hint = m_newTab->sizeHint();
+    int side = std::max(hint.width(), hint.height());
+    if (area.height() > 0)
+        side = std::min(side, area.height());
+    static_cast<Room*>(m_room)->setSize(QSize(side + 2 * kGap, side));
+
     int x = area.left();
     if (count() > 0)
         x += bar->tabRect(count() - 1).right() + 1;
@@ -201,7 +205,7 @@ void TabWidget::placeNewTabButton()
         scrolling = scrolling || (button->objectName() != kPinName && button->isVisibleTo(bar));
     if (scrolling || x > area.right() + 1)
         x = area.right() + 1;
-    m_newTab->setGeometry(x + kGap, area.top() + std::max(0, (area.height() - side) / 2), side, side);
+    m_newTab->setGeometry(x + kGap, area.top() + (area.height() - side) / 2, side, side);
     m_newTab->raise();
 }
 

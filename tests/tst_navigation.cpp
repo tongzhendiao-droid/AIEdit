@@ -21,6 +21,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include "HiddenFile.h"
+
 #include <memory>
 
 using namespace aiedit;
@@ -266,6 +268,8 @@ void TestNavigation::leavesOutWhatGitIgnores()
     write(QStringLiteral(".gitignore"), "# build output\nbuild/\n*.o\n!keep.o\n/notes.txt\n"
                                         "docs/**/draft.md\nlog?.txt\n[Tt]emp/\n  \n");
     write(QStringLiteral("src/.gitignore"), "gen/\n");
+    QVERIFY(markHidden(QDir(root()).filePath(QStringLiteral(".gitignore"))));
+    QVERIFY(markHidden(QDir(root()).filePath(QStringLiteral("src/.gitignore"))));
     for (const char* name : {"build/x.cpp", "src/a.cpp", "src/a.o", "src/keep.o", "notes.txt", "src/notes.txt",
                              "src/gen/g.cpp", "docs/a/b/draft.md", "docs/draft.md", "docs/final.md", "log1.txt",
                              "log10.txt", "Temp/t.txt", "temp/u.txt", "README.md"})
