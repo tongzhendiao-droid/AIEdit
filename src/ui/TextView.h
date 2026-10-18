@@ -88,6 +88,9 @@ public:
     // more space between lines, lines wrapped.
     bool isReadingMode() const { return m_readingMode; }
     void setReadingMode(bool on);
+    // Hidden, a narrow margin is left, where bookmarks still show. (Reading mode has neither.)
+    bool lineNumbersVisible() const { return m_lineNumbers; }
+    void setLineNumbersVisible(bool on);
     int tabWidth() const { return m_tabWidth; }
     void setTabWidth(int spaces);
     // A KSyntaxHighlighting definition name such as "C++"; empty for plain text.
@@ -322,6 +325,7 @@ private:
     bool m_wordWrap = false;   // lines wrap now
     bool m_wrapWanted = false; // the user's choice
     bool m_readingMode = false;
+    bool m_lineNumbers = true;
     qreal m_wrapWidth = 0;           // the width wrapped layouts were made for
     std::uint64_t m_topOffset = 0;    // word wrap: where the first line on screen starts
     std::uint64_t m_maxTopOffset = 0; // word wrap: as far as m_topOffset can scroll

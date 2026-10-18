@@ -255,8 +255,9 @@ MainWindow::~MainWindow()
 
 void MainWindow::createWidgets()
 {
-    // Shown while nothing is open: where to start.
-    auto* hint = new QLabel(tr("Drop files here to open them"));
+    // Shown while nothing is open: where to start; with a folder open, just how to open its files.
+    auto* hint = new QLabel;
+    m_welcomeHint = hint;
     hint->setAlignment(Qt::AlignCenter);
     hint->setForegroundRole(QPalette::PlaceholderText);
     QFont hintFont = hint->font();
@@ -270,7 +271,8 @@ void MainWindow::createWidgets()
     connect(openButton, &QPushButton::clicked, this, &MainWindow::showOpenDialog);
     auto* folderButton = new QPushButton(tr("Open Folder…"));
     connect(folderButton, &QPushButton::clicked, this, &MainWindow::showOpenFolderDialog);
-    auto* buttons = new QHBoxLayout;
+    m_welcomeButtons = new QWidget;
+    auto* buttons = new QHBoxLayout(m_welcomeButtons);
     buttons->addStretch();
     buttons->addWidget(newButton);
     buttons->addWidget(openButton);
@@ -281,7 +283,7 @@ void MainWindow::createWidgets()
     welcomeLayout->addStretch();
     welcomeLayout->addWidget(hint);
     welcomeLayout->addSpacing(12);
-    welcomeLayout->addLayout(buttons);
+    welcomeLayout->addWidget(m_welcomeButtons);
     welcomeLayout->addStretch();
 
     m_tabs = new TabWidget;
@@ -338,6 +340,12 @@ void MainWindow::createWidgets()
     m_contentsDock->setWidget(m_contents);
     addDockWidget(Qt::LeftDockWidgetArea, m_contentsDock);
     m_contentsDock->hide();
+    // Shown beside the documents that want it (see DocumentView::showsContents); shown or closed
+    // by hand, for the one in front. (Hidden behind the folder panel's tab, it is still shown.)
+    connect(m_contentsDock, &QDockWidget::visibilityChanged, this, [this] {
+        if (DocumentView* doc = currentDocument(); doc && !m_placingContents)
+            doc->setShowsContents(!m_contentsDock->isHidden());
+    });
 
     m_folders = new FolderPanel;
     m_folders->setLegacyCodec(preferredLegacyCodec());
@@ -364,6 +372,7 @@ void MainWindow::createWidgets()
     connect(m_folders, &FolderPanel::folderChanged, this, [this](const QString& folder) {
         m_quickOpen->setFolder(folder);
         updateActions();
+        updateWelcome();
     });
     connect(m_folders, &FolderPanel::compareRequested, this, &MainWindow::compareFiles);
     // Ctrl+P, and Ctrl+Shift+P, over the top of the window.
@@ -392,6 +401,8 @@ void MainWindow::createWidgets()
     addDockWidget(Qt::LeftDockWidgetArea, m_folderDock);
     tabifyDockWidget(m_contentsDock, m_folderDock);
     m_folderDock->hide();
+    connect(m_folderDock, &QDockWidget::visibilityChanged, this, &MainWindow::updateWelcome);
+    updateWelcome();
 
     m_findInFiles = new FindInFilesPanel;
     m_findInFiles->setLegacyCodec(preferredLegacyCodec());
@@ -552,6 +563,10 @@ void MainWindow::createActions()
     m_wordWrapAction->setShortcut(QKeySequence(Qt::ALT | Qt::Key_Z));
     m_wordWrapAction->setToolTip(tr("Wrap long lines at the edge of the window instead of scrolling sideways"));
     connect(m_wordWrapAction, &QAction::toggled, this, &MainWindow::setWordWrap);
+    m_lineNumbersAction = new QAction(tr("&Line Numbers"), this);
+    m_lineNumbersAction->setCheckable(true);
+    m_lineNumbersAction->setChecked(true);
+    connect(m_lineNumbersAction, &QAction::toggled, this, &MainWindow::setLineNumbersVisible);
 
     m_quitAction = new QAction(tr("&Quit"), this);
     m_quitAction->setShortcut(QKeySequence::Quit);
@@ -947,6 +962,7 @@ void MainWindow::createMenus()
     view->addAction(m_fullScreenAction);
     view->addSeparator();
     view->addAction(m_wordWrapAction);
+    view->addAction(m_lineNumbersAction);
     view->addAction(m_followAction);
     view->addSeparator();
     QMenu* hex = view->addMenu(tr("Hex &Layout"));
@@ -1081,10 +1097,19 @@ void MainWindow::populateSchemeMenu()
         m_schemeGroup->addAction(action);
         connect(action, &QAction::triggered, this, [this, name] { chooseColorScheme(name); });
     };
-    add(tr("Follow the &System"), QString());
+    // AIEdit's own first: Auto (where it starts), then Paper, Eye Care and Night.
+    const QList<ColorScheme> schemes = availableColorSchemes();
+    add(tr("&Automatic (Paper or Night)"), QString::fromLatin1(kAutoColorScheme));
+    for (const ColorScheme& scheme : schemes) {
+        if (scheme.own)
+            add(scheme.displayName, scheme.name);
+    }
+    add(tr("&System Colors"), QString());
     bool dark = false;
     m_schemeMenu->addSection(tr("Light"));
-    for (const ColorScheme& scheme : availableColorSchemes()) {
+    for (const ColorScheme& scheme : schemes) {
+        if (scheme.own)
+            continue;
         if (scheme.dark && !dark) {
             m_schemeMenu->addSection(tr("Dark"));
             dark = true;
@@ -1121,7 +1146,7 @@ void MainWindow::chooseEditorFont()
 void MainWindow::readSettings()
 {
     QSettings settings;
-    setColorScheme(settings.value(QStringLiteral("view/colorScheme")).toString());
+    setColorScheme(settings.value(QStringLiteral("view/colorScheme"), QString::fromLatin1(kAutoColorScheme)).toString());
     m_fontFamily = settings.value(QStringLiteral("view/fontFamily")).toString();
     if (!restoreGeometry(settings.value(QStringLiteral("window/geometry")).toByteArray()))
         resize(1100, 700);
@@ -1132,6 +1157,7 @@ void MainWindow::readSettings()
     m_inspector->setBigEndian(settings.value(QStringLiteral("inspector/bigEndian"), false).toBool());
     setBytesPerRow(settings.value(QStringLiteral("view/bytesPerRow"), 16).toInt());
     setWordWrap(settings.value(QStringLiteral("view/wordWrap"), true).toBool());
+    setLineNumbersVisible(settings.value(QStringLiteral("view/lineNumbers"), true).toBool());
     for (const QVariant& value : settings.value(QStringLiteral("files/recent")).toList()) {
         DocumentView::State state = stateFromVariant(value);
         if (!state.path.isEmpty())
@@ -1149,6 +1175,7 @@ void MainWindow::writeSettings() const
     settings.setValue(QStringLiteral("view/fontFamily"), m_fontFamily);
     settings.setValue(QStringLiteral("view/bytesPerRow"), m_bytesPerRow);
     settings.setValue(QStringLiteral("view/wordWrap"), m_wordWrap);
+    settings.setValue(QStringLiteral("view/lineNumbers"), m_lineNumbers);
     settings.setValue(QStringLiteral("inspector/bigEndian"), m_inspector->isBigEndian());
 }
 
@@ -1724,7 +1751,11 @@ void MainWindow::addDocument(DocumentView* doc, int index, bool focus)
     connect(doc, &DocumentView::aiSettingsRequested, this, &MainWindow::showAiSettings);
     connect(doc, &DocumentView::aiEditProposed, this,
             [this, doc](const DocumentView::AiEditProposal& proposal) { reviewAiEdit(doc, proposal); });
-    connect(doc, &DocumentView::readingModeChanged, this, [this, doc] { applyViewSettings(doc); });
+    connect(doc, &DocumentView::readingModeChanged, this, [this, doc] {
+        applyViewSettings(doc);
+        if (doc == currentDocument())
+            placeContents();
+    });
     // How far a book is read shows as it scrolls.
     connect(doc->textView()->verticalScrollBar(), &QScrollBar::valueChanged, this, [this, doc] {
         if (doc == currentDocument() && doc->isReadingMode())
@@ -2096,6 +2127,7 @@ void MainWindow::currentTabChanged()
         m_recentDocs.prepend(doc);
     m_inspector->setSource(doc ? doc->source() : nullptr);
     m_contents->setDocument(doc);
+    placeContents();
     if (doc) {
         updateDocumentTitle(doc);
     } else {
@@ -2268,6 +2300,7 @@ void MainWindow::applyViewSettings(DocumentView* doc) const
     }
     doc->hexView()->setBytesPerRow(m_bytesPerRow);
     doc->textView()->setWordWrap(m_wordWrap);
+    doc->textView()->setLineNumbersVisible(m_lineNumbers);
 }
 
 void MainWindow::setBytesPerRow(int bytesPerRow)
@@ -2289,6 +2322,17 @@ void MainWindow::setWordWrap(bool on)
     for (int i = 0; i < m_tabs->count(); ++i)
         if (DocumentView* doc = document(i))
             doc->textView()->setWordWrap(on);
+}
+
+void MainWindow::setLineNumbersVisible(bool on)
+{
+    m_lineNumbers = on;
+    const QSignalBlocker blocker(m_lineNumbersAction);
+    m_lineNumbersAction->setChecked(on);
+    for (int i = 0; i < m_tabs->count(); ++i)
+        if (DocumentView* doc = document(i))
+            doc->textView()->setLineNumbersVisible(on);
+    QSettings().setValue(QStringLiteral("view/lineNumbers"), on);
 }
 
 void MainWindow::zoomBy(int steps)
@@ -2612,11 +2656,26 @@ void MainWindow::setReadingMode(bool on)
     if (!doc)
         return;
     doc->setReadingMode(on); // the font follows, through readingModeChanged
-    if (on) {
-        m_contentsDock->show();
+    placeContents();
+    if (on)
         m_contentsDock->raise();
-    }
     doc->setFocus();
+}
+
+void MainWindow::updateWelcome()
+{
+    // A folder beside it is where to start: no buttons for what the folder already offers.
+    const bool browsing = !m_folders->folder().isEmpty() && !m_folderDock->isHidden();
+    m_welcomeHint->setText(browsing ? tr("Click a file in the folder to look at it; double-click to keep it open")
+                                    : tr("Drop files here to open them"));
+    m_welcomeButtons->setVisible(!browsing);
+}
+
+void MainWindow::placeContents()
+{
+    const DocumentView* doc = currentDocument();
+    const QScopedValueRollback guard(m_placingContents, true);
+    m_contentsDock->setVisible(doc && doc->showsContents());
 }
 
 QFont MainWindow::readingFont() const

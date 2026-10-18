@@ -93,6 +93,23 @@ jobs:
             Write-Host ("===== {0} again: exit code {1}" -f $name, $LASTEXITCODE)
           }
           exit 1
+      # The colour schemes on a real Windows screen, title bar and Windows 11 style included, to
+      # look at; not a test that can fail the build.
+      - name: Screenshots
+        continue-on-error: true
+        run: |
+          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:RUNNER_TEMP\aiedit-deps\bin;$env:PATH"
+          $env:AIEDIT_SCREENSHOT_DIR = "$PWD\screenshots"
+          New-Item -ItemType Directory -Force screenshots | Out-Null
+          $program = (Get-ChildItem build -Recurse -Filter tst_colorscheme.exe | Select-Object -First 1).FullName
+          & $program rendersTheSchemes
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: screenshots-windows
+          path: screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
       - name: Package
         run: packaging/windows/package.ps1 -Build build -Output dist
       # The packed folder runs on its own: with only Windows on PATH, aiedit.exe is still running

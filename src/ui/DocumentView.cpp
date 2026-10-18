@@ -250,6 +250,7 @@ void DocumentView::setReadingMode(bool on)
     if (on && m_viewMode != ViewMode::Text)
         setViewMode(ViewMode::Text); // a book is read as text
     m_textView->setReadingMode(on);
+    m_showsContents = on; // a book's chapters beside it; nothing beside other text
     emit readingModeChanged(on);
     emit stateChanged();
 }

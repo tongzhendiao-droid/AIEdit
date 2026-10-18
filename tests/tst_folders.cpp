@@ -15,7 +15,9 @@
 #include <QDir>
 #include <QIcon>
 #include <QImage>
+#include <QLabel>
 #include <QMenu>
+#include <QPushButton>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -112,6 +114,7 @@ private slots:
     void keepsUnsavedFilesWhereTheyAre();
     void closesTrashedFiles();
     void opensFoldersFromThePath();
+    void startPageStepsAsideForAFolder();
     void restoresTheFolder();
     void asksTheAiAboutAFolder();
 
@@ -728,6 +731,32 @@ void TestFolders::opensFoldersFromThePath()
     QVERIFY(window.openPath(a));
     QCOMPARE(window.currentDocument()->filePath(), a);
     QVERIFY(findAction(window, QStringLiteral("What Is in This Fol&der?"))->isEnabled());
+}
+
+void TestFolders::startPageStepsAsideForAFolder()
+{
+    ui::MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QPushButton* openFolder = nullptr; // on the page in the middle (the folder panel has one too)
+    for (QPushButton* button : window.centralWidget()->findChildren<QPushButton*>())
+        if (button->text() == QStringLiteral("Open Folder…"))
+            openFolder = button;
+    QVERIFY(openFolder && openFolder->isVisible()); // nothing open: where to start
+
+    // A folder open beside it: no buttons for what the folder offers, just how to use it.
+    QVERIFY(window.openFolder(root()));
+    QVERIFY(!openFolder->isVisible());
+    const auto hinted = [&window] {
+        for (const QLabel* label : window.centralWidget()->findChildren<QLabel*>())
+            if (label->isVisible() && label->text().contains(QStringLiteral("double-click")))
+                return true;
+        return false;
+    };
+    QVERIFY(hinted());
+    window.findChild<ui::FolderPanel*>()->closeFolder();
+    QVERIFY(openFolder->isVisible());
+    QVERIFY(!hinted());
 }
 
 void TestFolders::restoresTheFolder()

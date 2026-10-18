@@ -21,6 +21,7 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QTreeWidget>
@@ -84,6 +85,8 @@ private slots:
     void readingModeLaysOutABook();
     void readingModeIsRemembered();
     void contentsGoesToChaptersAndFollowsReading();
+    void contentsShowsBesideWhatIsRead();
+    void hidesLineNumbers();
     void theAiFindsHeadingsTheRuleMisses();
     void sendsAChapterToTheAi();
     void theAiMenuFindsTheChapterFirst();
@@ -248,6 +251,64 @@ void TestReading::contentsGoesToChaptersAndFollowsReading()
     // Reading back up marks the chapter there.
     view->scrollToOffset(contents->headings()[0].start + 10);
     QTRY_COMPARE(tree->currentItem(), tree->topLevelItem(0));
+}
+
+void TestReading::contentsShowsBesideWhatIsRead()
+{
+    ui::MainWindow window;
+    window.resize(1000, 600);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    auto* dock = window.findChild<QDockWidget*>(QStringLiteral("contentsDock"));
+    QVERIFY(dock);
+    QVERIFY(window.openFile(write("book.txt", novel())));
+    QVERIFY(dock->isHidden()); // not reading: no contents
+    findAction(window, QStringLiteral("Rea&ding Mode"))->trigger();
+    QVERIFY(!dock->isHidden());
+    QVERIFY(window.openFile(write("notes.txt", "a note\n")));
+    QVERIFY(dock->isHidden()); // nothing to read in it
+    window.findChild<QTabWidget*>()->setCurrentIndex(0);
+    QVERIFY(!dock->isHidden()); // back to the book
+
+    // Closed by hand beside the book, it stays closed there; opened by hand beside the note,
+    // it shows there.
+    dock->close();
+    window.findChild<QTabWidget*>()->setCurrentIndex(1);
+    QVERIFY(dock->isHidden());
+    dock->toggleViewAction()->trigger();
+    QVERIFY(!dock->isHidden());
+    window.findChild<QTabWidget*>()->setCurrentIndex(0);
+    QVERIFY(dock->isHidden());
+    window.findChild<QTabWidget*>()->setCurrentIndex(1);
+    QVERIFY(!dock->isHidden());
+
+    // Leaving reading mode puts it away.
+    window.findChild<QTabWidget*>()->setCurrentIndex(0);
+    dock->toggleViewAction()->trigger();
+    QVERIFY(!dock->isHidden());
+    findAction(window, QStringLiteral("Rea&ding Mode"))->trigger(); // off
+    QVERIFY(dock->isHidden());
+}
+
+void TestReading::hidesLineNumbers()
+{
+    {
+        ui::MainWindow window;
+        QVERIFY(window.openFile(write("numbered.txt", "one\ntwo\n")));
+        QAction* numbers = findAction(window, QStringLiteral("&Line Numbers"));
+        QVERIFY(numbers && numbers->isChecked());
+        QVERIFY(window.currentDocument()->textView()->lineNumbersVisible());
+        numbers->trigger();
+        QVERIFY(!window.currentDocument()->textView()->lineNumbersVisible());
+        QVERIFY(window.openFile(write("another.txt", "three\n")));
+        QVERIFY(!window.currentDocument()->textView()->lineNumbersVisible()); // for every document
+    }
+    ui::MainWindow window; // and remembered
+    QVERIFY(window.openFile(write("later.txt", "four\n")));
+    QVERIFY(!findAction(window, QStringLiteral("&Line Numbers"))->isChecked());
+    QVERIFY(!window.currentDocument()->textView()->lineNumbersVisible());
+    findAction(window, QStringLiteral("&Line Numbers"))->trigger();
+    QVERIFY(window.currentDocument()->textView()->lineNumbersVisible());
 }
 
 void TestReading::theAiFindsHeadingsTheRuleMisses()

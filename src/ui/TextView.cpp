@@ -251,6 +251,18 @@ void TextView::setReadingMode(bool on)
     viewport()->update();
 }
 
+void TextView::setLineNumbersVisible(bool on)
+{
+    if (on == m_lineNumbers)
+        return;
+    m_lineNumbers = on;
+    // The text moves: wrapping, and what fits on a row, change with it.
+    m_wrapWidth = wrapWidth();
+    clearLayouts();
+    updateScrollBars();
+    viewport()->update();
+}
+
 void TextView::applyWordWrap(bool on)
 {
     if (on == m_wordWrap)
@@ -532,6 +544,8 @@ int TextView::gutterWidth() const
 {
     if (m_readingMode)
         return 0; // no line numbers in a book
+    if (!m_lineNumbers)
+        return static_cast<int>(std::ceil(m_charWidth)); // room for the bookmarks' marks
     std::uint64_t lines = m_document ? std::max<std::uint64_t>(1, m_document->index().lineCount()) : 1;
     int digits = 1;
     while (lines >= 10) {
@@ -1378,7 +1392,7 @@ void TextView::paintEvent(QPaintEvent* event)
             painter.drawRoundedRect(QRectF(inset, y + 1, gutter - m_charWidth / 2 - inset, m_lineHeight - 2), inset,
                                     inset);
         }
-        if (!span.continuation && gutter > 0) {
+        if (!span.continuation && gutter > 0 && m_lineNumbers) {
             painter.setPen(isCaretBlock || bookmarked ? m_colors.text : m_colors.dim);
             painter.drawText(QRectF(0, y, gutter - m_charWidth, m_lineHeight), Qt::AlignRight | Qt::AlignVCenter,
                              QString::number(span.line + 1));
