@@ -115,6 +115,11 @@ QPalette paletteFrom(const QColor& background, const QColor& text, const QColor&
     palette.setColor(QPalette::PlaceholderText, disabled);
     palette.setColor(QPalette::Link, link);
     palette.setColor(QPalette::LinkVisited, link);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+    // What the Windows 11 style fills a ticked check box and a default button with; unset, it drew
+    // ticked boxes black on a dark scheme and white on a light one, the tick unseen.
+    palette.setColor(QPalette::Accent, link);
+#endif
     for (const QPalette::ColorRole role : {QPalette::WindowText, QPalette::Text, QPalette::ButtonText})
         palette.setColor(QPalette::Disabled, role, disabled);
     return palette;
