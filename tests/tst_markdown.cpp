@@ -255,12 +255,16 @@ void TestMarkdown::drawsTheDocument()
     // Nothing comes from the network: the picture is not loaded.
     QVERIFY(doc->resource(QTextDocument::ImageResource, QUrl(QStringLiteral("https://example.com/a.png"))).isNull());
 
-    // Drawn again as typed, it stays where it was read.
+    // Drawn again as typed, it stays where it was read. (Long enough that the second heading can
+    // come to the top whatever the fonts' heights.)
+    const QString longer = text + QStringLiteral("\nmore\n").repeated(40);
+    view.setMarkdown(longer, m_dir.path());
     view.verticalScrollBar()->setValue(view.verticalScrollBar()->maximum());
     const int scrolled = view.verticalScrollBar()->value();
-    view.setMarkdown(text + QStringLiteral("\nmore\n"), m_dir.path());
+    view.setMarkdown(longer + QStringLiteral("\nmore\n"), m_dir.path());
     QCOMPARE(view.verticalScrollBar()->value(), scrolled);
     view.scrollToPlace({1, 0});
+    qInfo() << "scrolled to the end at" << scrolled << "and to the second heading at" << view.verticalScrollBar()->value();
     QVERIFY(view.verticalScrollBar()->value() < scrolled);
     QCOMPARE(view.topPlace().heading, 1);
 
