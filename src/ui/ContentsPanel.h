@@ -82,6 +82,8 @@ private:
     void showStatus(const QString& text);
     void updateButtons();
     QString fileKey() const;
+    // The AI wrote the rule the headings are found with, for this file.
+    bool hasCustomRule() const;
 
     QPointer<DocumentView> m_document;
     std::vector<Heading> m_headings;

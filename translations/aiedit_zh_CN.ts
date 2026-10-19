@@ -123,6 +123,10 @@
         <source>Close (Esc)</source>
         <translation>关闭（Esc）</translation>
     </message>
+    <message>
+        <source>Try:</source>
+        <translation>试试：</translation>
+    </message>
 </context>
 <context>
     <name>aiedit::ui::AiEditor</name>
@@ -894,6 +898,38 @@
         <translation>（要怎么改）</translation>
     </message>
     <message>
+        <source>Make a table</source>
+        <translation>整理成表格</translation>
+    </message>
+    <message>
+        <source>Turn this into a Markdown table: a row for each thing it is about, a column for each kind of detail given. Keep every fact and add none.</source>
+        <translation>把这些内容整理成 Markdown 表格：每样东西一行，每种信息一列。保留所有事实，不要添加。</translation>
+    </message>
+    <message>
+        <source>Tidy the layout</source>
+        <translation>整理排版</translation>
+    </message>
+    <message>
+        <source>Lay this out as Markdown: headings for its parts, short paragraphs, lists where things are listed, a blank line between blocks. Keep the wording.</source>
+        <translation>用 Markdown 重新排版：各部分加标题，段落简短，列举的内容用列表，块与块之间空一行。措辞保持不变。</translation>
+    </message>
+    <message>
+        <source>Make a list</source>
+        <translation>改成列表</translation>
+    </message>
+    <message>
+        <source>Turn this into a Markdown list: an item for each point, and points that belong to another under it. Keep the wording.</source>
+        <translation>改成 Markdown 列表：每个要点一项，从属于别的要点的放在它下面。措辞保持不变。</translation>
+    </message>
+    <message>
+        <source>Fix typos</source>
+        <translation>纠正错别字</translation>
+    </message>
+    <message>
+        <source>Correct wrongly written characters, typos and punctuation, and change nothing else.</source>
+        <translation>只改正错别字、笔误和标点，其他一概不动。</translation>
+    </message>
+    <message>
         <source>the whole file, by a rule the AI writes</source>
         <translation>整个文件，由 AI 写规则来改</translation>
     </message>
@@ -966,6 +1002,10 @@
         <translation>文件已被删除或移动，当前显示的是最后一个版本</translation>
     </message>
     <message>
+        <source>%1 characters of the drawn text</source>
+        <translation>排版后文字中的 %1 个字符</translation>
+    </message>
+    <message>
         <source>line %1 (%2 bytes)</source>
         <translation>第 %1 行（%2 字节）</translation>
     </message>
@@ -1036,6 +1076,42 @@
     <message>
         <source>It has no file yet; use Save As</source>
         <translation>它还没有对应的文件，请用「另存为」</translation>
+    </message>
+    <message>
+        <source>*Too large to draw: %1. Files of up to %2 are drawn.*</source>
+        <translation>*太大了，不排版：%1。只排版不超过 %2 的文件。*</translation>
+    </message>
+    <message>
+        <source>These lines hold bytes that are not %1 text; nothing was changed</source>
+        <translation>这几行有不是 %1 文字的字节，没有做任何修改</translation>
+    </message>
+    <message>
+        <source>%1 cannot hold some of these characters; nothing was changed</source>
+        <translation>%1 无法表示其中的某些字符，没有做任何修改</translation>
+    </message>
+    <message>
+        <source>Column %1</source>
+        <translation>列 %1</translation>
+    </message>
+    <message>
+        <source>Marks like these go around text within one line</source>
+        <translation>这类标记只能加在同一行里的文字上</translation>
+    </message>
+    <message>
+        <source>A link goes around text within one line</source>
+        <translation>链接只能加在同一行里的文字上</translation>
+    </message>
+    <message>
+        <source>The caret is not in a table</source>
+        <translation>光标不在表格里</translation>
+    </message>
+    <message>
+        <source>Not a table: under its first row comes a row of dashes, as in | --- | --- |</source>
+        <translation>不是表格：第一行下面应该是一行短横线，例如 | --- | --- |</translation>
+    </message>
+    <message>
+        <source>The table is lined up already</source>
+        <translation>表格已经对齐了</translation>
     </message>
 </context>
 <context>
@@ -1890,6 +1966,22 @@
         <translation>保存所有有未保存修改的文档</translation>
     </message>
     <message>
+        <source>Export as &amp;HTML…</source>
+        <translation>导出为 HTML(&amp;H)…</translation>
+    </message>
+    <message>
+        <source>Write the Markdown drawn as a web page</source>
+        <translation>把排好版的 Markdown 存为网页</translation>
+    </message>
+    <message>
+        <source>Export as P&amp;DF…</source>
+        <translation>导出为 PDF(&amp;D)…</translation>
+    </message>
+    <message>
+        <source>Write the Markdown drawn as a PDF, on A4 pages</source>
+        <translation>把排好版的 Markdown 存为 PDF（A4 纸）</translation>
+    </message>
+    <message>
         <source>Keep showing the end of the file as it grows, like tail -f</source>
         <translation>像 tail -f 那样，文件增长时始终显示末尾</translation>
     </message>
@@ -2038,6 +2130,70 @@
         <translation>小写(&amp;L)</translation>
     </message>
     <message>
+        <source>&amp;Bold</source>
+        <translation>加粗(&amp;B)</translation>
+    </message>
+    <message>
+        <source>&amp;Italic</source>
+        <translation>斜体(&amp;I)</translation>
+    </message>
+    <message>
+        <source>&amp;Strikethrough</source>
+        <translation>删除线(&amp;S)</translation>
+    </message>
+    <message>
+        <source>Inline &amp;Code</source>
+        <translation>行内代码(&amp;C)</translation>
+    </message>
+    <message>
+        <source>&amp;Link</source>
+        <translation>链接(&amp;L)</translation>
+    </message>
+    <message>
+        <source>Heading &amp;1</source>
+        <translation>一级标题(&amp;1)</translation>
+    </message>
+    <message>
+        <source>Heading &amp;2</source>
+        <translation>二级标题(&amp;2)</translation>
+    </message>
+    <message>
+        <source>Heading &amp;3</source>
+        <translation>三级标题(&amp;3)</translation>
+    </message>
+    <message>
+        <source>B&amp;ulleted List</source>
+        <translation>无序列表(&amp;U)</translation>
+    </message>
+    <message>
+        <source>&amp;Numbered List</source>
+        <translation>有序列表(&amp;N)</translation>
+    </message>
+    <message>
+        <source>&amp;Task List</source>
+        <translation>任务列表(&amp;T)</translation>
+    </message>
+    <message>
+        <source>&amp;Quote</source>
+        <translation>引用(&amp;Q)</translation>
+    </message>
+    <message>
+        <source>Code Bloc&amp;k</source>
+        <translation>代码块(&amp;K)</translation>
+    </message>
+    <message>
+        <source>Insert T&amp;able</source>
+        <translation>插入表格(&amp;A)</translation>
+    </message>
+    <message>
+        <source>&amp;Format Table</source>
+        <translation>格式化表格(&amp;F)</translation>
+    </message>
+    <message>
+        <source>Line up the columns of the table at the caret</source>
+        <translation>把光标所在表格的各列对齐</translation>
+    </message>
+    <message>
         <source>Go to F&amp;ile…</source>
         <translation>转到文件(&amp;I)…</translation>
     </message>
@@ -2140,6 +2296,14 @@
     <message>
         <source>&amp;Side by Side</source>
         <translation>并排显示(&amp;S)</translation>
+    </message>
+    <message>
+        <source>Markdown &amp;Preview</source>
+        <translation>Markdown 预览(&amp;P)</translation>
+    </message>
+    <message>
+        <source>Write Markdown with it drawn beside, as it will read</source>
+        <translation>一边写 Markdown，一边在旁边看排好版的样子</translation>
     </message>
     <message>
         <source>&amp;Next Tab</source>
@@ -2300,6 +2464,10 @@
     <message>
         <source>Convert Case</source>
         <translation>大小写转换</translation>
+    </message>
+    <message>
+        <source>Mar&amp;kdown</source>
+        <translation>Markdown(&amp;K)</translation>
     </message>
     <message>
         <source>&amp;View</source>
@@ -2468,6 +2636,10 @@
     <message>
         <source>&amp;System Colors</source>
         <translation>系统颜色(&amp;S)</translation>
+    </message>
+    <message>
+        <source>The link goes to %1, which is not a file</source>
+        <translation>链接指向 %1，它不是文件</translation>
     </message>
     <message>
         <source>Open Files</source>
@@ -2728,6 +2900,36 @@
         <translation>单击左边文件夹里的文件即可查看，双击则一直打开</translation>
     </message>
     <message>
+        <source>Export as HTML</source>
+        <translation>导出为 HTML</translation>
+    </message>
+    <message>
+        <source>Export as PDF</source>
+        <translation>导出为 PDF</translation>
+    </message>
+    <message>
+        <source>Web pages (*.html *.htm)</source>
+        <translation>网页 (*.html *.htm)</translation>
+    </message>
+    <message>
+        <source>PDF documents (*.pdf)</source>
+        <translation>PDF 文档 (*.pdf)</translation>
+    </message>
+    <message>
+        <source>Cannot Export</source>
+        <translation>无法导出</translation>
+    </message>
+    <message>
+        <source>Cannot write %1:
+%2</source>
+        <translation>无法写入 %1：
+%2</translation>
+    </message>
+    <message>
+        <source>Written to %1</source>
+        <translation>已写入 %1</translation>
+    </message>
+    <message>
         <source>Summarize this chapter: what happens, who is in it, and what stands out.</source>
         <translation>总结这一章：讲了什么事，有哪些人物，有什么值得注意的地方。</translation>
     </message>
@@ -2866,6 +3068,13 @@
     <message>
         <source>Selected: %1 bytes (%2) from %3</source>
         <translation>已选 %1 字节（%2），起点 %3</translation>
+    </message>
+</context>
+<context>
+    <name>aiedit::ui::MarkdownView</name>
+    <message>
+        <source>The PDF could not be written</source>
+        <translation>无法写出 PDF</translation>
     </message>
 </context>
 <context>

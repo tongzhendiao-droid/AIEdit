@@ -7,6 +7,7 @@
 #include <QByteArray>
 #include <QDateTime>
 #include <QFileSystemWatcher>
+#include <QFont>
 #include <QFutureWatcher>
 #include <QTimer>
 #include <QWidget>
@@ -36,11 +37,13 @@ class AiEditor;
 class FilterPanel;
 class FindBar;
 class HexView;
+class MarkdownView;
 class TextDocument;
 class TextView;
 
 // One open file: its bytes, what kind of file it is, and the text and hex views showing it.
 // Both views always share the caret and selection, so switching or splitting loses nothing.
+// Markdown is drawn too: beside the text as it is written, and in its place in reading mode.
 //
 // Text files up to core::EditBuffer::kMaxEditableSize can be edited in the text view. With
 // unsaved edits, changes on disk no longer reload the file; saving writes over them.
@@ -54,6 +57,7 @@ public:
         Text,
         Hex,
         Split,
+        Preview, // the text, and the Markdown drawn beside it (Markdown documents only)
     };
 
     DocumentView(std::shared_ptr<const core::FileSource> source, const core::FileTypeInfo& fileType,
@@ -87,6 +91,43 @@ public:
     void setShowsContents(bool on) { m_showsContents = on; }
     // Shows the text from `offset` on at the top, with the caret there: where a chapter starts.
     void showFromOffset(std::uint64_t offset);
+
+    // Markdown, by the file's name or the syntax chosen for it.
+    bool isMarkdown() const;
+    // Reading mode on Markdown not too large to draw: it is read drawn, not as text.
+    bool showsDrawnMarkdown() const;
+    // Where the Markdown is drawn; made when first shown.
+    MarkdownView* markdownView() const { return m_markdownView; }
+    // The font it is drawn in.
+    void setMarkdownFont(const QFont& font);
+    enum class ExportFormat
+    {
+        Html,
+        Pdf,
+    };
+    // Writes the document as it is now, drawn as on paper.
+    bool exportMarkdown(const QString& path, ExportFormat format, QString* error = nullptr) const;
+    // Writing Markdown: on the selection, or else the word or the line at the caret.
+    enum class MarkdownEdit
+    {
+        Bold,          // **text**, or back to text
+        Italic,        // *text*
+        Strikethrough, // ~~text~~
+        Code,          // `text`
+        Link,          // [text](address)
+        Heading1,      // the lines' marks, as markdown::toggleLinePrefix() gives and takes them
+        Heading2,
+        Heading3,
+        BulletList,
+        NumberedList,
+        TaskList,
+        Quote,
+        CodeBlock,   // ``` above the lines and below them
+        Table,       // a table to fill in, under the caret's line
+        FormatTable, // the table at the caret, its columns lined up
+    };
+    // False if nothing changed; the status bar then says why.
+    bool applyMarkdownEdit(MarkdownEdit edit);
     // The view the user works in: the visible one, or in split mode the one focused last.
     bool isTextActive() const;
     std::uint64_t cursorOffset() const;
@@ -224,6 +265,8 @@ signals:
     void statusMessage(const QString& message);
     void aiSettingsRequested();
     void readingModeChanged(bool on);
+    // A link in the drawn Markdown to a file on disk was clicked.
+    void fileLinkActivated(const QString& path);
     void aiEditProposed(const aiedit::ui::DocumentView::AiEditProposal& proposal);
 
 protected:
@@ -232,6 +275,37 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
 
 private:
+    // Shows the views the mode asks for, and focuses the one worked in.
+    void updateViews();
+    QWidget* activeView() const;
+    // The drawn Markdown is what the user works in: in reading mode, or clicked in the preview.
+    bool isMarkdownActive() const;
+    MarkdownView* ensureMarkdownView();
+    // The text changed: drawn again after a pause, if it is shown.
+    void markdownChanged();
+    void drawMarkdown();
+    void updateMarkdownEditing();
+    // The text and the drawn Markdown scroll together, by the headings.
+    void syncMarkdownFromText();
+    void syncTextFromMarkdown();
+    std::uint64_t lineAt(std::uint64_t offset) const;
+    // Marks around the selection (or the word at the caret) within a line, or taken away.
+    bool toggleInlineMark(const QString& mark);
+    bool insertMarkdownLink();
+    bool formatMarkdownTable();
+    // The text of the lines `first` to `last`; nothing, with a word in the status bar, if it
+    // would not be written back as the same bytes.
+    std::optional<QStringList> markdownLines(std::uint64_t first, std::uint64_t last);
+    // A place in lines about to be written: the line, and the character in it.
+    struct TextPosition
+    {
+        qsizetype line = 0;
+        qsizetype column = 0;
+    };
+    // Replaces the lines `first` to `last` with `lines`, as one step to undo, and selects from
+    // `from` to `to` in them.
+    bool replaceMarkdownLines(std::uint64_t first, std::uint64_t last, const QStringList& lines, TextPosition from,
+                              TextPosition to);
     void syncFromText();
     void syncFromHex();
     void applySplitSizes();
@@ -290,6 +364,15 @@ private:
     QFileSystemWatcher m_watcher;
     QTimer m_reloadTimer; // coalesces bursts of change notifications
     bool m_showsContents = false;
+    MarkdownView* m_markdownView = nullptr;
+    QList<QAction*> m_textContextActions; // for the drawn Markdown too
+    QFont m_markdownFont;
+    QTimer m_markdownTimer;        // draws after a pause in typing
+    bool m_markdownStale = true;   // the text changed since it was drawn
+    qint64 m_markdownDrawMs = 0;   // how long drawing it took last
+    QList<int> m_markdownHeadings; // the lines of the headings drawn
+    bool m_markdownFocusedLast = false;
+    bool m_syncingScroll = false;
     // The file's size and modification time as last seen, looked at every second for changes the
     // watcher misses: Windows reports a file that grows late, if at all, while its writer keeps
     // it open, and network folders may report nothing.
