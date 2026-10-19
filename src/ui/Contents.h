@@ -16,7 +16,7 @@ struct Heading
     std::uint64_t line = 0;  // 0-based
     std::uint64_t start = 0; // where the line starts, in bytes
     QString title;
-    int level = 2; // 1 for volumes and parts, 2 for chapters and the like
+    int level = 2; // 1 for volumes and parts, 2 for chapters and the like; Markdown's, 1 to 6
 };
 
 // The rule that finds headings in most books: short lines such as 第三回, 第十二章 风起,
@@ -30,6 +30,10 @@ FilterRule defaultHeadingRule();
 // start, then the chapters), the later ones stay.
 std::vector<Heading> findHeadings(const FilterRule& rule, const SearchContext& context,
                                   const std::function<bool()>& cancelled = {});
+
+// The headings of Markdown as it marks them (# and ## …, or a line over === or ---), outside code
+// blocks: without their marks, at levels 1 to 6. Only those the index has reached.
+std::vector<Heading> findMarkdownHeadings(const SearchContext& context, const std::function<bool()>& cancelled = {});
 
 // Where the text of a heading ends: at the next heading, or at the end of the text.
 std::uint64_t headingEnd(const std::vector<Heading>& headings, std::size_t index, std::uint64_t textEnd);

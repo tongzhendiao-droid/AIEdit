@@ -35,6 +35,8 @@ qt_add_library(aiedit_ui STATIC
     LineOperations.cpp LineOperations.h
     LogFilter.cpp LogFilter.h
     MainWindow.cpp MainWindow.h
+    Markdown.cpp Markdown.h
+    MarkdownView.cpp MarkdownView.h
     Paths.h
     QuickOpen.cpp QuickOpen.h
     RowScrollBar.cpp RowScrollBar.h

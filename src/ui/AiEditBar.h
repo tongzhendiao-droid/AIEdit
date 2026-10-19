@@ -1,7 +1,9 @@
 #pragma once
 
+#include <QList>
 #include <QWidget>
 
+class QHBoxLayout;
 class QLabel;
 class QLineEdit;
 class QToolButton;
@@ -27,6 +29,14 @@ public:
     void showMessage(const QString& text, bool error = false);
     // Shows the bar and puts the cursor in the line, its text selected.
     void activate();
+    // Requests asked for often, under the line: clicked, one is sent as it is.
+    struct Suggestion
+    {
+        QString label;
+        QString instruction;
+    };
+    void setSuggestions(const QList<Suggestion>& suggestions);
+    const QList<Suggestion>& suggestions() const { return m_suggestions; }
 
 signals:
     void editRequested(const QString& instruction);
@@ -48,6 +58,9 @@ private:
     QToolButton* m_preview = nullptr;
     QToolButton* m_close = nullptr;
     QLabel* m_message = nullptr;
+    QWidget* m_suggestionRow = nullptr;
+    QHBoxLayout* m_suggestionLayout = nullptr;
+    QList<Suggestion> m_suggestions;
     bool m_busy = false;
 };
 

@@ -103,6 +103,8 @@ jobs:
           New-Item -ItemType Directory -Force screenshots | Out-Null
           $program = (Get-ChildItem build -Recurse -Filter tst_colorscheme.exe | Select-Object -First 1).FullName
           & $program rendersTheSchemes
+          $program = (Get-ChildItem build -Recurse -Filter tst_markdownwriting.exe | Select-Object -First 1).FullName
+          & $program rendersThePreview
       - uses: actions/upload-artifact@v7
         if: always()
         with:

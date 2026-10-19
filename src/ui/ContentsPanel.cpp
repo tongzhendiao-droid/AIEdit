@@ -195,10 +195,23 @@ void ContentsPanel::scan()
     const TextDocument* text = m_document->textDocument();
     const SearchContext context{text->source(), text->sharedIndex(), text->codec()};
     m_scanning = true;
-    m_watcher.setFuture(QtConcurrent::run([rule = rule(), context](QPromise<std::vector<Heading>>& promise) {
-        promise.addResult(findHeadings(rule, context, [&promise] { return promise.isCanceled(); }));
-    }));
+    // Markdown says itself which lines are headings, unless the AI was asked.
+    constexpr std::uint64_t kMaxMarkdownBytes = 64 * 1024 * 1024;
+    if (m_document->isMarkdown() && !hasCustomRule() && text->source()->size() <= kMaxMarkdownBytes) {
+        m_watcher.setFuture(QtConcurrent::run([context](QPromise<std::vector<Heading>>& promise) {
+            promise.addResult(findMarkdownHeadings(context, [&promise] { return promise.isCanceled(); }));
+        }));
+    } else {
+        m_watcher.setFuture(QtConcurrent::run([rule = rule(), context](QPromise<std::vector<Heading>>& promise) {
+            promise.addResult(findHeadings(rule, context, [&promise] { return promise.isCanceled(); }));
+        }));
+    }
     updateButtons();
+}
+
+bool ContentsPanel::hasCustomRule() const
+{
+    return m_aiRule || (!fileKey().isEmpty() && QSettings().value(rulesKey()).toMap().contains(fileKey()));
 }
 
 void ContentsPanel::scanned()
@@ -217,14 +230,14 @@ void ContentsPanel::scanned()
 void ContentsPanel::rebuildTree()
 {
     m_tree->clear();
-    QTreeWidgetItem* volume = nullptr;
+    // Under the heading of a higher level before it: chapters under their volume, ### under ##.
+    std::vector<std::pair<int, QTreeWidgetItem*>> open;
     for (std::size_t i = 0; i < m_headings.size(); ++i) {
         const Heading& heading = m_headings[i];
-        // Chapters go under the volume before them, if there is one.
-        QTreeWidgetItem* item = heading.level == 2 && volume ? new QTreeWidgetItem(volume)
-                                                             : new QTreeWidgetItem(m_tree);
-        if (heading.level == 1)
-            volume = item;
+        while (!open.empty() && open.back().first >= heading.level)
+            open.pop_back();
+        auto* item = open.empty() ? new QTreeWidgetItem(m_tree) : new QTreeWidgetItem(open.back().second);
+        open.emplace_back(heading.level, item);
         item->setText(0, heading.title);
         item->setToolTip(0, tr("Line %L1").arg(heading.line + 1));
         item->setData(0, Qt::UserRole, static_cast<int>(i));
@@ -410,9 +423,7 @@ void ContentsPanel::updateButtons()
     const bool text = m_document && m_document->fileType().kind != core::ContentKind::Binary;
     m_ai->setText(m_writer->isBusy() ? tr("Stop") : tr("Find with AI"));
     m_ai->setEnabled(text || m_writer->isBusy());
-    const bool custom =
-        m_aiRule || (!fileKey().isEmpty() && QSettings().value(rulesKey()).toMap().contains(fileKey()));
-    m_builtIn->setVisible(custom);
+    m_builtIn->setVisible(hasCustomRule());
 
     QString status;
     if (!m_document)

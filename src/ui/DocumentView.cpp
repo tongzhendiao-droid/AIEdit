@@ -11,6 +11,8 @@
 #include "ui/FilterRuleWriter.h"
 #include "ui/FindBar.h"
 #include "ui/HexView.h"
+#include "ui/Markdown.h"
+#include "ui/MarkdownView.h"
 #include "ui/Paths.h"
 #include "ui/Replace.h"
 #include "ui/SyntaxHighlighting.h"
@@ -19,13 +21,16 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QEvent>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QLocale>
 #include <QPointer>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QScopedValueRollback>
+#include <QScrollBar>
 #include <QSplitter>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -45,6 +50,10 @@ constexpr std::uint64_t kMaxContextTextBytes = 32 * 1024;
 constexpr std::uint64_t kMaxContextHexBytes = 4 * 1024;
 constexpr std::size_t kMaxSummaryStrings = 40;
 constexpr qsizetype kMaxSummaryStringLength = 120;
+// Markdown is drawn again once typing has paused this long (or twice as long as drawing took);
+// larger files than this are not drawn.
+constexpr int kMarkdownDelayMs = 300;
+constexpr std::uint64_t kMaxMarkdownBytes = 8 * 1024 * 1024;
 
 // Descriptions for the model, so they stay in English.
 QString describeForAi(const core::FileTypeInfo& type, const core::TextCodec& codec, std::uint64_t size)
@@ -85,6 +94,51 @@ QString summaryForAi(const core::FileSummary& summary, const QString& name, cons
     }
     text += QStringLiteral("First bytes:\n```hexdump\n%1```").arg(QString::fromLatin1(summary.headDump));
     return text;
+}
+
+// Where a line is: its start, or the end of the text for a line past the last.
+std::uint64_t startOfLine(const core::LineIndex& index, std::uint64_t line, std::uint64_t size)
+{
+    if (line >= index.lineCount())
+        return size;
+    const std::optional<std::uint64_t> row = index.rowIndexOfLine(line);
+    return row ? index.row(*row).start : size;
+}
+
+// From the start of line `first` to the end of line `last`'s text, before its line break.
+std::pair<std::uint64_t, std::uint64_t> linesRange(const core::LineIndex& index, std::uint64_t first,
+                                                   std::uint64_t last, std::uint64_t size)
+{
+    const std::uint64_t start = startOfLine(index, first, size);
+    const std::uint64_t next = startOfLine(index, last + 1, size);
+    const std::uint64_t end = next > start ? index.row(index.rowIndexAt(next - 1)).contentEnd : start;
+    return {start, std::max(start, end)};
+}
+
+// The text between two headings of the drawn Markdown (-1: the start of the document), in lines.
+std::pair<std::uint64_t, std::uint64_t> headingSpan(const QList<int>& headings, std::uint64_t lineCount, int heading)
+{
+    const std::uint64_t from = heading < 0 ? 0 : static_cast<std::uint64_t>(headings[heading]);
+    const std::uint64_t to = heading + 1 < headings.size() ? static_cast<std::uint64_t>(headings[heading + 1])
+                                                            : std::max(lineCount, from + 1);
+    return {from, to};
+}
+
+// Where a line of the text is in the drawn Markdown: so far from the heading above it towards the next.
+MarkdownView::Place placeOfLine(const QList<int>& headings, std::uint64_t lineCount, std::uint64_t line)
+{
+    const auto after = std::upper_bound(headings.begin(), headings.end(), line, [](std::uint64_t l, int heading) {
+        return l < static_cast<std::uint64_t>(heading);
+    });
+    const int heading = static_cast<int>(after - headings.begin()) - 1;
+    const auto [from, to] = headingSpan(headings, lineCount, heading);
+    return {heading, to > from ? static_cast<double>(line - from) / static_cast<double>(to - from) : 0.0};
+}
+
+std::uint64_t lineOfPlace(const QList<int>& headings, std::uint64_t lineCount, const MarkdownView::Place& place)
+{
+    const auto [from, to] = headingSpan(headings, lineCount, place.heading);
+    return from + static_cast<std::uint64_t>(std::clamp(place.fraction, 0.0, 1.0) * static_cast<double>(to - from));
 }
 
 } // namespace
@@ -149,6 +203,14 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
 
     if (fileType.kind != core::ContentKind::Binary)
         m_textView->setSyntax(syntaxForFileName(QFileInfo(filePath()).fileName()));
+    m_textView->setMarkdownEditing(isMarkdown());
+
+    // The drawn Markdown follows the text as it is written and as it scrolls.
+    m_markdownTimer.setSingleShot(true);
+    connect(&m_markdownTimer, &QTimer::timeout, this, &DocumentView::drawMarkdown);
+    connect(m_textDocument, &TextDocument::sourceChanged, this, &DocumentView::markdownChanged);
+    connect(m_textDocument, &TextDocument::codecChanged, this, &DocumentView::markdownChanged);
+    connect(m_textView->verticalScrollBar(), &QScrollBar::valueChanged, this, &DocumentView::syncMarkdownFromText);
 
     m_reloadTimer.setSingleShot(true);
     m_reloadTimer.setInterval(kReloadDelayMs);
@@ -194,10 +256,14 @@ DocumentView::~DocumentView()
     // The children outlive this destructor body (QWidget deletes them later), and the text
     // document goes first. Keep their signals and focus events from reaching a half-destroyed
     // DocumentView.
-    for (QWidget* view : {static_cast<QWidget*>(m_textView), static_cast<QWidget*>(m_hexView)}) {
+    for (QWidget* view : {static_cast<QWidget*>(m_textView), static_cast<QWidget*>(m_hexView),
+                          static_cast<QWidget*>(m_markdownView)}) {
+        if (!view)
+            continue;
         view->removeEventFilter(this);
         view->disconnect(this);
     }
+    m_textView->verticalScrollBar()->disconnect(this);
     m_textView->setDocument(nullptr);
 }
 
@@ -218,24 +284,63 @@ QString DocumentView::title() const
 
 void DocumentView::setViewMode(ViewMode mode)
 {
+    if (mode == ViewMode::Preview && !isMarkdown())
+        mode = ViewMode::Text; // nothing to draw
     if (mode == m_viewMode)
         return;
     const bool hadFocus = isAncestorOf(QApplication::focusWidget());
     m_viewMode = mode;
-    m_textView->setVisible(mode != ViewMode::Hex);
-    m_hexView->setVisible(mode != ViewMode::Text);
+    m_markdownFocusedLast = false;
     if (mode != ViewMode::Split)
-        m_textFocusedLast = mode == ViewMode::Text;
-    else {
+        m_textFocusedLast = mode != ViewMode::Hex;
+    if (mode == ViewMode::Split || mode == ViewMode::Preview) {
         m_splitSizesPending = true;
         applySplitSizes();
     }
-
-    QWidget* active = isTextActive() ? static_cast<QWidget*>(m_textView) : m_hexView;
-    setFocusProxy(active);
-    if (hadFocus)
-        active->setFocus();
+    updateViews();
+    if (hadFocus && !activeView()->hasFocus())
+        activeView()->setFocus();
     emit stateChanged();
+}
+
+void DocumentView::updateViews()
+{
+    // The focus moves only from a view to the one worked in now: not out of the find bar, say,
+    // when a followed file reloads.
+    QWidget* const focus = QApplication::focusWidget();
+    const auto holds = [focus](const QWidget* view) {
+        return view && focus && (focus == view || view->isAncestorOf(focus));
+    };
+    const bool viewFocused = holds(m_textView) || holds(m_hexView) || holds(m_markdownView);
+    const bool drawn = showsDrawnMarkdown();
+    m_textView->setVisible(!drawn && m_viewMode != ViewMode::Hex);
+    m_hexView->setVisible(m_viewMode == ViewMode::Hex || m_viewMode == ViewMode::Split);
+    if (drawn || m_viewMode == ViewMode::Preview) {
+        ensureMarkdownView()->show();
+        if (m_markdownStale)
+            drawMarkdown();
+        else
+            syncMarkdownFromText();
+    } else if (m_markdownView) {
+        m_markdownView->hide();
+    }
+    QWidget* active = activeView();
+    setFocusProxy(active);
+    if (viewFocused && !holds(active))
+        active->setFocus();
+}
+
+QWidget* DocumentView::activeView() const
+{
+    if (!isTextActive())
+        return m_hexView;
+    return isMarkdownActive() ? static_cast<QWidget*>(m_markdownView) : m_textView;
+}
+
+bool DocumentView::isMarkdownActive() const
+{
+    return m_markdownView && !m_markdownView->isHidden() &&
+           (showsDrawnMarkdown() || (m_viewMode == ViewMode::Preview && m_markdownFocusedLast));
 }
 
 bool DocumentView::isReadingMode() const
@@ -251,6 +356,7 @@ void DocumentView::setReadingMode(bool on)
         setViewMode(ViewMode::Text); // a book is read as text
     m_textView->setReadingMode(on);
     m_showsContents = on; // a book's chapters beside it; nothing beside other text
+    updateViews();        // Markdown is read drawn
     emit readingModeChanged(on);
     emit stateChanged();
 }
@@ -267,6 +373,7 @@ bool DocumentView::isTextActive() const
 {
     switch (m_viewMode) {
     case ViewMode::Text:
+    case ViewMode::Preview:
         return true;
     case ViewMode::Hex:
         return false;
@@ -283,6 +390,8 @@ std::uint64_t DocumentView::cursorOffset() const
 
 bool DocumentView::hasSelection() const
 {
+    if (isMarkdownActive())
+        return m_markdownView->textCursor().hasSelection();
     return isTextActive() ? m_textView->hasSelection() : m_hexView->selectionLength() > 1;
 }
 
@@ -290,6 +399,9 @@ void DocumentView::setContextActions(const QList<QAction*>& textActions, const Q
 {
     m_textView->setContextActions(textActions);
     m_hexView->setContextActions(hexActions);
+    m_textContextActions = textActions;
+    if (m_markdownView)
+        m_markdownView->setContextActions(textActions);
 }
 
 void DocumentView::setCodec(const core::TextCodec& codec)
@@ -476,19 +588,6 @@ void DocumentView::findSelection(bool forward)
 
 // AI edits ------------------------------------------------------------------------------------------
 
-namespace {
-
-// Where a line starts; the end of the text for a line past the last.
-std::uint64_t startOfLine(const core::LineIndex& index, std::uint64_t line, std::uint64_t size)
-{
-    if (line >= index.lineCount())
-        return size;
-    const std::optional<std::uint64_t> row = index.rowIndexOfLine(line);
-    return row ? index.row(*row).start : size;
-}
-
-} // namespace
-
 AiEditor* DocumentView::aiEditor()
 {
     if (m_aiEditor)
@@ -540,7 +639,7 @@ void DocumentView::showAiEditBar()
             if (m_aiEditBar->isBusy())
                 stop();
             m_aiEditBar->hide();
-            (isTextActive() ? static_cast<QWidget*>(m_textView) : m_hexView)->setFocus();
+            activeView()->setFocus();
         });
         connect(m_aiEditBar, &AiEditBar::previewRequested, this, [this](const QString& instruction) {
             std::uint64_t start = 0;
@@ -551,6 +650,22 @@ void DocumentView::showAiEditBar()
         });
         connect(m_textView, &TextView::selectionChanged, this, &DocumentView::updateAiEditScope);
     }
+    // Requests often made of such a text, a click away.
+    QList<AiEditBar::Suggestion> suggestions;
+    if (isMarkdown()) {
+        suggestions = {
+            {tr("Make a table"), tr("Turn this into a Markdown table: a row for each thing it is about, a column for "
+                                    "each kind of detail given. Keep every fact and add none.")},
+            {tr("Tidy the layout"), tr("Lay this out as Markdown: headings for its parts, short paragraphs, "
+                                       "lists where things are listed, a blank line between blocks. Keep the "
+                                       "wording.")},
+            {tr("Make a list"), tr("Turn this into a Markdown list: an item for each point, and points that belong "
+                                   "to another under it. Keep the wording.")},
+        };
+    }
+    suggestions.append({tr("Fix typos"), tr("Correct wrongly written characters, typos and punctuation, and change "
+                                            "nothing else.")});
+    m_aiEditBar->setSuggestions(suggestions);
     m_aiEditBar->activate();
     updateAiEditScope();
 }
@@ -745,17 +860,26 @@ bool DocumentView::replaceIfUnchanged(std::uint64_t start, std::uint64_t end, co
 void DocumentView::selectMatch(std::uint64_t start, std::uint64_t end)
 {
     m_lastMatch = std::pair(start, end);
-    if (isTextActive())
-        m_textView->select(start, end);
-    else
+    if (!isTextActive()) {
         m_hexView->select(start, end - start);
+        return;
+    }
+    m_textView->select(start, end);
+    // Read drawn, it is found there too: near where it is in the text, unless marked up there.
+    if (showsDrawnMarkdown() && m_markdownView && !m_markdownStale) {
+        const core::LineIndex& index = m_textDocument->index();
+        const QString found = m_textView->selectedText().section(QLatin1Char('\n'), 0, 0).trimmed();
+        const QScopedValueRollback guard(m_syncingScroll, true);
+        m_markdownView->selectText(found, placeOfLine(m_markdownHeadings, index.lineCount(),
+                                                      index.row(index.rowIndexAt(start)).line));
+    }
 }
 
 void DocumentView::closeFindBar()
 {
     m_findBar->cancel();
     m_findBar->hide();
-    (isTextActive() ? static_cast<QWidget*>(m_textView) : m_hexView)->setFocus();
+    activeView()->setFocus();
 }
 
 bool DocumentView::isFilterPanelVisible() const
@@ -791,14 +915,14 @@ void DocumentView::closeFilterPanel()
     const bool hadFocus = m_filterPanel->isAncestorOf(QApplication::focusWidget());
     m_filterPanel->hide();
     if (hadFocus)
-        (isTextActive() ? static_cast<QWidget*>(m_textView) : m_hexView)->setFocus();
+        activeView()->setFocus();
 }
 
 void DocumentView::goToFilteredLine(std::uint64_t line, bool focus)
 {
     m_textView->goToLine(line); // the hex view follows the caret
     if (focus)
-        (isTextActive() ? static_cast<QWidget*>(m_textView) : m_hexView)->setFocus();
+        activeView()->setFocus();
 }
 
 void DocumentView::fileChanged()
@@ -859,6 +983,7 @@ bool DocumentView::reload()
         m_hexView->replaceSource(m_source);
     }
     updateEditable();
+    updateMarkdownEditing(); // it may not be text any more
     if (m_following)
         moveToEnd();
     emit sourceChanged();
@@ -893,7 +1018,14 @@ AiContext DocumentView::aiContext()
     const auto bytes = m_source->bytes();
     const QLocale locale;
 
-    if (isTextActive() && m_textView->hasSelection()) {
+    if (isMarkdownActive() && m_markdownView->textCursor().hasSelection()) {
+        // What was selected where the Markdown is drawn, as it reads there.
+        QString text = m_markdownView->textCursor().selectedText();
+        text.replace(QChar::ParagraphSeparator, u'\n').replace(QChar::LineSeparator, u'\n');
+        context.truncated = text.size() > static_cast<qsizetype>(kMaxContextTextBytes);
+        context.selectionContent = text.left(static_cast<qsizetype>(kMaxContextTextBytes));
+        context.selectionLabel = tr("%1 characters of the drawn text").arg(locale.toString(text.size()));
+    } else if (isTextActive() && m_textView->hasSelection()) {
         const std::uint64_t start = m_textView->selectionStart();
         const std::uint64_t end = m_textView->selectionEnd();
         std::uint64_t limit = end;
@@ -966,6 +1098,7 @@ QString DocumentView::syntax() const
 void DocumentView::setSyntax(const QString& name)
 {
     m_textView->setSyntax(name);
+    updateMarkdownEditing();
     emit stateChanged();
 }
 
@@ -1118,6 +1251,7 @@ void DocumentView::documentEdited()
         const QScopedValueRollback guard(m_syncing, true); // the text view places the caret
         m_hexView->replaceSource(m_source);
     }
+    markdownChanged();
     emit sourceChanged();
     emit stateChanged();
 }
@@ -1194,6 +1328,7 @@ bool DocumentView::saveAs(const QString& path, QString* error)
     if (m_fileType.kind != core::ContentKind::Binary)
         m_textView->setSyntax(syntaxForFileName(QFileInfo(path).fileName()));
     updateEditable();
+    updateMarkdownEditing();
     emit pathChanged();
     emit sourceChanged();
     emit stateChanged();
@@ -1227,6 +1362,7 @@ bool DocumentView::followMove(const QString& path)
     if (m_fileType.kind != core::ContentKind::Binary)
         m_textView->setSyntax(syntaxForFileName(QFileInfo(path).fileName()));
     updateEditable();
+    updateMarkdownEditing();
     restoreState(kept);
     emit pathChanged();
     emit sourceChanged();
@@ -1295,6 +1431,436 @@ DocumentView::Conversion DocumentView::saveWithCodec(const core::TextCodec& code
     return Conversion::Saved;
 }
 
+// Markdown -----------------------------------------------------------------------------------------
+
+bool DocumentView::isMarkdown() const
+{
+    return m_fileType.kind != core::ContentKind::Binary &&
+           (syntax() == u"Markdown" || (!isUntitled() && markdown::isMarkdownFile(filePath())));
+}
+
+bool DocumentView::showsDrawnMarkdown() const
+{
+    return isReadingMode() && m_viewMode == ViewMode::Text && isMarkdown() && m_source->size() <= kMaxMarkdownBytes;
+}
+
+void DocumentView::updateMarkdownEditing()
+{
+    m_textView->setMarkdownEditing(isMarkdown());
+    if (m_viewMode == ViewMode::Preview && !isMarkdown())
+        setViewMode(ViewMode::Text);
+    else
+        updateViews();
+}
+
+void DocumentView::setMarkdownFont(const QFont& font)
+{
+    m_markdownFont = font;
+    if (!m_markdownView || m_markdownView->font() == font)
+        return;
+    m_markdownView->setFont(font); // drawn again in it
+    syncMarkdownFromText();
+}
+
+MarkdownView* DocumentView::ensureMarkdownView()
+{
+    if (m_markdownView)
+        return m_markdownView;
+    m_markdownView = new MarkdownView;
+    if (m_markdownFont.resolveMask() != 0)
+        m_markdownView->setFont(m_markdownFont);
+    m_markdownView->setContextActions(m_textContextActions);
+    m_markdownView->installEventFilter(this);
+    m_splitter->addWidget(m_markdownView);
+    m_splitter->setStretchFactor(2, 1);
+    connect(m_markdownView, &MarkdownView::fileLinkActivated, this, &DocumentView::fileLinkActivated);
+    connect(m_markdownView, &MarkdownView::zoomRequested, this, &DocumentView::zoomRequested);
+    connect(m_markdownView, &MarkdownView::scrolledByUser, this, &DocumentView::syncTextFromMarkdown);
+    connect(m_markdownView, &QTextEdit::selectionChanged, this, &DocumentView::stateChanged);
+    return m_markdownView;
+}
+
+void DocumentView::markdownChanged()
+{
+    m_markdownStale = true;
+    if (m_markdownView && !m_markdownView->isHidden())
+        m_markdownTimer.start(static_cast<int>(std::max<qint64>(kMarkdownDelayMs, 2 * m_markdownDrawMs)));
+}
+
+void DocumentView::drawMarkdown()
+{
+    m_markdownTimer.stop();
+    if (!m_markdownView)
+        return;
+    const QString base = isUntitled() ? QString() : QFileInfo(filePath()).absolutePath();
+    m_markdownHeadings.clear();
+    m_markdownStale = false;
+    if (m_source->size() > kMaxMarkdownBytes) {
+        const QLocale locale;
+        m_markdownView->setMarkdown(tr("*Too large to draw: %1. Files of up to %2 are drawn.*")
+                                        .arg(locale.formattedDataSize(static_cast<qint64>(m_source->size())),
+                                             locale.formattedDataSize(static_cast<qint64>(kMaxMarkdownBytes))),
+                                    base);
+        return;
+    }
+    QElapsedTimer timer;
+    timer.start();
+    const auto bytes = m_textDocument->bytes();
+    const QString text =
+        m_textDocument->decoder().decodePlain(bytes.subspan(static_cast<std::size_t>(m_textDocument->textStart())));
+    for (const markdown::Heading& heading : markdown::headings(text))
+        m_markdownHeadings << heading.line;
+    m_markdownView->setMarkdown(text, base);
+    m_markdownDrawMs = timer.elapsed();
+    syncMarkdownFromText();
+}
+
+void DocumentView::syncMarkdownFromText()
+{
+    if (m_syncingScroll || !m_markdownView || m_markdownView->isHidden() || m_markdownStale)
+        return;
+    const QScopedValueRollback guard(m_syncingScroll, true);
+    const QScrollBar* bar = m_textView->verticalScrollBar();
+    const core::LineIndex& index = m_textDocument->index();
+    // The ends meet; in between, the headings do, where both have the same ones.
+    if (index.rowCount() == 0 || bar->value() <= bar->minimum()) {
+        m_markdownView->scrollToFraction(0);
+    } else if (bar->value() >= bar->maximum()) {
+        m_markdownView->scrollToFraction(1);
+    } else if (m_markdownHeadings.isEmpty() || m_markdownHeadings.size() != m_markdownView->headingCount()) {
+        m_markdownView->scrollToFraction(static_cast<double>(bar->value()) / bar->maximum());
+    } else {
+        const std::uint64_t top = index.row(index.rowIndexAt(m_textView->firstVisibleOffset())).line;
+        m_markdownView->scrollToPlace(placeOfLine(m_markdownHeadings, index.lineCount(), top));
+    }
+}
+
+void DocumentView::syncTextFromMarkdown()
+{
+    if (m_syncingScroll || !m_markdownView || m_markdownStale)
+        return;
+    const core::LineIndex& index = m_textDocument->index();
+    if (index.rowCount() == 0)
+        return;
+    const QScopedValueRollback guard(m_syncingScroll, true);
+    const QScrollBar* bar = m_markdownView->verticalScrollBar();
+    std::uint64_t line = 0;
+    if (bar->maximum() > 0 && bar->value() >= bar->maximum())
+        line = index.lineCount();
+    else if (m_markdownHeadings.isEmpty() || m_markdownHeadings.size() != m_markdownView->headingCount())
+        line = bar->maximum() > 0 ? static_cast<std::uint64_t>(static_cast<double>(bar->value()) / bar->maximum() *
+                                                                static_cast<double>(index.lineCount()))
+                                  : 0;
+    else
+        line = lineOfPlace(m_markdownHeadings, index.lineCount(), m_markdownView->topPlace());
+    // In reading mode the text is hidden, and keeps the place: to come back to, and for the contents.
+    m_textView->scrollToOffset(startOfLine(index, line, m_textDocument->bytes().size()));
+}
+
+bool DocumentView::exportMarkdown(const QString& path, ExportFormat format, QString* error) const
+{
+    const QString text = m_textDocument->decoder().decodePlain(
+        m_textDocument->bytes().subspan(static_cast<std::size_t>(m_textDocument->textStart())));
+    const QString base = isUntitled() ? QString() : QFileInfo(filePath()).absolutePath();
+    // In the font it is drawn in, at the size of print rather than of the zoom on screen.
+    QFont font = m_markdownFont.resolveMask() != 0 ? m_markdownFont : QApplication::font();
+    font.setPointSize(11);
+    return format == ExportFormat::Html ? MarkdownView::exportHtml(text, base, font, path, error)
+                                        : MarkdownView::exportPdf(text, base, font, path, error);
+}
+
+std::optional<QStringList> DocumentView::markdownLines(std::uint64_t first, std::uint64_t last)
+{
+    const core::LineIndex& index = m_textDocument->index();
+    const auto bytes = m_textDocument->bytes();
+    const auto [start, end] = linesRange(index, first, last, bytes.size());
+    const auto original = bytes.subspan(static_cast<std::size_t>(start), static_cast<std::size_t>(end - start));
+    const QString text = m_textDocument->decoder().decodePlain(original);
+    // Bytes that are not text in this codec would not come back as they were.
+    const std::optional<QByteArray> again = m_textDocument->encode(text);
+    if (!again || QByteArrayView(*again) != QByteArrayView(reinterpret_cast<const char*>(original.data()),
+                                                           static_cast<qsizetype>(original.size()))) {
+        emit statusMessage(tr("These lines hold bytes that are not %1 text; nothing was changed")
+                               .arg(QString::fromLatin1(m_textDocument->codec().name.data())));
+        return std::nullopt;
+    }
+    static const QRegularExpression lineBreak(QStringLiteral("\r\n|\n|\r"));
+    return text.split(lineBreak);
+}
+
+bool DocumentView::replaceMarkdownLines(std::uint64_t first, std::uint64_t last, const QStringList& lines,
+                                        TextPosition from, TextPosition to)
+{
+    const QString terminator = m_textDocument->lineTerminator();
+    const std::optional<QByteArray> bytes = m_textDocument->encode(lines.join(terminator));
+    if (!bytes) {
+        emit statusMessage(tr("%1 cannot hold some of these characters; nothing was changed")
+                               .arg(QString::fromLatin1(m_textDocument->codec().name.data())));
+        return false;
+    }
+    const auto [start, end] = linesRange(m_textDocument->index(), first, last, m_textDocument->bytes().size());
+    // Positions in the new lines as offsets: the bytes of what comes before them.
+    const auto offsetOf = [&](TextPosition position) {
+        const qsizetype line = std::clamp<qsizetype>(position.line, 0, lines.size() - 1);
+        QString before = lines.mid(0, line).join(terminator);
+        if (line > 0)
+            before += terminator;
+        before += lines[line].left(position.column);
+        const std::optional<QByteArray> encoded = m_textDocument->encode(before);
+        return start + static_cast<std::uint64_t>(encoded ? encoded->size() : 0);
+    };
+    LineEdit edit;
+    edit.start = start;
+    edit.end = end;
+    edit.bytes = *bytes;
+    edit.selectionStart = offsetOf(from);
+    edit.selectionEnd = offsetOf(to);
+    applyLineEdit(edit);
+    return true;
+}
+
+bool DocumentView::applyMarkdownEdit(MarkdownEdit edit)
+{
+    if (!isEditable() || !isTextActive() || showsDrawnMarkdown())
+        return false;
+    m_textDocument->indexNow();
+    const core::LineIndex& index = m_textDocument->index();
+
+    using markdown::LinePrefix;
+    std::optional<LinePrefix> prefix;
+    switch (edit) {
+    case MarkdownEdit::Bold:
+        return toggleInlineMark(QStringLiteral("**"));
+    case MarkdownEdit::Italic:
+        return toggleInlineMark(QStringLiteral("*"));
+    case MarkdownEdit::Strikethrough:
+        return toggleInlineMark(QStringLiteral("~~"));
+    case MarkdownEdit::Code:
+        return toggleInlineMark(QStringLiteral("`"));
+    case MarkdownEdit::Link:
+        return insertMarkdownLink();
+    case MarkdownEdit::FormatTable:
+        return formatMarkdownTable();
+    case MarkdownEdit::Heading1:
+        prefix = LinePrefix::Heading1;
+        break;
+    case MarkdownEdit::Heading2:
+        prefix = LinePrefix::Heading2;
+        break;
+    case MarkdownEdit::Heading3:
+        prefix = LinePrefix::Heading3;
+        break;
+    case MarkdownEdit::BulletList:
+        prefix = LinePrefix::Bullet;
+        break;
+    case MarkdownEdit::NumberedList:
+        prefix = LinePrefix::Numbered;
+        break;
+    case MarkdownEdit::TaskList:
+        prefix = LinePrefix::Task;
+        break;
+    case MarkdownEdit::Quote:
+        prefix = LinePrefix::Quote;
+        break;
+    case MarkdownEdit::CodeBlock:
+    case MarkdownEdit::Table:
+        break;
+    }
+
+    const bool selected = m_textView->hasSelection();
+    // Nothing written yet: one empty line.
+    const auto [first, last] = index.rowCount() == 0 ? std::pair<std::uint64_t, std::uint64_t>(0, 0) : selectedLines();
+    const std::optional<QStringList> lines = markdownLines(first, last);
+    if (!lines)
+        return false;
+    const auto [lineStart, lineEnd] = linesRange(index, last, last, m_textDocument->bytes().size());
+    // Without a selection the caret keeps its place in its line, counted from the end.
+    const qsizetype fromEnd =
+        lines->last().size() -
+        m_textDocument->decoder()
+            .decodePlain(m_textDocument->bytes().subspan(
+                static_cast<std::size_t>(lineStart),
+                static_cast<std::size_t>(std::clamp(m_textView->cursorOffset(), lineStart, lineEnd) - lineStart)))
+            .size();
+
+    if (prefix) {
+        QStringList changed = markdown::toggleLinePrefix(*lines, *prefix);
+        if (!selected && lines->first().trimmed().isEmpty()) {
+            // A blank line to start: the mark goes in, to write after.
+            static const QStringList marks{QStringLiteral("# "),  QStringLiteral("## "),     QStringLiteral("### "),
+                                           QStringLiteral("- "),  QStringLiteral("1. "),     QStringLiteral("- [ ] "),
+                                           QStringLiteral("> ")};
+            const bool listed = *prefix == LinePrefix::Bullet || *prefix == LinePrefix::Numbered ||
+                                *prefix == LinePrefix::Task;
+            changed = {(listed ? lines->first() : QString()) + marks[static_cast<int>(*prefix)]};
+            return replaceMarkdownLines(first, last, changed, {0, changed.first().size()},
+                                        {0, changed.first().size()});
+        }
+        if (changed == *lines)
+            return false; // blank lines only
+        const qsizetype n = changed.size() - 1;
+        if (selected)
+            return replaceMarkdownLines(first, last, changed, {0, 0}, {n, changed.last().size()});
+        const qsizetype caret = std::max<qsizetype>(0, changed.last().size() - fromEnd);
+        return replaceMarkdownLines(first, last, changed, {n, caret}, {n, caret});
+    }
+
+    if (edit == MarkdownEdit::CodeBlock) {
+        const QString fence = QStringLiteral("```");
+        const QStringList fenced = QStringList{fence} + *lines + QStringList{fence};
+        if (selected)
+            return replaceMarkdownLines(first, last, fenced, {0, 0}, {fenced.size() - 1, fence.size()});
+        const qsizetype caret = std::max<qsizetype>(0, lines->last().size() - fromEnd);
+        return replaceMarkdownLines(first, last, fenced, {1, caret}, {1, caret});
+    }
+
+    // A table to fill in, under the caret's line (or in its place, if it is blank), with the first
+    // heading selected to type over.
+    const QString header = tr("Column %1");
+    const std::optional<QStringList> table = markdown::formatTable(
+        {QStringLiteral("| %1 | %2 | %3 |").arg(header.arg(1), header.arg(2), header.arg(3)),
+         QStringLiteral("| --- | --- | --- |"), QStringLiteral("|  |  |  |")});
+    const QString line = lines->last();
+    QStringList out;
+    if (!line.trimmed().isEmpty())
+        out << line << QString(); // a blank line before the table
+    out << *table;
+    const qsizetype row = out.size() - table->size();
+    return replaceMarkdownLines(last, last, out, {row, 2}, {row, 2 + header.arg(1).size()});
+}
+
+// The line holding an offset; 0 in an empty document.
+std::uint64_t DocumentView::lineAt(std::uint64_t offset) const
+{
+    const core::LineIndex& index = m_textDocument->index();
+    return index.rowCount() == 0 ? 0 : index.row(index.rowIndexAt(offset)).line;
+}
+
+bool DocumentView::toggleInlineMark(const QString& mark)
+{
+    const std::uint64_t caret = m_textView->cursorOffset();
+    if (!m_textView->hasSelection() &&
+        (!m_textView->selectWordAtCursor() || m_textView->selectedText().trimmed().isEmpty()))
+        m_textView->setCursorOffset(caret); // no word here: the marks go in, the caret between them
+    const core::LineIndex& index = m_textDocument->index();
+    const std::uint64_t start = m_textView->selectionStart();
+    const std::uint64_t end = m_textView->selectionEnd();
+    const std::uint64_t line = lineAt(start);
+    if (end > start && lineAt(end - 1) != line) {
+        emit statusMessage(tr("Marks like these go around text within one line"));
+        return false;
+    }
+    const std::optional<QStringList> lines = markdownLines(line, line);
+    if (!lines)
+        return false;
+    const auto [lineStart, lineEnd] = linesRange(index, line, line, m_textDocument->bytes().size());
+    const auto charsTo = [&](std::uint64_t offset) {
+        const auto length = static_cast<std::size_t>(std::min(offset, lineEnd) - lineStart);
+        return m_textDocument->decoder()
+            .decodePlain(m_textDocument->bytes().subspan(static_cast<std::size_t>(lineStart), length))
+            .size();
+    };
+    const markdown::MarkedText marked = markdown::toggleMark(lines->first(), charsTo(start), charsTo(end), mark);
+    return replaceMarkdownLines(line, line, {marked.line}, {0, marked.start}, {0, marked.end});
+}
+
+bool DocumentView::insertMarkdownLink()
+{
+    const core::LineIndex& index = m_textDocument->index();
+    const std::uint64_t start = m_textView->selectionStart();
+    const std::uint64_t end = m_textView->selectionEnd();
+    const std::uint64_t line = lineAt(start);
+    if (end > start && lineAt(end - 1) != line) {
+        emit statusMessage(tr("A link goes around text within one line"));
+        return false;
+    }
+    const std::optional<QStringList> lines = markdownLines(line, line);
+    if (!lines)
+        return false;
+    const auto [lineStart, lineEnd] = linesRange(index, line, line, m_textDocument->bytes().size());
+    const auto charsTo = [&](std::uint64_t offset) {
+        const auto length = static_cast<std::size_t>(std::min(offset, lineEnd) - lineStart);
+        return m_textDocument->decoder()
+            .decodePlain(m_textDocument->bytes().subspan(static_cast<std::size_t>(lineStart), length))
+            .size();
+    };
+    const qsizetype from = charsTo(start);
+    const qsizetype to = charsTo(end);
+    const QString text = lines->first().mid(from, to - from);
+    static const QRegularExpression address(QStringLiteral(R"(^(https?://|www\.|mailto:)\S+$)"));
+    QString link;
+    qsizetype selectFrom = from + 1; // in the brackets, to type the text
+    qsizetype selectTo = selectFrom;
+    if (address.match(text).hasMatch()) {
+        link = QStringLiteral("[](%1)").arg(text);
+    } else {
+        // The text as it is; the address to type over.
+        const QString placeholder = QStringLiteral("https://");
+        link = QStringLiteral("[%1](%2)").arg(text, placeholder);
+        if (!text.isEmpty()) {
+            selectFrom = from + text.size() + 3;
+            selectTo = selectFrom + placeholder.size();
+        }
+    }
+    QString changed = lines->first();
+    changed.replace(from, to - from, link);
+    return replaceMarkdownLines(line, line, {changed}, {0, selectFrom}, {0, selectTo});
+}
+
+bool DocumentView::formatMarkdownTable()
+{
+    const core::LineIndex& index = m_textDocument->index();
+    if (index.rowCount() == 0) {
+        emit statusMessage(tr("The caret is not in a table"));
+        return false;
+    }
+    auto [first, last] = selectedLines();
+    const std::uint64_t caretLine = lineAt(m_textView->cursorOffset());
+    if (!m_textView->hasSelection()) {
+        // The lines with bars around the caret's.
+        const auto isRow = [this](std::uint64_t line) {
+            const std::optional<QStringList> text = markdownLines(line, line);
+            return text && text->first().contains(u'|') && !text->first().trimmed().isEmpty();
+        };
+        if (!isRow(caretLine)) {
+            emit statusMessage(tr("The caret is not in a table"));
+            return false;
+        }
+        constexpr std::uint64_t kMaxRows = 10'000;
+        first = last = caretLine;
+        while (first > 0 && caretLine - first < kMaxRows && isRow(first - 1))
+            --first;
+        while (last + 1 < index.lineCount() && last - caretLine < kMaxRows && isRow(last + 1))
+            ++last;
+    }
+    const std::optional<QStringList> lines = markdownLines(first, last);
+    if (!lines)
+        return false;
+    const std::optional<QStringList> formatted = markdown::formatTable(*lines);
+    if (!formatted) {
+        emit statusMessage(tr("Not a table: under its first row comes a row of dashes, as in | --- | --- |"));
+        return false;
+    }
+    if (*formatted == *lines) {
+        emit statusMessage(tr("The table is lined up already"));
+        return false;
+    }
+    if (m_textView->hasSelection())
+        return replaceMarkdownLines(first, last, *formatted, {0, 0},
+                                    {formatted->size() - 1, formatted->last().size()});
+    // The caret stays in its cell.
+    const auto row = static_cast<qsizetype>(caretLine - first);
+    const auto [rowStart, rowEnd] = linesRange(index, caretLine, caretLine, m_textDocument->bytes().size());
+    const qsizetype column =
+        m_textDocument->decoder()
+            .decodePlain(m_textDocument->bytes().subspan(
+                static_cast<std::size_t>(rowStart),
+                static_cast<std::size_t>(std::clamp(m_textView->cursorOffset(), rowStart, rowEnd) - rowStart)))
+            .size();
+    const qsizetype cell = markdown::cellColumn(lines->at(row), column, formatted->at(row));
+    return replaceMarkdownLines(first, last, *formatted, {row, cell}, {row, cell});
+}
+
 void DocumentView::cut()
 {
     if (isTextActive())
@@ -1321,7 +1887,9 @@ void DocumentView::redo()
 
 void DocumentView::copy()
 {
-    if (isTextActive())
+    if (isMarkdownActive())
+        m_markdownView->copy();
+    else if (isTextActive())
         m_textView->copy();
     else
         m_hexView->copy();
@@ -1329,7 +1897,9 @@ void DocumentView::copy()
 
 void DocumentView::selectAll()
 {
-    if (isTextActive())
+    if (isMarkdownActive())
+        m_markdownView->selectAll();
+    else if (isTextActive())
         m_textView->selectAll();
     else
         m_hexView->selectAll();
@@ -1345,9 +1915,14 @@ void DocumentView::applySplitSizes()
         if (!m_splitSizesPending || total <= 0)
             return;
         m_splitSizesPending = false;
+        if (m_viewMode == ViewMode::Preview) {
+            // Half each: the text as it is written, and as it reads.
+            m_splitter->setSizes({total / 2, 0, total - total / 2});
+            return;
+        }
         // The hex view gets the width of its columns (at most half), the text view the rest.
         const int hexWidth = std::min(m_hexView->sizeHint().width(), total / 2);
-        m_splitter->setSizes({total - hexWidth, hexWidth});
+        m_splitter->setSizes({total - hexWidth, hexWidth, 0});
     });
 }
 
@@ -1367,6 +1942,15 @@ bool DocumentView::eventFilter(QObject* watched, QEvent* event)
 {
     if (event->type() == QEvent::FontChange && watched == m_textView && m_filterPanel)
         m_filterPanel->setResultsFont(m_textView->font()); // zoomed: the results follow
+    if (event->type() == QEvent::FocusIn && m_markdownView && m_viewMode == ViewMode::Preview) {
+        // Copying and the AI then take what is selected where the user clicked.
+        const bool markdown = watched == m_markdownView;
+        if (markdown != m_markdownFocusedLast) {
+            m_markdownFocusedLast = markdown;
+            setFocusProxy(activeView());
+            emit stateChanged();
+        }
+    }
     if (event->type() == QEvent::FocusIn && m_viewMode == ViewMode::Split) {
         const bool text = watched == m_textView;
         if (text != m_textFocusedLast) {

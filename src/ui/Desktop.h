@@ -15,6 +15,12 @@ void showInFileManager(const QString& path);
 // New; there it is the one its editors use (Cascadia Mono, or Consolas), at 10 points at least.
 QFont fixedFont();
 
+// The font with a Chinese, Japanese or Korean one installed here to fall back on first (in the
+// interface's language: their characters are drawn differently in each). Left to find one by
+// itself, Qt looks one up for every run of such characters, which makes laying out long CJK
+// text many times slower.
+QFont withCjkFallback(QFont font);
+
 // The codec Windows writes text in for programs that are not Unicode, whatever the language of
 // its menus: GB18030 for code page 936, Big5 for 950 and so on. Empty elsewhere, and where that
 // code page is UTF-8 or one AIEdit lacks.

@@ -2,6 +2,7 @@
 
 #include "core/FileSource.h"
 #include "core/LineIndex.h"
+#include "ui/Markdown.h"
 #include "ui/TextDecoder.h"
 
 #include <QHash>
@@ -147,6 +148,27 @@ std::vector<Heading> findHeadings(const FilterRule& rule, const SearchContext& c
             kept.push_back(std::move(headings[i]));
     }
     return kept;
+}
+
+std::vector<Heading> findMarkdownHeadings(const SearchContext& context, const std::function<bool()>& cancelled)
+{
+    std::vector<Heading> headings;
+    if (!context.source || !context.index)
+        return headings;
+    const core::LineIndex& index = *context.index;
+    const auto bytes = context.source->bytes();
+    const auto start = static_cast<std::size_t>(std::min<std::uint64_t>(index.textStart(), bytes.size()));
+    const QString text = TextDecoder(context.codec).decodePlain(bytes.subspan(start));
+    if (cancelled && cancelled())
+        return headings;
+    for (const markdown::Heading& heading : markdown::headings(text)) {
+        const std::optional<std::uint64_t> row = index.rowIndexOfLine(static_cast<std::uint64_t>(heading.line));
+        if (!row)
+            break;
+        headings.push_back({static_cast<std::uint64_t>(heading.line), index.row(*row).start,
+                            heading.text.isEmpty() ? QStringLiteral("#") : heading.text, heading.level});
+    }
+    return headings;
 }
 
 std::uint64_t headingEnd(const std::vector<Heading>& headings, std::size_t index, std::uint64_t textEnd)

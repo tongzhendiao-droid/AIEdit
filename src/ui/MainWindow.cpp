@@ -163,7 +163,7 @@ DocumentView::State stateFromVariant(const QVariant& value)
     state.path = map.value(QStringLiteral("path")).toString();
     state.cursor = map.value(QStringLiteral("cursor")).toULongLong();
     state.top = map.value(QStringLiteral("top")).toULongLong();
-    state.mode = static_cast<DocumentView::ViewMode>(std::clamp(map.value(QStringLiteral("mode")).toInt(), 0, 2));
+    state.mode = static_cast<DocumentView::ViewMode>(std::clamp(map.value(QStringLiteral("mode")).toInt(), 0, 3));
     state.codec = map.value(QStringLiteral("codec")).toString();
     state.reading = map.value(QStringLiteral("reading")).toBool();
     for (const QVariant& bookmark : map.value(QStringLiteral("bookmarks")).toList())
@@ -519,6 +519,15 @@ void MainWindow::createActions()
     m_saveAllAction->setToolTip(tr("Save every document with unsaved changes"));
     connect(m_saveAllAction, &QAction::triggered, this, &MainWindow::saveAll);
 
+    m_exportHtmlAction = new QAction(tr("Export as &HTML…"), this);
+    m_exportHtmlAction->setToolTip(tr("Write the Markdown drawn as a web page"));
+    connect(m_exportHtmlAction, &QAction::triggered, this,
+            [this] { exportMarkdown(DocumentView::ExportFormat::Html); });
+    m_exportPdfAction = new QAction(tr("Export as P&DF…"), this);
+    m_exportPdfAction->setToolTip(tr("Write the Markdown drawn as a PDF, on A4 pages"));
+    connect(m_exportPdfAction, &QAction::triggered, this,
+            [this] { exportMarkdown(DocumentView::ExportFormat::Pdf); });
+
     m_reloadAction = new QAction(tr("&Reload"), this);
     m_reloadAction->setShortcut(QKeySequence(Qt::Key_F5));
     connect(m_reloadAction, &QAction::triggered, this, [this] { reloadDocument(currentDocument()); });
@@ -642,6 +651,29 @@ void MainWindow::createActions()
     // No keys for these: Ctrl+Shift+U is for typing Unicode characters on Linux.
     m_caseActions << documentAction(tr("&UPPER CASE"), [](DocumentView* doc) { doc->convertCase(true); });
     m_caseActions << documentAction(tr("&lower case"), [](DocumentView* doc) { doc->convertCase(false); });
+    // Ctrl+B and Ctrl+I show the side bar and ask the AI here, so of these only Ctrl+K has a key,
+    // as links have it nearly everywhere.
+    using MarkdownEdit = DocumentView::MarkdownEdit;
+    const auto markdownAction = [&](const QString& text, MarkdownEdit edit, const QKeySequence& shortcut = {}) {
+        m_markdownActions << documentAction(
+            text, [edit](DocumentView* doc) { doc->applyMarkdownEdit(edit); }, shortcut);
+    };
+    markdownAction(tr("&Bold"), MarkdownEdit::Bold);
+    markdownAction(tr("&Italic"), MarkdownEdit::Italic);
+    markdownAction(tr("&Strikethrough"), MarkdownEdit::Strikethrough);
+    markdownAction(tr("Inline &Code"), MarkdownEdit::Code);
+    markdownAction(tr("&Link"), MarkdownEdit::Link, QKeySequence(Qt::CTRL | Qt::Key_K));
+    markdownAction(tr("Heading &1"), MarkdownEdit::Heading1);
+    markdownAction(tr("Heading &2"), MarkdownEdit::Heading2);
+    markdownAction(tr("Heading &3"), MarkdownEdit::Heading3);
+    markdownAction(tr("B&ulleted List"), MarkdownEdit::BulletList);
+    markdownAction(tr("&Numbered List"), MarkdownEdit::NumberedList);
+    markdownAction(tr("&Task List"), MarkdownEdit::TaskList);
+    markdownAction(tr("&Quote"), MarkdownEdit::Quote);
+    markdownAction(tr("Code Bloc&k"), MarkdownEdit::CodeBlock);
+    markdownAction(tr("Insert T&able"), MarkdownEdit::Table);
+    markdownAction(tr("&Format Table"), MarkdownEdit::FormatTable);
+    m_markdownActions.constLast()->setToolTip(tr("Line up the columns of the table at the caret"));
 
     m_goToAction = new QAction(tr("Go to &Line or Offset…"), this);
     m_goToAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_G));
@@ -752,6 +784,11 @@ void MainWindow::createActions()
     m_textModeAction = modeAction(tr("&Text View"), Qt::Key_1, DocumentView::ViewMode::Text);
     m_hexModeAction = modeAction(tr("&Hex View"), Qt::Key_2, DocumentView::ViewMode::Hex);
     m_splitModeAction = modeAction(tr("&Side by Side"), Qt::Key_3, DocumentView::ViewMode::Split);
+    // Ctrl+Shift+V as in VS Code, too.
+    m_previewModeAction = modeAction(tr("Markdown &Preview"), Qt::Key_4, DocumentView::ViewMode::Preview);
+    m_previewModeAction->setShortcuts(
+        {QKeySequence(Qt::CTRL | Qt::Key_4), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V)});
+    m_previewModeAction->setToolTip(tr("Write Markdown with it drawn beside, as it will read"));
 
     // Ctrl+Tab, and Ctrl+PgDn and Ctrl+PgUp as in browsers and most editors. The Back and
     // Forward keys, which Qt gives these on some desktops, go back and forward instead.
@@ -908,6 +945,9 @@ void MainWindow::createMenus()
     file->addAction(m_saveAllAction);
     file->addAction(m_reloadAction);
     file->addSeparator();
+    file->addAction(m_exportHtmlAction);
+    file->addAction(m_exportPdfAction);
+    file->addSeparator();
     file->addAction(m_closeAction);
     file->addAction(m_closeAllAction);
     file->addAction(m_reopenTabAction);
@@ -936,6 +976,12 @@ void MainWindow::createMenus()
     edit->addAction(m_commentAction);
     QMenu* letterCase = edit->addMenu(tr("Convert Case"));
     letterCase->addActions(m_caseActions);
+    QMenu* markdownMenu = edit->addMenu(tr("Mar&kdown"));
+    markdownMenu->addActions(m_markdownActions.first(5)); // within the text
+    markdownMenu->addSeparator();
+    markdownMenu->addActions(m_markdownActions.sliced(5, 8)); // the lines
+    markdownMenu->addSeparator();
+    markdownMenu->addActions(m_markdownActions.sliced(13)); // tables
     edit->addSeparator();
     edit->addAction(m_findAction);
     edit->addAction(m_findNextAction);
@@ -1763,6 +1809,14 @@ void MainWindow::addDocument(DocumentView* doc, int index, bool focus)
     });
     connect(doc, &DocumentView::statusMessage, this,
             [this](const QString& message) { statusBar()->showMessage(message, kStatusTimeoutMs); });
+    // A link in Markdown to another file there opens it, as a link would in a browser.
+    connect(doc, &DocumentView::fileLinkActivated, this, [this](const QString& path) {
+        if (QFileInfo(path).isFile())
+            openFile(path);
+        else
+            statusBar()->showMessage(tr("The link goes to %1, which is not a file").arg(QDir::toNativeSeparators(path)),
+                                     kStatusTimeoutMs);
+    });
 
     const int at = index < 0 ? m_tabs->addTab(doc, doc->title()) : m_tabs->insertTab(index, doc, doc->title());
     updateDocumentTitle(doc);
@@ -2153,10 +2207,16 @@ void MainWindow::documentStateChanged(DocumentView* doc)
         m_textModeAction->setChecked(mode == DocumentView::ViewMode::Text);
         m_hexModeAction->setChecked(mode == DocumentView::ViewMode::Hex);
         m_splitModeAction->setChecked(mode == DocumentView::ViewMode::Split);
+        m_previewModeAction->setChecked(mode == DocumentView::ViewMode::Preview);
         const QSignalBlocker blocker(m_followAction);
         m_followAction->setChecked(doc->isFollowing());
         m_readingAction->setChecked(doc->isReadingMode());
     }
+    // Markdown is drawn, and written out drawn.
+    const bool markdown = doc && doc->isMarkdown();
+    m_previewModeAction->setEnabled(markdown);
+    m_exportHtmlAction->setEnabled(markdown);
+    m_exportPdfAction->setEnabled(markdown);
     updateEditActions(doc);
     // Explaining, translating and summarizing need a selection; asking and identifying do not.
     const bool selected = doc && doc->hasSelection();
@@ -2171,12 +2231,16 @@ void MainWindow::documentStateChanged(DocumentView* doc)
 void MainWindow::updateEditActions(DocumentView* doc)
 {
     // Text needs a selection to copy; the hex view always has the byte at its cursor selected.
-    const bool canCopy = doc && (doc->isTextActive() ? doc->textView()->hasSelection() : doc->source()->size() > 0);
-    for (QAction* action : {m_copyAction, m_copyHexAction, m_copyTextAction, m_copyCArrayAction})
-        action->setEnabled(canCopy);
+    const bool canCopy = doc && (doc->isTextActive() ? doc->hasSelection() : doc->source()->size() > 0);
+    m_copyAction->setEnabled(canCopy);
+    // Read drawn, there are no bytes under the selection to copy otherwise.
+    const bool drawn = doc && doc->showsDrawnMarkdown();
+    for (QAction* action : {m_copyHexAction, m_copyTextAction, m_copyCArrayAction})
+        action->setEnabled(canCopy && !drawn);
     m_selectAllAction->setEnabled(doc && doc->source()->size() > 0);
 
-    const bool editing = doc && doc->isEditable() && doc->isTextActive();
+    // Read drawn, the text is not on screen to be edited.
+    const bool editing = doc && doc->isEditable() && doc->isTextActive() && !drawn;
     const QMimeData* clipboard = QGuiApplication::clipboard()->mimeData();
     m_undoAction->setEnabled(editing && doc->textDocument()->canUndo());
     m_redoAction->setEnabled(editing && doc->textDocument()->canRedo());
@@ -2187,7 +2251,9 @@ void MainWindow::updateEditActions(DocumentView* doc)
     for (QAction* action : std::as_const(m_caseActions))
         action->setEnabled(editing);
     m_commentAction->setEnabled(editing);
-    m_selectLineAction->setEnabled(doc && doc->isTextActive());
+    m_selectLineAction->setEnabled(doc && doc->isTextActive() && !drawn);
+    for (QAction* action : std::as_const(m_markdownActions))
+        action->setEnabled(editing && doc->isMarkdown());
 }
 
 void MainWindow::updateActions()
@@ -2301,6 +2367,7 @@ void MainWindow::applyViewSettings(DocumentView* doc) const
     doc->hexView()->setBytesPerRow(m_bytesPerRow);
     doc->textView()->setWordWrap(m_wordWrap);
     doc->textView()->setLineNumbersVisible(m_lineNumbers);
+    doc->setMarkdownFont(markdownFont());
 }
 
 void MainWindow::setBytesPerRow(int bytesPerRow)
@@ -2690,6 +2757,41 @@ QFont MainWindow::readingFont() const
     }
     font.setPointSize(m_pointSize + 2);
     return font;
+}
+
+QFont MainWindow::markdownFont() const
+{
+    QFont font = QApplication::font();
+    font.setPointSize(m_pointSize + 1);
+    return font;
+}
+
+void MainWindow::exportMarkdown(DocumentView::ExportFormat format)
+{
+    DocumentView* doc = currentDocument();
+    if (!doc || !doc->isMarkdown())
+        return;
+    const bool html = format == DocumentView::ExportFormat::Html;
+    // Beside the file, by its name.
+    const QFileInfo info(doc->filePath());
+    const QString name = doc->isUntitled() ? QDir(m_lastDirectory).filePath(doc->title())
+                                           : info.dir().filePath(info.completeBaseName());
+    const QString path =
+        QFileDialog::getSaveFileName(this, html ? tr("Export as HTML") : tr("Export as PDF"),
+                                     name + (html ? QStringLiteral(".html") : QStringLiteral(".pdf")),
+                                     html ? tr("Web pages (*.html *.htm)") : tr("PDF documents (*.pdf)"));
+    if (path.isEmpty())
+        return;
+    QString error;
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    const bool written = doc->exportMarkdown(path, format, &error);
+    QGuiApplication::restoreOverrideCursor();
+    if (!written) {
+        QMessageBox::warning(this, tr("Cannot Export"),
+                             tr("Cannot write %1:\n%2").arg(QDir::toNativeSeparators(path), error));
+        return;
+    }
+    statusBar()->showMessage(tr("Written to %1").arg(QDir::toNativeSeparators(path)), kStatusTimeoutMs);
 }
 
 void MainWindow::askAboutChapter(int action, const QString& title, const QString& text, bool cut)
