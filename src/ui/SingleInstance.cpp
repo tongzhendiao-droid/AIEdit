@@ -1,8 +1,12 @@
 #include "ui/SingleInstance.h"
 
+#include "ui/Desktop.h"
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QLocalSocket>
+
+#include <memory>
 
 namespace aiedit::ui {
 
@@ -26,17 +30,25 @@ SingleInstance::SingleInstance(QString name, QObject* parent) : QObject(parent),
     m_server.setSocketOptions(QLocalServer::UserAccessOption);
     connect(&m_server, &QLocalServer::newConnection, this, [this] {
         while (QLocalSocket* socket = m_server.nextPendingConnection()) {
-            // The sender writes one JSON array and disconnects; read it all at the end.
-            connect(socket, &QLocalSocket::disconnected, this, [this, socket] {
-                const QJsonDocument document = QJsonDocument::fromJson(socket->readAll());
+            // The sender writes one JSON array and disconnects. What arrives is kept as it
+            // comes, not read at the end: a Windows pipe may have dropped it by then.
+            const auto received = std::make_shared<QByteArray>();
+            connect(socket, &QLocalSocket::readyRead, this, [socket, received] { *received += socket->readAll(); });
+            const auto finish = [this, socket, received] {
+                *received += socket->readAll();
+                socket->disconnect(this);
                 socket->deleteLater();
+                const QJsonDocument document = QJsonDocument::fromJson(*received);
                 if (!document.isArray())
                     return;
                 QStringList files;
                 for (const QJsonValue& value : document.array())
                     files << value.toString();
                 emit filesReceived(files);
-            });
+            };
+            connect(socket, &QLocalSocket::disconnected, this, finish);
+            if (socket->state() == QLocalSocket::UnconnectedState) // gone before it was picked up
+                finish();
         }
     });
 }
@@ -47,6 +59,7 @@ bool SingleInstance::forward(const QStringList& files) const
     socket.connectToServer(m_name);
     if (!socket.waitForConnected(kConnectTimeoutMs))
         return false;
+    allowActivationByOthers(); // so that the window that takes the files can come to the front
     socket.write(QJsonDocument(QJsonArray::fromStringList(files)).toJson(QJsonDocument::Compact));
     if (!socket.waitForBytesWritten(kWriteTimeoutMs))
         return false;

@@ -1,7 +1,7 @@
 #include "core/LineIndex.h"
 #include "core/TextCodec.h"
+#include "ui/Codec.h"
 
-#include <QStringEncoder>
 #include <QTest>
 
 #include <random>
@@ -149,8 +149,8 @@ void TestLineIndex::charsetDetection()
 #else
     // Longer samples, where uchardet knows better than byte structure and locale.
     const auto detect = [](const QString& text, const char* codecName, std::string_view preferred) {
-        QStringEncoder encoder(codecName);
-        const QByteArray bytes = encoder.encode(text.repeated(5));
+        const QByteArray bytes =
+            aiedit::ui::Codec(*findCodec(codecName)).encode(text.repeated(5)).value_or(QByteArray());
         const std::span<const std::uint8_t> span{reinterpret_cast<const std::uint8_t*>(bytes.constData()),
                                                  static_cast<std::size_t>(bytes.size())};
         return std::string(defaultCodec({ContentKind::Text, Encoding::Legacy, false, {}}, span, preferred).name);

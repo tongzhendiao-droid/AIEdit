@@ -178,6 +178,11 @@ private:
     void convertLineEndings(const QString& terminator);
     void setBytesPerRow(int bytesPerRow);
     void setWordWrap(bool on);
+    void setLineNumbersVisible(bool on);
+    // Shows the contents or not, as the document in front wants (see DocumentView::showsContents).
+    void placeContents();
+    // The page shown with no tabs: buttons to start with, or with a folder open just a hint.
+    void updateWelcome();
     void zoomBy(int steps);
     void resetZoom();
     void applyViewSettings(DocumentView* doc) const;
@@ -225,6 +230,8 @@ private:
 
     QStackedWidget* m_stack = nullptr;
     QWidget* m_welcome = nullptr;
+    QLabel* m_welcomeHint = nullptr;
+    QWidget* m_welcomeButtons = nullptr;
     TabWidget* m_tabs = nullptr;
     QDockWidget* m_inspectorDock = nullptr;
     DataInspector* m_inspector = nullptr;
@@ -270,6 +277,7 @@ private:
     QAction* m_reloadAction = nullptr;
     QAction* m_followAction = nullptr;
     QAction* m_wordWrapAction = nullptr;
+    QAction* m_lineNumbersAction = nullptr;
     QAction* m_readingAction = nullptr;
     QAction* m_quitAction = nullptr;
     QAction* m_newWindowAction = nullptr;
@@ -350,6 +358,8 @@ private:
     QAction* m_fontAction = nullptr;
     QString m_fontFamily; // empty: the system's fixed-width font
     bool m_wordWrap = true;
+    bool m_lineNumbers = true;
+    bool m_placingContents = false; // the contents shown or hidden for the document in front
     int m_defaultPointSize = 10;
     int m_pointSize = 10;
     QString m_lastDirectory;

@@ -5,6 +5,8 @@
 #include <QFileInfo>
 #include <QPalette>
 #include <QRegularExpression>
+#include <QScopedValueRollback>
+#include <QStyleHints>
 
 #ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
 #include <KSyntaxHighlighting/AbstractHighlighter>
@@ -29,12 +31,58 @@ QColor mix(const QColor& a, const QColor& b, float t)
                             a.blueF() + (b.blueF() - a.blueF()) * t);
 }
 
-// The scheme in use, empty while following the system; and whether the application palette
-// was ever set for one (so that following the system needs undoing that). GUI thread only.
+// The scheme chosen: a name, "Auto", or empty for the system's colours; and whether the
+// application palette was ever set for one (so that the system's colours need undoing that).
+// GUI thread only.
 QString& currentScheme()
 {
     static QString name;
     return name;
+}
+
+// AIEdit's own schemes. Their syntax colours are in themes/*.theme, which KSyntaxHighlighting
+// finds among the resources; without it, these colours are all they have.
+struct OwnScheme
+{
+    const char* name;
+    const char* displayName; // translated where shown
+    QRgb background;
+    QRgb text;
+    QRgb selection;
+    QRgb link;
+    bool dark;
+};
+
+constexpr OwnScheme kOwnSchemes[] = {
+    {"AIEdit Paper", QT_TRANSLATE_NOOP("aiedit::ui::ColorScheme", "Paper"), 0xF6F1E7, 0x3B3530, 0xE3D5B8, 0x076678,
+     false},
+    {"AIEdit Eye Care", QT_TRANSLATE_NOOP("aiedit::ui::ColorScheme", "Eye Care"), 0xC7EDCC, 0x1F2D21, 0x9FD4A8,
+     0x0B4F73, false},
+    {"AIEdit Night", QT_TRANSLATE_NOOP("aiedit::ui::ColorScheme", "Night"), 0x23211E, 0xDDD2C0, 0x4A4134, 0x7DAEA3,
+     true},
+};
+constexpr const char* kAutoLight = "AIEdit Paper";
+constexpr const char* kAutoDark = "AIEdit Night";
+
+const OwnScheme* ownScheme(const QString& name)
+{
+    // Also the light and dark ones AIEdit had before, for what was saved then.
+    const QString wanted = name == u"Light"  ? QString::fromLatin1(kAutoLight)
+                           : name == u"Dark" ? QString::fromLatin1(kAutoDark)
+                                             : name;
+    for (const OwnScheme& scheme : kOwnSchemes) {
+        if (wanted == QLatin1StringView(scheme.name))
+            return &scheme;
+    }
+    return nullptr;
+}
+
+QString effectiveScheme()
+{
+    if (currentScheme() != QLatin1StringView(kAutoColorScheme))
+        return currentScheme();
+    const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+    return QString::fromLatin1(dark ? kAutoDark : kAutoLight);
 }
 
 bool& paletteChanged()
@@ -67,6 +115,11 @@ QPalette paletteFrom(const QColor& background, const QColor& text, const QColor&
     palette.setColor(QPalette::PlaceholderText, disabled);
     palette.setColor(QPalette::Link, link);
     palette.setColor(QPalette::LinkVisited, link);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+    // What the Windows 11 style fills a ticked check box and a default button with; unset, it drew
+    // ticked boxes black on a dark scheme and white on a light one, the tick unseen.
+    palette.setColor(QPalette::Accent, link);
+#endif
     for (const QPalette::ColorRole role : {QPalette::WindowText, QPalette::Text, QPalette::ButtonText})
         palette.setColor(QPalette::Disabled, role, disabled);
     return palette;
@@ -86,10 +139,11 @@ KSyntaxHighlighting::Repository& repository()
     return instance;
 }
 
-// The scheme's theme; invalid while following the system.
+// The scheme's theme; invalid with the system's colours.
 KSyntaxHighlighting::Theme schemeTheme()
 {
-    return currentScheme().isEmpty() ? KSyntaxHighlighting::Theme() : repository().theme(currentScheme());
+    const QString scheme = effectiveScheme();
+    return scheme.isEmpty() ? KSyntaxHighlighting::Theme() : repository().theme(scheme);
 }
 
 QColor editorColor(const KSyntaxHighlighting::Theme& theme, KSyntaxHighlighting::Theme::EditorColorRole role)
@@ -282,22 +336,24 @@ CommentMarkers commentMarkers(const QString& syntaxName, const QString& fileName
 QList<ColorScheme> availableColorSchemes()
 {
     QList<ColorScheme> schemes;
+    for (const OwnScheme& scheme : kOwnSchemes)
+        schemes.append({QString::fromLatin1(scheme.name),
+                        QCoreApplication::translate("aiedit::ui::ColorScheme", scheme.displayName), scheme.dark, true});
 #ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
     for (const KSyntaxHighlighting::Theme& theme : repository().themes()) {
-        if (theme.name() == u"Printing")
-            continue; // white paper, for printing
+        if (theme.name() == u"Printing" || ownScheme(theme.name()))
+            continue; // white paper, for printing; and AIEdit's own, listed already
         const bool dark = editorColor(theme, KSyntaxHighlighting::Theme::BackgroundColor).lightness() < 128;
         // Shown by their own names, as other editors do: they are names, not descriptions.
         schemes.append({theme.name(), theme.name(), dark});
     }
-#else
-    schemes = {{QStringLiteral("Light"), QCoreApplication::translate("aiedit::ui::ColorScheme", "Light"), false},
-               {QStringLiteral("Dark"), QCoreApplication::translate("aiedit::ui::ColorScheme", "Dark"), true}};
 #endif
-    std::sort(schemes.begin(), schemes.end(), [](const ColorScheme& a, const ColorScheme& b) {
+    std::stable_sort(schemes.begin(), schemes.end(), [](const ColorScheme& a, const ColorScheme& b) {
         if (a.dark != b.dark)
             return !a.dark;
-        return QString::localeAwareCompare(a.displayName, b.displayName) < 0;
+        if (a.own != b.own)
+            return a.own;
+        return !a.own && QString::localeAwareCompare(a.displayName, b.displayName) < 0;
     });
     return schemes;
 }
@@ -307,26 +363,53 @@ QString colorScheme()
     return currentScheme();
 }
 
-void setColorScheme(const QString& name)
+QString effectiveColorScheme()
 {
-    std::optional<QPalette> palette;
+    return effectiveScheme();
+}
+
+namespace {
+
+// The palette of a scheme: AIEdit's own from its few colours, a theme's from its own; none for
+// the system's colours or a name nobody knows.
+std::optional<QPalette> schemePalette(const QString& name)
+{
+    if (name.isEmpty())
+        return std::nullopt;
+    if (const OwnScheme* own = ownScheme(name))
+        return paletteFrom(QColor::fromRgb(own->background), QColor::fromRgb(own->text),
+                           QColor::fromRgb(own->selection), QColor::fromRgb(own->link));
 #ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
-    if (const KSyntaxHighlighting::Theme theme = repository().theme(name);
-        !name.isEmpty() && theme.isValid() && name != u"Printing") {
-        palette = paletteFrom(editorColor(theme, KSyntaxHighlighting::Theme::BackgroundColor),
-                              QColor::fromRgba(theme.textColor(KSyntaxHighlighting::Theme::Normal)),
-                              editorColor(theme, KSyntaxHighlighting::Theme::TextSelection),
-                              QColor::fromRgba(theme.textColor(KSyntaxHighlighting::Theme::Keyword)));
-    }
-#else
-    if (name == u"Light")
-        palette = paletteFrom(QColor(0xFF, 0xFF, 0xFF), QColor(0x1F, 0x1F, 0x1F), QColor(0xB3, 0xD7, 0xFF),
-                              QColor(0x1A, 0x5F, 0xB4));
-    else if (name == u"Dark")
-        palette = paletteFrom(QColor(0x1E, 0x1F, 0x22), QColor(0xD4, 0xD4, 0xD4), QColor(0x26, 0x4F, 0x78),
-                              QColor(0x6C, 0xB6, 0xFF));
+    if (const KSyntaxHighlighting::Theme theme = repository().theme(name); theme.isValid() && name != u"Printing")
+        return paletteFrom(editorColor(theme, KSyntaxHighlighting::Theme::BackgroundColor),
+                           QColor::fromRgba(theme.textColor(KSyntaxHighlighting::Theme::Normal)),
+                           editorColor(theme, KSyntaxHighlighting::Theme::TextSelection),
+                           QColor::fromRgba(theme.textColor(KSyntaxHighlighting::Theme::Keyword)));
 #endif
-    currentScheme() = palette ? name : QString();
+    return std::nullopt;
+}
+
+void applyScheme()
+{
+    static bool applying = false;
+    if (applying)
+        return;
+    const QScopedValueRollback guard(applying, true);
+    const QString chosen = currentScheme();
+    const bool followsSystem = chosen.isEmpty() || chosen == QLatin1StringView(kAutoColorScheme);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    if (followsSystem) // so that Auto sees the system's light or dark, and title bars follow it
+        QGuiApplication::styleHints()->setColorScheme(Qt::ColorScheme::Unknown);
+#endif
+    const std::optional<QPalette> palette = schemePalette(effectiveScheme());
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    // Windows draws title bars, and Qt's Windows 11 style its tabs and menus, light or dark as
+    // the system is; a dark scheme on a light system left them white under light text.
+    if (!followsSystem && palette)
+        QGuiApplication::styleHints()->setColorScheme(palette->color(QPalette::Base).lightness() < 128
+                                                         ? Qt::ColorScheme::Dark
+                                                         : Qt::ColorScheme::Light);
+#endif
     if (palette) {
         QApplication::setPalette(*palette);
         paletteChanged() = true;
@@ -334,6 +417,28 @@ void setColorScheme(const QString& name)
         QApplication::setPalette(QPalette()); // the system's again
         paletteChanged() = false;
     }
+}
+
+} // namespace
+
+void setColorScheme(const QString& name)
+{
+    // Auto changes with the system's light and dark.
+    static const bool following = [] {
+        QObject::connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, qApp, [] {
+            if (currentScheme() == QLatin1StringView(kAutoColorScheme))
+                applyScheme();
+        });
+        return true;
+    }();
+    Q_UNUSED(following);
+    if (const OwnScheme* own = ownScheme(name))
+        currentScheme() = QString::fromLatin1(own->name);
+    else if (name == QLatin1StringView(kAutoColorScheme) || schemePalette(name))
+        currentScheme() = name;
+    else
+        currentScheme().clear();
+    applyScheme();
 }
 
 EditorColors editorColors(const QPalette& palette)

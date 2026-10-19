@@ -254,6 +254,9 @@ void TestChatClient::settingsKeepTheKeyPrivate()
     saved.thinking = true;
     saved.save();
 
+#ifdef Q_OS_WIN
+    const QNtfsPermissionCheckGuard ntfs; // Qt reads the file's ACL only when asked to
+#endif
     const auto permissions = QFile::permissions(AiSettings::keyFilePath());
     QVERIFY(permissions & QFileDevice::ReadOwner);
     QVERIFY(!(permissions & (QFileDevice::ReadGroup | QFileDevice::ReadOther | QFileDevice::WriteGroup |

@@ -5,6 +5,7 @@
 #include "ui/LineOperations.h"
 
 #include <QByteArray>
+#include <QDateTime>
 #include <QFileSystemWatcher>
 #include <QFutureWatcher>
 #include <QTimer>
@@ -80,6 +81,10 @@ public:
     // Reading mode (see TextView::setReadingMode), in the text view. Remembered with the file.
     bool isReadingMode() const;
     void setReadingMode(bool on);
+    // Whether the window shows the contents beside this document: as it is in reading mode or
+    // not, unless shown or closed by hand while this document was in front.
+    bool showsContents() const { return m_showsContents; }
+    void setShowsContents(bool on) { m_showsContents = on; }
     // Shows the text from `offset` on at the top, with the caret there: where a chapter starts.
     void showFromOffset(std::uint64_t offset);
     // The view the user works in: the visible one, or in split mode the one focused last.
@@ -284,6 +289,25 @@ private:
     QFutureWatcher<RuleRun> m_ruleWatcher;
     QFileSystemWatcher m_watcher;
     QTimer m_reloadTimer; // coalesces bursts of change notifications
+    bool m_showsContents = false;
+    // The file's size and modification time as last seen, looked at every second for changes the
+    // watcher misses: Windows reports a file that grows late, if at all, while its writer keeps
+    // it open, and network folders may report nothing.
+    // The look happens in the background: on a network drive that has gone away it can take long.
+    struct DiskState
+    {
+        QString path;
+        qint64 size = -1; // -1: no file
+        QDateTime modified;
+
+        bool operator==(const DiskState&) const = default;
+    };
+    static DiskState diskState(const QString& path);
+    DiskState diskState() const;
+    QTimer m_pollTimer;
+    QFutureWatcher<DiskState> m_pollWatcher;
+    bool m_polling = false; // a look is under way
+    DiskState m_diskState;
 };
 
 } // namespace aiedit::ui

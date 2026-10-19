@@ -53,14 +53,15 @@ qsizetype DecodedText::positionAt(std::uint32_t byteOffset) const
     return static_cast<qsizetype>(std::min<std::ptrdiff_t>(it - byteOffsets.begin(), text.size()));
 }
 
-TextDecoder::TextDecoder(const core::TextCodec& codec) : m_codec(codec), m_decoder(codec.name.data())
+TextDecoder::TextDecoder(const core::TextCodec& codec) : m_codec(codec), m_converter(codec)
 {
     if (m_codec.scheme == core::CharScheme::SingleByte) {
         for (int b = 0; b < 256; ++b) {
             const char byte = static_cast<char>(b);
-            const QString decoded = m_decoder.decode(QByteArrayView(&byte, 1));
-            m_decoder.resetState();
-            m_singleByte[static_cast<std::size_t>(b)] = decoded.size() == 1 ? decoded.front().unicode() : u'�';
+            bool malformed = false;
+            const QString decoded = m_converter.decode(QByteArrayView(&byte, 1), &malformed);
+            m_singleByte[static_cast<std::size_t>(b)] =
+                decoded.size() == 1 && !malformed ? decoded.front().unicode() : u'\uFFFD';
         }
     }
 }
@@ -76,11 +77,12 @@ char32_t TextDecoder::decodeLegacy(std::span<const std::uint8_t> bytes, std::siz
     if (const auto it = m_cache.constFind(key); it != m_cache.constEnd())
         return *it;
 
-    const QString decoded =
-        m_decoder.decode(QByteArrayView(reinterpret_cast<const char*>(bytes.data()), static_cast<qsizetype>(length)));
-    m_decoder.resetState();
+    // Malformed or unmapped, a character is U+FFFD, also where ICU puts U+001A instead.
+    bool malformed = false;
+    const QString decoded = m_converter.decode(
+        QByteArrayView(reinterpret_cast<const char*>(bytes.data()), static_cast<qsizetype>(length)), &malformed);
     const auto ucs4 = decoded.toUcs4();
-    const char32_t c = ucs4.size() == 1 ? static_cast<char32_t>(ucs4.front()) : kReplacement;
+    const char32_t c = ucs4.size() == 1 && !malformed ? static_cast<char32_t>(ucs4.front()) : kReplacement;
     m_cache.insert(key, c);
     return c;
 }
@@ -148,8 +150,7 @@ QString TextDecoder::decodePlain(std::span<const std::uint8_t> bytes) const
     const auto view = QByteArrayView(reinterpret_cast<const char*>(bytes.data()), static_cast<qsizetype>(bytes.size()));
     if (m_codec.scheme == core::CharScheme::Utf8)
         return QString::fromUtf8(view);
-    QStringDecoder decoder(m_codec.name.data());
-    return decoder.decode(view);
+    return m_converter.decode(view);
 }
 
 } // namespace aiedit::ui

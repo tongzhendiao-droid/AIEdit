@@ -1,6 +1,7 @@
 #include "ui/FilterResultsView.h"
 
 #include "core/LineIndex.h"
+#include "ui/Desktop.h"
 #include "ui/SyntaxHighlighting.h"
 #include "ui/TextDecoder.h"
 #include "ui/TextDocument.h"
@@ -8,7 +9,6 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QContextMenuEvent>
-#include <QFontDatabase>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QPainter>
@@ -44,7 +44,7 @@ QColor mix(const QColor& a, const QColor& b, float t)
 FilterResultsView::FilterResultsView(QWidget* parent) : QAbstractScrollArea(parent), m_cache(kCachedLines)
 {
     setFocusPolicy(Qt::StrongFocus);
-    setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    setFont(fixedFont());
     updateMetrics();
     updateColors();
     updateScrollBars();

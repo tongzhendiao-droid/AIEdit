@@ -451,12 +451,16 @@
 <context>
     <name>aiedit::ui::ColorScheme</name>
     <message>
-        <source>Light</source>
-        <translation>浅色</translation>
+        <source>Paper</source>
+        <translation>纸张</translation>
     </message>
     <message>
-        <source>Dark</source>
-        <translation>深色</translation>
+        <source>Eye Care</source>
+        <translation>护眼</translation>
+    </message>
+    <message>
+        <source>Night</source>
+        <translation>夜色</translation>
     </message>
 </context>
 <context>
@@ -1918,6 +1922,10 @@
         <translation>长行在窗口边缘折行显示，不用横向滚动</translation>
     </message>
     <message>
+        <source>&amp;Line Numbers</source>
+        <translation>行号(&amp;L)</translation>
+    </message>
+    <message>
         <source>&amp;Quit</source>
         <translation>退出(&amp;Q)</translation>
     </message>
@@ -2370,10 +2378,6 @@
         <translation>纯文本</translation>
     </message>
     <message>
-        <source>Follow the &amp;System</source>
-        <translation>跟随系统(&amp;S)</translation>
-    </message>
-    <message>
         <source>Light</source>
         <translation>浅色</translation>
     </message>
@@ -2456,6 +2460,14 @@
     <message>
         <source>Go to &amp;Line or Offset…</source>
         <translation>转到行或偏移(&amp;L)…</translation>
+    </message>
+    <message>
+        <source>&amp;Automatic (Paper or Night)</source>
+        <translation>自动（纸张或夜色）(&amp;A)</translation>
+    </message>
+    <message>
+        <source>&amp;System Colors</source>
+        <translation>系统颜色(&amp;S)</translation>
     </message>
     <message>
         <source>Open Files</source>
@@ -2710,6 +2722,10 @@
         <translation>
             <numerusform>已把 %n 处改动中的 %1 处应用到 %2；按 Ctrl+Z 可以撤销</numerusform>
         </translation>
+    </message>
+    <message>
+        <source>Click a file in the folder to look at it; double-click to keep it open</source>
+        <translation>单击左边文件夹里的文件即可查看，双击则一直打开</translation>
     </message>
     <message>
         <source>Summarize this chapter: what happens, who is in it, and what stands out.</source>

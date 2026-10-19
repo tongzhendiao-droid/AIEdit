@@ -6,6 +6,7 @@
 #include "ui/AiEdit.h"
 #include "ui/AiEditBar.h"
 #include "ui/AiPanel.h"
+#include "ui/Codec.h"
 #include "ui/FilterPanel.h"
 #include "ui/FilterRuleWriter.h"
 #include "ui/FindBar.h"
@@ -24,8 +25,6 @@
 #include <QLocale>
 #include <QPointer>
 #include <QSaveFile>
-#include <QStringDecoder>
-#include <QStringEncoder>
 #include <QScopedValueRollback>
 #include <QSplitter>
 #include <QTimer>
@@ -40,6 +39,7 @@ namespace {
 
 // Writers append in bursts; reload once things have been quiet this long.
 constexpr int kReloadDelayMs = 250;
+constexpr int kPollIntervalMs = 1000;
 // How much of a selection goes to the AI: text as it is, bytes as a hex dump (about 4x larger).
 constexpr std::uint64_t kMaxContextTextBytes = 32 * 1024;
 constexpr std::uint64_t kMaxContextHexBytes = 4 * 1024;
@@ -162,6 +162,25 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
     if (!isUntitled())
         m_watcher.addPath(filePath());
     connect(&m_watcher, &QFileSystemWatcher::fileChanged, this, &DocumentView::fileChanged);
+    m_pollTimer.setInterval(kPollIntervalMs);
+    connect(&m_pollTimer, &QTimer::timeout, this, [this] {
+        if (m_polling || isUntitled())
+            return;
+        m_polling = true;
+        m_pollWatcher.setFuture(QtConcurrent::run([path = filePath()] { return diskState(path); }));
+    });
+    connect(&m_pollWatcher, &QFutureWatcher<DiskState>::finished, this, [this] {
+        m_polling = false;
+        const DiskState now = m_pollWatcher.result();
+        if (now.path == filePath() && now != m_diskState) { // not of a file it showed before
+            m_diskState = now;
+            fileChanged();
+        }
+    });
+    if (!isUntitled()) {
+        m_diskState = diskState();
+        m_pollTimer.start();
+    }
 
     // Text files open as text, everything else as hex.
     m_viewMode = ViewMode::Split; // anything different from the target, so setViewMode() applies it
@@ -231,6 +250,7 @@ void DocumentView::setReadingMode(bool on)
     if (on && m_viewMode != ViewMode::Text)
         setViewMode(ViewMode::Text); // a book is read as text
     m_textView->setReadingMode(on);
+    m_showsContents = on; // a book's chapters beside it; nothing beside other text
     emit readingModeChanged(on);
     emit stateChanged();
 }
@@ -797,6 +817,17 @@ void DocumentView::fileChanged()
         m_reloadTimer.start();
 }
 
+DocumentView::DiskState DocumentView::diskState(const QString& path)
+{
+    const QFileInfo info(path);
+    return info.exists() ? DiskState{path, info.size(), info.lastModified()} : DiskState{path, -1, {}};
+}
+
+DocumentView::DiskState DocumentView::diskState() const
+{
+    return isUntitled() ? DiskState{} : diskState(filePath());
+}
+
 bool DocumentView::reload()
 {
     if (isUntitled())
@@ -807,6 +838,8 @@ bool DocumentView::reload()
     if (!m_watcher.files().contains(path) && QFileInfo::exists(path))
         m_watcher.addPath(path);
 
+    // Taken before opening, so that a change while it opens is noticed on the next look.
+    const DiskState seen = diskState();
     std::error_code ec;
     std::shared_ptr<const core::FileSource> source = core::FileSource::open(toPath(path), ec);
     if (!source) {
@@ -815,6 +848,7 @@ bool DocumentView::reload()
         return false;
     }
 
+    m_diskState = seen;
     m_findBar->cancel();
     m_lastMatch.reset();
     m_source = std::move(source);
@@ -1110,6 +1144,8 @@ bool DocumentView::writeBytes(const QString& path, std::span<const std::uint8_t>
     // The file written is a new one; watch it, also if the old one had gone (deleted, moved).
     if ((watched || path == filePath()) && QFileInfo::exists(path))
         m_watcher.addPath(path);
+    if (path == filePath())
+        m_diskState = diskState();
     if (!ok && error)
         *error = file.errorString();
     return ok;
@@ -1148,6 +1184,8 @@ bool DocumentView::saveAs(const QString& path, QString* error)
     m_findBar->cancel();
     m_lastMatch.reset();
     m_source = std::move(source);
+    m_diskState = diskState(); // of the file it shows now
+    m_pollTimer.start();
     {
         const QScopedValueRollback guard(m_syncing, true);
         m_textDocument->setSource(m_source);
@@ -1178,6 +1216,8 @@ bool DocumentView::followMove(const QString& path)
     m_findBar->cancel();
     m_lastMatch.reset();
     m_source = std::move(source);
+    m_diskState = diskState(); // of the file it shows now
+    m_pollTimer.start();
     m_fileType = core::detectFileType(m_source->bytes());
     {
         const QScopedValueRollback guard(m_syncing, true);
@@ -1212,21 +1252,23 @@ DocumentView::Conversion DocumentView::saveWithCodec(const core::TextCodec& code
 {
     // The text as it reads now (unsaved edits included), without its old byte order mark.
     const auto bytes = m_source->bytes().subspan(static_cast<std::size_t>(m_textDocument->textStart()));
-    QStringDecoder decoder(m_textDocument->codec().name.data());
-    const QString text =
-        decoder.decode(QByteArrayView(reinterpret_cast<const char*>(bytes.data()), static_cast<qsizetype>(bytes.size())));
-    if (decoder.hasError() && !replaceUnreadable)
+    bool unreadable = false;
+    const QString text = Codec(m_textDocument->codec())
+                             .decode(QByteArrayView(reinterpret_cast<const char*>(bytes.data()),
+                                                    static_cast<qsizetype>(bytes.size())),
+                                     &unreadable);
+    if (unreadable && !replaceUnreadable)
         return Conversion::Unreadable;
 
     // UTF-16 and UTF-32 need their byte order mark to be recognised; UTF-8 and the rest do not.
     const bool wide = codec.scheme == core::CharScheme::Utf16LE || codec.scheme == core::CharScheme::Utf16BE ||
                       codec.scheme == core::CharScheme::Utf32LE || codec.scheme == core::CharScheme::Utf32BE;
-    QStringEncoder encoder(codec.name.data(), wide ? QStringConverter::Flag::WriteBom : QStringConverter::Flag::Default);
-    const QByteArray converted = encoder.encode(text);
-    if (encoder.hasError())
+    const std::optional<QByteArray> converted =
+        Codec(codec, wide ? QStringConverter::Flag::WriteBom : QStringConverter::Flag::Default).encode(text);
+    if (!converted)
         return Conversion::Unwritable;
-    if (!writeBytes(filePath(), {reinterpret_cast<const std::uint8_t*>(converted.constData()),
-                                 static_cast<std::size_t>(converted.size())},
+    if (!writeBytes(filePath(), {reinterpret_cast<const std::uint8_t*>(converted->constData()),
+                                 static_cast<std::size_t>(converted->size())},
                     error))
         return Conversion::Failed;
 

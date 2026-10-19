@@ -1,11 +1,12 @@
 #include "ui/FindInFilesPanel.h"
 
+#include "ui/Desktop.h"
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QFontDatabase>
 #include <QGridLayout>
 #include <QJsonDocument>
 #include <QKeyEvent>
@@ -115,7 +116,7 @@ FindInFilesPanel::FindInFilesPanel(QWidget* parent) : QWidget(parent)
     m_results = new QTreeWidget(this);
     m_results->setHeaderHidden(true);
     m_results->setUniformRowHeights(true);
-    m_results->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_results->setFont(fixedFont());
     connect(m_results, &QTreeWidget::itemActivated, this, &FindInFilesPanel::activate);
 
     auto* grid = new QGridLayout;

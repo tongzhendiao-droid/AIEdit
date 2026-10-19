@@ -30,6 +30,11 @@ struct TextCodec
 {
     std::string_view name; // IANA/ICU name, e.g. "GB18030"; also what the decoder is created from
     CharScheme scheme;
+    // The Windows code page with these characters, for a Qt without ICU (its builds for Windows):
+    // 54936 for GB18030, 950 for Big5 and so on; 0 for UTF-16 and UTF-32, which have none (Qt
+    // converts them itself). EUC-KR has 949, which adds characters EUC-KR lacks; its byte
+    // structure leaves them out.
+    std::uint16_t codePage;
 };
 
 // Every codec AIEdit offers, Unicode first.

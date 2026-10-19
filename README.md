@@ -4,7 +4,7 @@
 
 快速、带 AI 辅助的文本与二进制文件查看器。用 C++20 和 Qt 6 编写，以查看为主、编辑为辅。
 
-> 当前进度：已完成 **M8c**（用 AI 修改：说一句要怎么改，在对比视图里逐处确认后才写入；大文件由 AI 写规则在本机执行）。之前的 M8b 照顾了其他编辑器的习惯（标签页右键菜单、`Ctrl+P` 快速打开和命令面板、书签等）。计划见 [DESIGN.md](DESIGN.md)。
+> 当前进度：已完成 **M9**（Windows 版：安装包，右键菜单「用 AIEdit 打开」，打开方式和默认应用；带语法高亮和配色方案；测试在 Windows 上全部通过）。之前的 M8c 可以用 AI 修改：说一句要怎么改，在对比视图里逐处确认后才写入。计划见 [DESIGN.md](DESIGN.md)。
 
 ## 功能
 
@@ -183,7 +183,29 @@ cmake --build build -j
 
 也可以打开一个文件夹：`./build/src/aiedit 某个文件夹`。
 
-**Windows**：安装 Qt 6（MSVC 版本）和 CMake 后，用相同的 CMake 命令构建。Windows 版目前还没有验证过，已知的问题见 DESIGN.md 末尾。
+**Windows**
+
+需要 Visual Studio 2022 或更新的版本（含「使用 C++ 的桌面开发」）、Qt 6.8 或更高的 MSVC 版本、git 和 Perl（比如 Strawberry Perl）。以下命令在「x64 Native Tools Command Prompt」里运行，Qt 的路径换成你自己的。
+
+先编译可选的库（KSyntaxHighlighting、uchardet、Capstone），只需要一次：
+
+```bat
+powershell -ExecutionPolicy Bypass -File packaging\windows\build-deps.ps1 -Qt C:\Qt\6.10.3\msvc2022_64 -Prefix C:\aiedit-deps
+```
+
+```bat
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=C:\Qt\6.10.3\msvc2022_64;C:\aiedit-deps"
+```
+
+```bat
+cmake --build build
+```
+
+打安装包和 zip（需要 Inno Setup 6），结果在 `dist` 里：
+
+```bat
+powershell -ExecutionPolicy Bypass -File packaging\windows\package.ps1
+```
 
 ## 安装到桌面（Linux）
 
@@ -209,6 +231,18 @@ packaging/linux/register.sh --default
 - 加上 `--default` 时，纯文本、日志、Markdown、JSON/XML/YAML、二进制和可执行文件默认用 AIEdit 打开。你已经指定给其他程序的类型（C/C++ 源码、shell 脚本、CSV）保持不变，因为 AIEdit 目前还不能编辑。
 
 AIEdit 只保留一个窗口：再打开文件时，会在已有窗口里新开标签页。需要单独的窗口时用 `aiedit --new-window`。
+
+## 安装（Windows）
+
+安装包由 CI 生成：在 GitHub 的 Actions 页面打开最近一次成功的运行，下载「AIEdit-windows-x64」（保留 30 天），里面有安装包 `AIEdit-<版本>-windows-x64-setup.exe`，和不用安装、解压就能用的 zip。
+
+- 默认只为当前用户安装，不需要管理员权限；也可以选为所有用户安装。
+- 安装时可选：
+  - 文件和文件夹的右键菜单「用 AIEdit 打开」。Windows 11 上在「显示更多选项」里。
+  - 在「打开方式」里列出 AIEdit（文本、日志、数据、源码和二进制文件）。
+- 要让某类文件默认用 AIEdit 打开：「设置 → 应用 → 默认应用 → AIEdit」，逐个类型选。Windows 不让程序自己设成默认。
+- 安装包没有签名，第一次运行时 SmartScreen 可能拦下，点「更多信息 → 仍要运行」。
+- 在「设置 → 应用」里卸载，右键菜单和打开方式会一起删掉。
 
 ## 测试
 

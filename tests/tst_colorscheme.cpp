@@ -1,5 +1,6 @@
 #include "core/FileSource.h"
 #include "core/TextCodec.h"
+#include "ui/Desktop.h"
 #include "ui/DocumentView.h"
 #include "ui/HexView.h"
 #include "ui/MainWindow.h"
@@ -12,8 +13,10 @@
 #include <QFontDatabase>
 #include <QMenu>
 #include <QMenuBar>
+#include <QScreen>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QStyleHints>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -65,9 +68,11 @@ private slots:
     void listsSchemes();
     void colorsTheViews();
     void highlightsInTheSchemesColors();
+    void startsWarm();
     void followsTheSystemAgain();
     void remembersTheChoice();
     void remembersTheEditorFont();
+    void rendersTheSchemes();
 
 private:
     QString write(const char* name, const std::string& content);
@@ -113,12 +118,19 @@ void TestColorScheme::listsSchemes()
     QStringList names;
     for (const ui::ColorScheme& scheme : schemes)
         names << scheme.name;
+    // AIEdit's own first among the light ones and among the dark ones, each once.
+    const QStringList own{QStringLiteral("AIEdit Paper"), QStringLiteral("AIEdit Eye Care"),
+                          QStringLiteral("AIEdit Night")};
+    for (const QString& name : own)
+        QCOMPARE(names.count(name), 1);
+    QCOMPARE(names.first(), own.first());
+    QCOMPARE(firstDark->name, QStringLiteral("AIEdit Night"));
     if (ui::isSyntaxHighlightingAvailable()) {
         QVERIFY(names.contains(QStringLiteral("Monokai")));
         QVERIFY(names.contains(QStringLiteral("Solarized Light")));
         QVERIFY(!names.contains(QStringLiteral("Printing"))); // for paper
     } else {
-        QCOMPARE(names, (QStringList{QStringLiteral("Light"), QStringLiteral("Dark")}));
+        QCOMPARE(names, (QStringList{own[0], own[1], own[2]}));
     }
 }
 
@@ -171,6 +183,31 @@ void TestColorScheme::highlightsInTheSchemesColors()
     const QList<QColor> monokai = colorsOfLine();
     QVERIFY(!solarized.isEmpty() && !monokai.isEmpty());
     QVERIFY(solarized != monokai); // the scheme's colours, not one that suits the palette
+
+    // AIEdit's own schemes have syntax colours of their own too.
+    ui::setColorScheme(QStringLiteral("AIEdit Paper"));
+    QCoreApplication::processEvents();
+    const QList<QColor> paper = colorsOfLine();
+    ui::setColorScheme(QStringLiteral("AIEdit Night"));
+    QCoreApplication::processEvents();
+    const QList<QColor> night = colorsOfLine();
+    QVERIFY(!paper.isEmpty() && paper != night && paper != solarized);
+    QVERIFY(paper.contains(QColor(0x8F, 0x3F, 0x71))); // Paper's keywords
+}
+
+void TestColorScheme::startsWarm()
+{
+    // Nothing chosen yet: Auto, which is Paper on a light system and Night on a dark one.
+    ui::MainWindow window;
+    QCOMPARE(ui::colorScheme(), QString::fromLatin1(ui::kAutoColorScheme));
+    const bool dark = QGuiApplication::styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+    QCOMPARE(ui::effectiveColorScheme(), dark ? QStringLiteral("AIEdit Night") : QStringLiteral("AIEdit Paper"));
+    QCOMPARE(isDark(QApplication::palette().color(QPalette::Base)), dark);
+    QCOMPARE(QApplication::palette().color(QPalette::Base), dark ? QColor(0x23, 0x21, 0x1E) : QColor(0xF6, 0xF1, 0xE7));
+
+    // A name saved by AIEdit before it had these is taken as the one like it.
+    ui::setColorScheme(QStringLiteral("Dark"));
+    QCOMPARE(ui::colorScheme(), QStringLiteral("AIEdit Night"));
 }
 
 void TestColorScheme::followsTheSystemAgain()
@@ -208,7 +245,7 @@ void TestColorScheme::remembersTheChoice()
     for (QAction* action : menu->actions()) {
         if (action->data().toString() == aLightScheme() && !action->isSeparator())
             light = action;
-        if (action->text() == QStringLiteral("Follow the &System"))
+        if (action->text() == QStringLiteral("&System Colors"))
             system = action;
     }
     QVERIFY(light && system);
@@ -225,7 +262,7 @@ void TestColorScheme::remembersTheChoice()
 
 void TestColorScheme::remembersTheEditorFont()
 {
-    const QString standard = QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
+    const QString standard = ui::fixedFont().family();
     QString other;
     for (const QString& family : QFontDatabase::families()) {
         if (family != standard && QFontDatabase::isFixedPitch(family)) {
@@ -240,6 +277,36 @@ void TestColorScheme::remembersTheEditorFont()
     QVERIFY(window.openFile(write("font.txt", "text\n")));
     QCOMPARE(window.currentDocument()->textView()->font().family(), other);
     QCOMPARE(window.currentDocument()->hexView()->font().family(), other);
+}
+
+void TestColorScheme::rendersTheSchemes()
+{
+    // Set AIEDIT_SCREENSHOT_DIR to look at them; otherwise this only checks that each paints. On a
+    // real screen (not offscreen) the shots include the title bar, which the system draws.
+    const QString dir = qEnvironmentVariable("AIEDIT_SCREENSHOT_DIR");
+    ui::MainWindow window;
+    window.resize(1000, 560);
+    QVERIFY(window.openFile(write("notes.txt", "第一回　宴桃园豪杰三结义\n\n话说天下大势，分久必合，合久必分。\n")));
+    QVERIFY(window.openFile(write("main.cpp", "#include <cstdio>\n\n// Prints a greeting.\nint main()\n{\n"
+                                              "    const char* name = \"AIEdit\";\n    for (int i = 0; i < 3; ++i)\n"
+                                              "        std::printf(\"%s %d\\n\", name, 42);\n    return 0;\n}\n")));
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    for (const char* name : {"AIEdit Paper", "AIEdit Eye Care", "AIEdit Night", "Monokai"}) {
+        ui::setColorScheme(QString::fromLatin1(name));
+        QTest::qWait(100); // for a theme change to reach the window's frame
+        const QImage image = window.grab().toImage();
+        QVERIFY(!image.isNull());
+        if (dir.isEmpty())
+            continue;
+        const QString file = dir + QStringLiteral("/scheme-") + QString::fromLatin1(name).replace(u' ', u'-');
+        image.save(file + QStringLiteral(".png"));
+        if (QGuiApplication::platformName() != u"offscreen") {
+            const QRect frame = window.frameGeometry();
+            window.screen()->grabWindow(0, frame.x(), frame.y(), frame.width(), frame.height())
+                .save(file + QStringLiteral("-framed.png"));
+        }
+    }
 }
 
 QTEST_MAIN(TestColorScheme)

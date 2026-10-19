@@ -43,22 +43,29 @@ struct CommentMarkers
 // the file's name.
 CommentMarkers commentMarkers(const QString& syntaxName, const QString& fileName);
 
-// Colour schemes: KSyntaxHighlighting's themes (Monokai, Solarized, …), or without it a light
-// and a dark one of AIEdit's own. A scheme colours the whole application, the syntax included;
-// without one, everything follows the system.
+// Colour schemes: AIEdit's own (Paper, Eye Care, Night: warm, and easy on the eyes over hours of
+// reading), and KSyntaxHighlighting's themes (Monokai, Solarized, …). A scheme colours the whole
+// application, the syntax included. "Auto" takes Paper while the system is light and Night while
+// it is dark; with no scheme at all, the system's own colours are used.
 struct ColorScheme
 {
     QString name;        // stable identifier, e.g. "Monokai"
     QString displayName; // what menus show
     bool dark = false;
+    bool own = false; // one of AIEdit's
 };
 
-// Light schemes first, then dark ones, each by name.
+inline constexpr char kAutoColorScheme[] = "Auto";
+
+// Light schemes first, then dark ones; AIEdit's own first in each, then the rest by name.
 QList<ColorScheme> availableColorSchemes();
-// Empty while following the system.
+// What was chosen: a scheme's name, "Auto", or empty for the system's colours.
 QString colorScheme();
-// Recolours the application (its palette, and so every view). An unknown name or an empty
-// one follows the system again.
+// What is in effect: "Auto" made Paper or Night, else the same as colorScheme().
+QString effectiveColorScheme();
+// Recolours the application (its palette, and so every view). An unknown name or an empty one
+// gives the system's colours. A scheme chosen against the system's light or dark also turns
+// title bars and the style's own drawing (Windows 11 draws tabs and menus itself) to its side.
 void setColorScheme(const QString& name);
 
 // What an editor (text, hex, results) paints with: the scheme's colours, or ones worked out

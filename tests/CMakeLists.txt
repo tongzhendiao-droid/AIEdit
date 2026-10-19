@@ -1,22 +1,27 @@
 find_package(Qt6 REQUIRED COMPONENTS Test Network)
 
-# aiedit_add_test(<name> <libraries...>) builds <name>.cpp as a Qt Test executable.
+# aiedit_add_test(<name> <libraries...>) builds <name>.cpp as a Qt Test executable. Under ctest
+# it also writes its log to test-logs/<name>.txt, for when its output to ctest is lost (seen on
+# Windows CI).
 function(aiedit_add_test name)
     add_executable(${name} ${name}.cpp)
     target_link_libraries(${name} PRIVATE Qt6::Test aiedit_warnings ${ARGN})
-    add_test(NAME ${name} COMMAND ${name})
+    file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/test-logs")
+    add_test(NAME ${name} COMMAND ${name} -o "${CMAKE_BINARY_DIR}/test-logs/${name}.txt,txt" -o "-,txt")
     set_tests_properties(${name} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endfunction()
 
 aiedit_add_test(tst_filetype aiedit_core)
 aiedit_add_test(tst_filesource aiedit_core)
 aiedit_add_test(tst_offset aiedit_core)
-aiedit_add_test(tst_lineindex aiedit_core)
+# Also checks charset detection on text written by ui::Codec.
+aiedit_add_test(tst_lineindex aiedit_ui)
 aiedit_add_test(tst_search aiedit_core)
 aiedit_add_test(tst_aicore aiedit_core)
 aiedit_add_test(tst_editbuffer aiedit_core)
 aiedit_add_test(tst_diff aiedit_core)
 aiedit_add_test(tst_binary aiedit_core)
+aiedit_add_test(tst_codec aiedit_ui)
 aiedit_add_test(tst_hexview aiedit_ui)
 # The translation test loads the .qm files built for the application.
 target_compile_definitions(tst_hexview PRIVATE AIEDIT_QM_DIR="${CMAKE_BINARY_DIR}/src/i18n")
@@ -28,11 +33,14 @@ aiedit_add_test(tst_session aiedit_ui)
 aiedit_add_test(tst_logfilter aiedit_ui)
 aiedit_add_test(tst_colorscheme aiedit_ui)
 aiedit_add_test(tst_findinfiles aiedit_ui)
+target_sources(tst_findinfiles PRIVATE HiddenFile.cpp HiddenFile.h)
 aiedit_add_test(tst_reading aiedit_ui)
 aiedit_add_test(tst_folders aiedit_ui)
+target_sources(tst_folders PRIVATE HiddenFile.cpp HiddenFile.h)
 aiedit_add_test(tst_compare aiedit_ui)
 aiedit_add_test(tst_tabs aiedit_ui)
 aiedit_add_test(tst_navigation aiedit_ui)
+target_sources(tst_navigation PRIVATE HiddenFile.cpp HiddenFile.h)
 aiedit_add_test(tst_editcommands aiedit_ui)
 aiedit_add_test(tst_aiedit aiedit_ui)
 aiedit_add_test(tst_searchjob aiedit_ui)

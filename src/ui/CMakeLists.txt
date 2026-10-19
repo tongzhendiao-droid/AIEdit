@@ -7,6 +7,7 @@ qt_add_library(aiedit_ui STATIC
     AiTools.cpp AiTools.h
     BackupStore.cpp BackupStore.h
     ChatClient.cpp ChatClient.h
+    Codec.cpp Codec.h
     Collation.h
     Compare.cpp Compare.h
     CompareTab.cpp CompareTab.h
@@ -53,4 +54,9 @@ target_link_libraries(aiedit_ui
 if(KF6SyntaxHighlighting_FOUND)
     target_link_libraries(aiedit_ui PUBLIC KF6::SyntaxHighlighting)
     target_compile_definitions(aiedit_ui PUBLIC AIEDIT_HAVE_KSYNTAXHIGHLIGHTING)
+    # AIEdit's own colour schemes, where KSyntaxHighlighting looks for an application's themes.
+    qt_add_resources(aiedit_ui "themes"
+        PREFIX "/org.kde.syntax-highlighting/themes-addons"
+        BASE "${CMAKE_CURRENT_SOURCE_DIR}/themes"
+        FILES themes/aiedit-paper.theme themes/aiedit-eye-care.theme themes/aiedit-night.theme)
 endif()

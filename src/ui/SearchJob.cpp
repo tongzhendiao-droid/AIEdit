@@ -2,12 +2,12 @@
 
 #include "core/FileSource.h"
 #include "core/Search.h"
+#include "ui/Codec.h"
 #include "ui/TextDecoder.h"
 
 #include <QCoreApplication>
 #include <QPromise>
 #include <QRegularExpression>
-#include <QStringEncoder>
 
 #include <algorithm>
 #include <atomic>
@@ -221,13 +221,12 @@ SearchOutcome search(const SearchRequest& request, const SearchContext& context,
             return invalidQuery(QCoreApplication::translate(
                 "SearchJob", "Not a valid hex pattern. Use pairs of hex digits, and ?? for any byte."));
     } else if (!useRegex) {
-        QStringEncoder encoder(context.codec.name.data());
-        const QByteArray encoded = encoder.encode(request.query);
-        if (encoder.hasError() || encoded.isEmpty())
+        const std::optional<QByteArray> encoded = Codec(context.codec).encode(request.query);
+        if (!encoded || encoded->isEmpty())
             return invalidQuery(QCoreApplication::translate("SearchJob", "The text cannot be written in %1.")
                                     .arg(QString::fromLatin1(context.codec.name.data())));
         pattern.emplace();
-        pattern->bytes.assign(encoded.begin(), encoded.end());
+        pattern->bytes.assign(encoded->begin(), encoded->end());
     } else {
         regex.setPattern(request.mode == SearchMode::Regex ? request.query
                                                            : QRegularExpression::escape(request.query));

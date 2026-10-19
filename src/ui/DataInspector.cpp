@@ -2,12 +2,12 @@
 
 #include "core/FileSource.h"
 #include "core/FileType.h"
+#include "ui/Desktop.h"
 
 #include <QAction>
 #include <QClipboard>
 #include <QComboBox>
 #include <QDateTime>
-#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QHeaderView>
 #include <QTimeZone>
@@ -104,7 +104,7 @@ DataInspector::DataInspector(QWidget* parent) : QWidget(parent)
         tr("UInt32"), tr("Int32"),   tr("UInt64"),  tr("Int64"),   tr("Float32"),
         tr("Float64"), tr("Unix time (32-bit)"), tr("UTF-8"),
     };
-    const QFont fixed = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    const QFont fixed = fixedFont();
     for (const QString& label : labels) {
         auto* item = new QTreeWidgetItem(m_values, {label, QString()});
         item->setFont(1, fixed);

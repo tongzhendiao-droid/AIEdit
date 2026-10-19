@@ -1,12 +1,12 @@
 #include "ui/LogFilter.h"
 
 #include "core/FileSource.h"
+#include "ui/Codec.h"
 #include "ui/TextDecoder.h"
 
 #include <QCoreApplication>
 #include <QJsonArray>
 #include <QRegularExpression>
-#include <QStringDecoder>
 
 #include <algorithm>
 #include <chrono>
@@ -144,15 +144,16 @@ void scan(const FilterRule& rule, const SearchContext& context, std::uint64_t fi
     const core::LineIndex& index = *context.index;
     const auto data = context.source->bytes();
     const TextDecoder decoder(context.codec);
-    // Blocks of short lines are decoded by Qt in one go, many times faster than TextDecoder,
-    // which also notes where every character came from. The lines are found again at their
-    // breaks: every supported encoding decodes a line break byte to a line break. A block
-    // starts on a line start, so no state carries over from the one before.
-    QStringDecoder blockDecoder(context.codec.name.data(),
-                                QStringConverter::Flag::Stateless | QStringConverter::Flag::ConvertInitialBom);
+    // Blocks of short lines are decoded in one go (by Qt, or the system's code pages), many
+    // times faster than by TextDecoder, which also notes where every character came from. The
+    // lines are found again at their breaks: every supported encoding decodes a line break byte
+    // to a line break. A block starts on a line start, so no state carries over from the one
+    // before.
+    const Codec blockDecoder(context.codec, QStringConverter::Flag::ConvertInitialBom);
     const char16_t lineBreak = index.lineBreak() == core::LineBreak::Lf ? u'\n' : u'\r';
-    // What Qt's UTF-8 and legacy decoders produce is valid UTF-16, so PCRE2 need not check it.
-    // Its UTF-16 and UTF-32 decoders may pass lone surrogates through.
+    // What Qt's UTF-8 and legacy decoders produce is valid UTF-16, and so is what the code pages
+    // do, so PCRE2 need not check it. Qt's UTF-16 and UTF-32 decoders may pass lone surrogates
+    // through.
     const core::CharScheme scheme = context.codec.scheme;
     const bool wide = scheme == core::CharScheme::Utf16LE || scheme == core::CharScheme::Utf16BE ||
                       scheme == core::CharScheme::Utf32LE || scheme == core::CharScheme::Utf32BE;

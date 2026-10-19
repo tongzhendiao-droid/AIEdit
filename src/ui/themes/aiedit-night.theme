@@ -1,0 +1,179 @@
+{
+    "_comments": [
+        "One of AIEdit's own colour schemes; its accents follow gruvbox (MIT, Pavel Pertsev)."
+    ],
+    "metadata": {
+        "copyright": [
+            "SPDX-FileCopyrightText: AIEdit contributors"
+        ],
+        "license": "SPDX-License-Identifier: MIT",
+        "name": "AIEdit Night",
+        "revision": 1
+    },
+    "text-styles": {
+        "Normal": {
+            "text-color": "#ddd2c0",
+            "selected-text-color": "#ddd2c0"
+        },
+        "Keyword": {
+            "text-color": "#d3869b",
+            "selected-text-color": "#d3869b",
+            "bold": true
+        },
+        "Function": {
+            "text-color": "#7daea3",
+            "selected-text-color": "#7daea3"
+        },
+        "Variable": {
+            "text-color": "#ddd2c0",
+            "selected-text-color": "#ddd2c0"
+        },
+        "ControlFlow": {
+            "text-color": "#ea6962",
+            "selected-text-color": "#ea6962",
+            "bold": true
+        },
+        "Operator": {
+            "text-color": "#bdae93",
+            "selected-text-color": "#bdae93"
+        },
+        "BuiltIn": {
+            "text-color": "#e78a4e",
+            "selected-text-color": "#e78a4e"
+        },
+        "Extension": {
+            "text-color": "#7daea3",
+            "selected-text-color": "#7daea3"
+        },
+        "Preprocessor": {
+            "text-color": "#e78a4e",
+            "selected-text-color": "#e78a4e"
+        },
+        "Attribute": {
+            "text-color": "#89b482",
+            "selected-text-color": "#89b482"
+        },
+        "Char": {
+            "text-color": "#d3869b",
+            "selected-text-color": "#d3869b"
+        },
+        "SpecialChar": {
+            "text-color": "#e78a4e",
+            "selected-text-color": "#e78a4e"
+        },
+        "String": {
+            "text-color": "#a9b665",
+            "selected-text-color": "#a9b665"
+        },
+        "VerbatimString": {
+            "text-color": "#a9b665",
+            "selected-text-color": "#a9b665"
+        },
+        "SpecialString": {
+            "text-color": "#e78a4e",
+            "selected-text-color": "#e78a4e"
+        },
+        "Import": {
+            "text-color": "#89b482",
+            "selected-text-color": "#89b482"
+        },
+        "DataType": {
+            "text-color": "#d8a657",
+            "selected-text-color": "#d8a657"
+        },
+        "DecVal": {
+            "text-color": "#d3869b",
+            "selected-text-color": "#d3869b"
+        },
+        "BaseN": {
+            "text-color": "#d3869b",
+            "selected-text-color": "#d3869b"
+        },
+        "Float": {
+            "text-color": "#d3869b",
+            "selected-text-color": "#d3869b"
+        },
+        "Constant": {
+            "text-color": "#d3869b",
+            "selected-text-color": "#d3869b",
+            "bold": true
+        },
+        "Comment": {
+            "text-color": "#928374",
+            "selected-text-color": "#928374",
+            "italic": true
+        },
+        "Documentation": {
+            "text-color": "#a89984",
+            "selected-text-color": "#a89984",
+            "italic": true
+        },
+        "Annotation": {
+            "text-color": "#89b482",
+            "selected-text-color": "#89b482"
+        },
+        "CommentVar": {
+            "text-color": "#d3869b",
+            "selected-text-color": "#d3869b"
+        },
+        "RegionMarker": {
+            "text-color": "#7daea3",
+            "selected-text-color": "#7daea3",
+            "background-color": "#2f2b26"
+        },
+        "Information": {
+            "text-color": "#89b482",
+            "selected-text-color": "#89b482"
+        },
+        "Warning": {
+            "text-color": "#d8a657",
+            "selected-text-color": "#d8a657",
+            "bold": true
+        },
+        "Alert": {
+            "text-color": "#ea6962",
+            "selected-text-color": "#ea6962",
+            "bold": true,
+            "background-color": "#3a2422"
+        },
+        "Error": {
+            "text-color": "#ea6962",
+            "selected-text-color": "#ea6962",
+            "underline": true
+        },
+        "Others": {
+            "text-color": "#89b482",
+            "selected-text-color": "#89b482"
+        }
+    },
+    "editor-colors": {
+        "BackgroundColor": "#23211e",
+        "CodeFolding": "#2f2b26",
+        "BracketMatching": "#4a4134",
+        "CurrentLine": "#2c2925",
+        "IconBorder": "#262420",
+        "IndentationLine": "#3a362f",
+        "LineNumbers": "#776d61",
+        "CurrentLineNumber": "#cfc4b1",
+        "MarkBookmark": "#7daea3",
+        "MarkBreakpointActive": "#ea6962",
+        "MarkBreakpointReached": "#a9b665",
+        "MarkBreakpointDisabled": "#d3869b",
+        "MarkExecution": "#ddd2c0",
+        "MarkWarning": "#e78a4e",
+        "MarkError": "#ea6962",
+        "ModifiedLines": "#e78a4e",
+        "ReplaceHighlight": "#a9b665",
+        "SavedLines": "#89b482",
+        "SearchHighlight": "#5c4f2c",
+        "TextSelection": "#4a4134",
+        "Separator": "#3a362f",
+        "SpellChecking": "#ea6962",
+        "TabMarker": "#3a362f",
+        "TemplateBackground": "#23211e",
+        "TemplatePlaceholder": "#a9b665",
+        "TemplateFocusedPlaceholder": "#89b482",
+        "TemplateReadOnlyPlaceholder": "#ea6962",
+        "WordWrapMarker": "#3a362f"
+    }
+}

@@ -21,7 +21,7 @@ target_link_libraries(aiedit_core PRIVATE aiedit_warnings)
 set_target_properties(aiedit_core PROPERTIES AUTOMOC OFF AUTOUIC OFF AUTORCC OFF)
 
 if(CAPSTONE_FOUND)
-    target_link_libraries(aiedit_core PRIVATE PkgConfig::CAPSTONE)
+    target_link_libraries(aiedit_core PRIVATE ${AIEDIT_CAPSTONE})
     target_compile_definitions(aiedit_core PRIVATE AIEDIT_HAVE_CAPSTONE)
 endif()
 

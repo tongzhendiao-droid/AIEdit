@@ -1,11 +1,11 @@
 #include "ui/Replace.h"
 
 #include "core/FileSource.h"
+#include "ui/Codec.h"
 #include "ui/TextDecoder.h"
 
 #include <QCoreApplication>
 #include <QRegularExpression>
-#include <QStringEncoder>
 
 #include <algorithm>
 #include <chrono>
@@ -128,7 +128,7 @@ ReplaceAllResult replaceAll(const ReplaceRequest& request, const SearchContext& 
 
     const auto data = context.source->bytes();
     const TextDecoder decoder(context.codec);
-    QStringEncoder encoder(context.codec.name.data());
+    const Codec encoder(context.codec);
     const bool regexMode = request.mode == SearchMode::Regex;
     std::uint64_t copied = 0; // the bytes up to here are in the result already
     const std::uint64_t rowCount = index.rowCount();
@@ -156,10 +156,10 @@ ReplaceAllResult replaceAll(const ReplaceRequest& request, const SearchContext& 
                 continue;
             const std::uint64_t start = blockStart + text.byteAt(match.capturedStart());
             const std::uint64_t end = blockStart + text.byteAt(match.capturedEnd());
-            const QByteArray encoded =
+            const std::optional<QByteArray> encoded =
                 encoder.encode(regexMode ? expand(request.replacement, match, request.lineTerminator)
                                          : request.replacement);
-            if (encoder.hasError()) {
+            if (!encoded) {
                 result = {};
                 result.error = cannotWrite(context);
                 return result;
@@ -168,7 +168,7 @@ ReplaceAllResult replaceAll(const ReplaceRequest& request, const SearchContext& 
                 result.start = copied = start;
             result.bytes.insert(result.bytes.end(), data.begin() + static_cast<std::ptrdiff_t>(copied),
                                 data.begin() + static_cast<std::ptrdiff_t>(start));
-            result.bytes.insert(result.bytes.end(), encoded.begin(), encoded.end());
+            result.bytes.insert(result.bytes.end(), encoded->begin(), encoded->end());
             copied = end;
             ++result.count;
         }

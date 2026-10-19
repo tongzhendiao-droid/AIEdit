@@ -1,4 +1,6 @@
+#include "core/TextCodec.h"
 #include "ui/AiPanel.h"
+#include "ui/Codec.h"
 #include "ui/DocumentView.h"
 #include "ui/FileTypeSniffer.h"
 #include "ui/FolderModels.h"
@@ -13,12 +15,13 @@
 #include <QDir>
 #include <QIcon>
 #include <QImage>
+#include <QLabel>
 #include <QMenu>
+#include <QPushButton>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QStatusBar>
-#include <QStringEncoder>
 #include <QStyle>
 #include <QTabBar>
 #include <QTabWidget>
@@ -27,6 +30,7 @@
 #include <QToolButton>
 #include <QTreeView>
 
+#include "HiddenFile.h"
 #include "MockChatServer.h"
 
 #include <fstream>
@@ -110,6 +114,7 @@ private slots:
     void keepsUnsavedFilesWhereTheyAre();
     void closesTrashedFiles();
     void opensFoldersFromThePath();
+    void startPageStepsAsideForAFolder();
     void restoresTheFolder();
     void asksTheAiAboutAFolder();
 
@@ -169,7 +174,8 @@ void TestFolders::sniffsTypesFromContent()
     QString chinese;
     for (int i = 0; i < 20; ++i)
         chinese += QStringLiteral("话说天下大势，分久必合，合久必分。周末七国分争，并入于秦。\n");
-    const QString legacy = write(QStringLiteral("old.txt"), QStringEncoder("GB18030").encode(chinese));
+    const QByteArray gbk = ui::Codec(*core::findCodec("GB18030")).encode(chinese).value_or(QByteArray());
+    const QString legacy = write(QStringLiteral("old.txt"), gbk);
     const QString empty = write(QStringLiteral("empty.log"), {});
 
     using ui::FileTypeSniffer;
@@ -258,6 +264,8 @@ void TestFolders::leavesHiddenFilesOut()
     write(QStringLiteral(".hidden/a.log"), "line\n");
     write(QStringLiteral(".b.log"), "line\n");
     write(QStringLiteral("c.log"), "line\n");
+    QVERIFY(markHidden(QDir(root()).filePath(QStringLiteral(".hidden"))));
+    QVERIFY(markHidden(QDir(root()).filePath(QStringLiteral(".b.log"))));
     QStringList listed;
     ui::FileListHooks hooks;
     hooks.found = [&listed](std::vector<ui::ListedFile>&& files, int) {
@@ -723,6 +731,32 @@ void TestFolders::opensFoldersFromThePath()
     QVERIFY(window.openPath(a));
     QCOMPARE(window.currentDocument()->filePath(), a);
     QVERIFY(findAction(window, QStringLiteral("What Is in This Fol&der?"))->isEnabled());
+}
+
+void TestFolders::startPageStepsAsideForAFolder()
+{
+    ui::MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QPushButton* openFolder = nullptr; // on the page in the middle (the folder panel has one too)
+    for (QPushButton* button : window.centralWidget()->findChildren<QPushButton*>())
+        if (button->text() == QStringLiteral("Open Folder…"))
+            openFolder = button;
+    QVERIFY(openFolder && openFolder->isVisible()); // nothing open: where to start
+
+    // A folder open beside it: no buttons for what the folder offers, just how to use it.
+    QVERIFY(window.openFolder(root()));
+    QVERIFY(!openFolder->isVisible());
+    const auto hinted = [&window] {
+        for (const QLabel* label : window.centralWidget()->findChildren<QLabel*>())
+            if (label->isVisible() && label->text().contains(QStringLiteral("double-click")))
+                return true;
+        return false;
+    };
+    QVERIFY(hinted());
+    window.findChild<ui::FolderPanel*>()->closeFolder();
+    QVERIFY(openFolder->isVisible());
+    QVERIFY(!hinted());
 }
 
 void TestFolders::restoresTheFolder()

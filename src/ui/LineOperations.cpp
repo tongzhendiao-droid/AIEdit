@@ -143,19 +143,31 @@ std::optional<LineEdit> lineOperation(LineOperation operation, const TextDocumen
     case LineOperation::SortDescending: {
         QCollator collator = naturalCollator(); // the user's language
         collator.setCaseSensitivity(Qt::CaseInsensitive);
+        const auto text = [&](std::size_t i) {
+            const QByteArrayView bytes = content(i);
+            return document.decoder().decodePlain(
+                {reinterpret_cast<const std::uint8_t*>(bytes.data()), static_cast<std::size_t>(bytes.size())});
+        };
+#ifdef Q_OS_WIN
+        // Compared one pair at a time: Qt's sort keys on Windows end in memory it never fills
+        // (sized in characters, filled in bytes), so equal lines would come out in any order.
+        std::vector<QString> keys;
+        keys.reserve(lines.size());
+        for (std::size_t i = 0; i < lines.size(); ++i)
+            keys.push_back(text(i));
+        const auto less = [&](std::size_t a, std::size_t b) { return collator.compare(keys[a], keys[b]) < 0; };
+#else
         std::vector<QCollatorSortKey> keys;
         keys.reserve(lines.size());
-        for (std::size_t i = 0; i < lines.size(); ++i) {
-            const QByteArrayView text = content(i);
-            keys.push_back(collator.sortKey(document.decoder().decodePlain(
-                {reinterpret_cast<const std::uint8_t*>(text.data()), static_cast<std::size_t>(text.size())})));
-        }
+        for (std::size_t i = 0; i < lines.size(); ++i)
+            keys.push_back(collator.sortKey(text(i)));
+        const auto less = [&](std::size_t a, std::size_t b) { return keys[a].compare(keys[b]) < 0; };
+#endif
         std::vector<std::size_t> order(lines.size());
         std::iota(order.begin(), order.end(), 0);
         const bool descending = operation == LineOperation::SortDescending;
-        std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
-            return descending ? keys[b].compare(keys[a]) < 0 : keys[a].compare(keys[b]) < 0;
-        });
+        std::stable_sort(order.begin(), order.end(),
+                         [&](std::size_t a, std::size_t b) { return descending ? less(b, a) : less(a, b); });
         reorder(order);
         edit.lines = lines.size();
         break;

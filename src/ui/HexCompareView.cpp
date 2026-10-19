@@ -1,9 +1,9 @@
 #include "ui/HexCompareView.h"
 
 #include "core/FileSource.h"
+#include "ui/Desktop.h"
 #include "ui/SyntaxHighlighting.h"
 
-#include <QFontDatabase>
 #include <QKeyEvent>
 #include <QPainter>
 #include <QScrollBar>
@@ -36,7 +36,7 @@ char hexDigit(int value)
 HexCompareView::HexCompareView(QWidget* parent) : QAbstractScrollArea(parent), m_scroll(verticalScrollBar())
 {
     setFocusPolicy(Qt::StrongFocus);
-    setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    setFont(fixedFont());
     horizontalScrollBar()->setRange(0, 0);
     updateMetrics();
     updateColors();

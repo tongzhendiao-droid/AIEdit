@@ -2,8 +2,7 @@
 
 #include "core/FileSource.h"
 #include "core/FileType.h"
-
-#include <QStringEncoder>
+#include "ui/Codec.h"
 
 #include <algorithm>
 
@@ -57,11 +56,7 @@ void TextDocument::setSource(std::shared_ptr<const core::FileSource> source)
 
 std::optional<QByteArray> TextDocument::encode(const QString& text) const
 {
-    QStringEncoder encoder(m_codec->name.data());
-    QByteArray bytes = encoder.encode(text);
-    if (encoder.hasError())
-        return std::nullopt;
-    return bytes;
+    return Codec(*m_codec).encode(text);
 }
 
 QString TextDocument::lineTerminator() const
@@ -71,7 +66,18 @@ QString TextDocument::lineTerminator() const
         return QStringLiteral("\r\n");
     if (endings.cr > endings.lf && endings.cr > endings.crlf)
         return QStringLiteral("\r");
+    if (endings.lf == 0 && endings.crlf == 0 && endings.cr == 0)
+        return defaultLineTerminator();
     return QStringLiteral("\n");
+}
+
+QString TextDocument::defaultLineTerminator()
+{
+#ifdef Q_OS_WIN
+    return QStringLiteral("\r\n");
+#else
+    return QStringLiteral("\n");
+#endif
 }
 
 std::optional<std::uint64_t> TextDocument::replace(std::uint64_t start, std::uint64_t end, const QString& text,
