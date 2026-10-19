@@ -1,3 +1,4 @@
+#include "ui/Desktop.h"
 #include "ui/Markdown.h"
 #include "ui/MarkdownView.h"
 #include "ui/SyntaxHighlighting.h"
@@ -229,7 +230,12 @@ void TestMarkdown::drawsTheDocument()
             h1 = block.begin().fragment().charFormat().font();
         if (block.blockFormat().hasProperty(QTextFormat::BlockCodeFence)) {
             codeBackground = block.blockFormat().background().color();
-            QVERIFY(QFontInfo(block.begin().fragment().charFormat().font()).fixedPitch()); // code in columns
+            // Code in columns: in the editor's fixed-width font. (Whether the platform calls that
+            // font fixed-pitch differs: Windows' font database does not say so of every one.)
+            const QTextCharFormat chars = block.begin().fragment().charFormat();
+            QVERIFY(chars.fontFixedPitch());
+            QCOMPARE(chars.fontFamilies().toStringList().value(0), ui::withCjkFallback(ui::fixedFont()).families().value(0));
+            qInfo() << "code drawn in" << QFontInfo(chars.font()).family() << "fixed pitch:" << QFontInfo(chars.font()).fixedPitch();
         }
         for (auto it = block.begin(); !it.atEnd(); ++it)
             linked = linked || (it.fragment().charFormat().isAnchor() &&

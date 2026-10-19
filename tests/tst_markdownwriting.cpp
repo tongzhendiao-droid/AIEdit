@@ -477,7 +477,7 @@ void TestMarkdownWriting::writesIntoAnEmptyDocument()
 
 void TestMarkdownWriting::continuesLists()
 {
-    const auto doc = open(write("list.md", "- one"));
+    const auto doc = open(write("list.md", "- one\n"));
     ui::TextView* view = doc->textView();
     view->setFocus();
     view->setCursorOffset(5);
@@ -512,7 +512,7 @@ void TestMarkdownWriting::continuesLists()
     QVERIFY(!view->hasSelection());
 
     // Elsewhere Enter keeps to the indentation.
-    const auto plain = open(write("list.txt", "- one"));
+    const auto plain = open(write("list.txt", "- one\n"));
     plain->textView()->setFocus();
     plain->textView()->setCursorOffset(5);
     QTest::keyClick(plain->textView(), Qt::Key_Return);
