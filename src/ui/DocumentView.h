@@ -334,6 +334,9 @@ private:
     // `from` to `to` in them.
     bool replaceMarkdownLines(std::uint64_t first, std::uint64_t last, const QStringList& lines, TextPosition from,
                               TextPosition to);
+    // The hex view reads characters in the document's codec, unless it is binary and the
+    // codec was not chosen for it.
+    void updateHexCodec();
     void syncFromText();
     void syncFromHex();
     void applySplitSizes();

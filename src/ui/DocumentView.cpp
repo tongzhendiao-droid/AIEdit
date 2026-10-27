@@ -256,6 +256,10 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
     if (isTabular() && TableView::formatForName(filePath()) == TableView::Format::Csv)
         setViewMode(ViewMode::Table);
 
+    updateHexCodec();
+    connect(m_textDocument, &TextDocument::codecChanged, this, &DocumentView::updateHexCodec);
+    connect(m_textDocument, &TextDocument::sourceChanged, this, &DocumentView::updateHexCodec);
+
     // The table follows the bytes, once it has been shown.
     for (auto signal : {&TextDocument::sourceChanged, &TextDocument::codecChanged}) {
         connect(m_textDocument, signal, this, [this] {
@@ -467,10 +471,17 @@ void DocumentView::setContextActions(const QList<QAction*>& textActions, const Q
         m_markdownView->setContextActions(textActions);
 }
 
+void DocumentView::updateHexCodec()
+{
+    const bool binary = m_fileType.kind == core::ContentKind::Binary;
+    m_hexView->setCodec(binary && !m_codecChosen ? nullptr : &m_textDocument->codec());
+}
+
 void DocumentView::setCodec(const core::TextCodec& codec)
 {
     m_codecChosen = true;
     m_textDocument->setCodec(codec);
+    updateHexCodec(); // also for a binary file now
     emit stateChanged();
 }
 

@@ -2,6 +2,7 @@
 
 #include "core/FileSource.h"
 #include "core/FileType.h"
+#include "ui/Codec.h"
 #include "ui/Desktop.h"
 #include "ui/SyntaxHighlighting.h"
 
@@ -297,6 +298,104 @@ void HexView::updateColors()
         m_colors.marks << mix(m_colors.base, hue, dark ? 0.35f : 0.22f);
 }
 
+void HexView::setCodec(const core::TextCodec* codec)
+{
+    if (codec ? (m_codec && m_codec->name == codec->name) : !m_codec)
+        return;
+    m_codec = codec ? std::optional<core::TextCodec>(*codec) : std::nullopt;
+    m_glyphs.clear();
+    viewport()->update();
+}
+
+QString HexView::glyph(std::uint64_t offset, std::size_t length) const
+{
+    const auto bytes = m_source->bytes().subspan(static_cast<std::size_t>(offset), length);
+    quint64 key = length;
+    for (const std::uint8_t b : bytes.first(std::min<std::size_t>(length, 4)))
+        key = (key << 8) | b;
+    if (length <= 4) {
+        if (const auto it = m_glyphs.constFind(key); it != m_glyphs.constEnd())
+            return *it;
+    }
+    bool malformed = false;
+    QString text = Codec(*m_codec).decode(
+        QByteArrayView(reinterpret_cast<const char*>(bytes.data()), static_cast<qsizetype>(bytes.size())), &malformed);
+    // One character, printable; anything else is a dot, as ASCII control bytes are.
+    const char32_t c = text.isEmpty() ? 0 : text.toUcs4().value(0);
+    if (malformed || text.isEmpty() || c < 0x20 || c == 0x7F || (c >= 0x80 && c < 0xA0) || c == 0xFFFD ||
+        text.toUcs4().size() != 1)
+        text = QStringLiteral(".");
+    if (length <= 4)
+        m_glyphs.insert(key, text);
+    return text;
+}
+
+void HexView::rowGlyphs(std::uint64_t rowStart, int count, QList<Glyph>& out) const
+{
+    out.clear();
+    const auto bytes = m_source->bytes();
+    const std::uint64_t rowEnd = rowStart + static_cast<std::uint64_t>(count);
+    if (!m_codec || m_codec->scheme == core::CharScheme::SingleByte) {
+        for (int c = 0; c < count; ++c) {
+            const std::uint8_t byte = bytes[static_cast<std::size_t>(rowStart) + static_cast<std::size_t>(c)];
+            out.append({c, 1, byte < 0x80 || !m_codec ? m_charText[byte] : glyph(rowStart + static_cast<std::uint64_t>(c), 1)});
+        }
+        return;
+    }
+    // Back to where a character surely starts: in UTF-8 a byte that does not continue one; in
+    // UTF-16 and UTF-32 the start of a code unit; in GBK, Big5, Shift-JIS and EUC a byte below
+    // 0x40, which none of their second bytes is.
+    const core::CharScheme scheme = m_codec->scheme;
+    std::uint64_t pos = rowStart;
+    const std::size_t unit = core::codeUnitSize(scheme);
+    if (scheme == core::CharScheme::Utf8) {
+        for (int back = 0; back < 3 && pos > 0 && (bytes[static_cast<std::size_t>(pos)] & 0xC0) == 0x80; ++back)
+            --pos;
+    } else if (unit > 1) {
+        pos -= pos % unit;
+        // A low surrogate continues the pair before it.
+        if (unit == 2 && pos >= 2) {
+            const std::uint32_t u = core::codeUnitAt(bytes, static_cast<std::size_t>(pos), scheme);
+            if (u >= 0xDC00 && u < 0xE000)
+                pos -= 2;
+        }
+    } else {
+        const std::uint64_t lowest = rowStart > 4096 ? rowStart - 4096 : 0;
+        while (pos > lowest && bytes[static_cast<std::size_t>(pos - 1)] >= 0x40)
+            --pos;
+    }
+    while (pos < rowEnd) {
+        const std::size_t length =
+            core::charLength(bytes.subspan(static_cast<std::size_t>(pos)), scheme); // at least 1
+        if (pos >= rowStart) {
+            const auto column = static_cast<int>(pos - rowStart);
+            const std::uint8_t byte = bytes[static_cast<std::size_t>(pos)];
+            out.append({column, static_cast<int>(length),
+                        length == 1 && byte < 0x80 && unit == 1 ? m_charText[byte] : glyph(pos, length)});
+        }
+        pos += length;
+    }
+}
+
+QStringList HexView::rowCharacters(std::uint64_t row) const
+{
+    QStringList cells;
+    if (!m_source)
+        return cells;
+    const auto bpr = static_cast<std::uint64_t>(m_bytesPerRow);
+    const std::uint64_t rowStart = row * bpr;
+    if (rowStart >= size())
+        return cells;
+    const int count = static_cast<int>(std::min(bpr, size() - rowStart));
+    for (int c = 0; c < count; ++c)
+        cells.append(QString());
+    QList<Glyph> glyphs;
+    rowGlyphs(rowStart, count, glyphs);
+    for (const Glyph& g : std::as_const(glyphs))
+        cells[g.column] = g.text;
+    return cells;
+}
+
 const QColor& HexView::byteColor(std::uint8_t byte) const
 {
     if (byte == 0)
@@ -366,6 +465,7 @@ void HexView::paintEvent(QPaintEvent* event)
         }
     };
 
+    QList<Glyph> glyphs;
     for (int r = 0; r < rowsToPaint; ++r) {
         const std::uint64_t row = m_rows.topRow() + static_cast<std::uint64_t>(r);
         if (row >= rows)
@@ -423,10 +523,18 @@ void HexView::paintEvent(QPaintEvent* event)
             const bool hexInverted = hexActive && (selected || (isCursor && focused));
             painter.setPen(hexInverted ? m_colors.selectionText : byteColor(byte));
             painter.drawText(QPointF(hexCellX(c), baseline), m_hexText[byte]);
+        }
 
-            const bool textInverted = !hexActive && (selected || (isCursor && focused));
-            painter.setPen(textInverted ? m_colors.selectionText : byteColor(byte));
-            painter.drawText(QPointF(textCellX(c), baseline), m_charText[byte]);
+        // The characters, each over the first of its bytes.
+        rowGlyphs(rowStart, count, glyphs);
+        for (const Glyph& g : std::as_const(glyphs)) {
+            const std::uint64_t offset = rowStart + static_cast<std::uint64_t>(g.column);
+            const bool selected = hasRange && offset >= selStart && offset < selEnd;
+            const bool textInverted = !hexActive && (selected || (offset == m_cursor && focused));
+            const std::uint8_t byte = bytes[static_cast<std::size_t>(offset)];
+            painter.setPen(textInverted ? m_colors.selectionText
+                                        : (g.length > 1 && byte >= 0x80 ? m_colors.text : byteColor(byte)));
+            painter.drawText(QPointF(textCellX(g.column), baseline), g.text);
         }
     }
 }

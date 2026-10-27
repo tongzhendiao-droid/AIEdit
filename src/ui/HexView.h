@@ -3,10 +3,12 @@
 #include <QAbstractScrollArea>
 #include <QBasicTimer>
 #include <QColor>
+#include <QHash>
 #include <QList>
 #include <QPointer>
 #include <QString>
 
+#include "core/TextCodec.h"
 #include "ui/FieldMark.h"
 #include "ui/RowScrollBar.h"
 
@@ -88,6 +90,15 @@ public:
     void setContextActions(const QList<QAction*>& actions);
     // The right-click menu as it would open now; contextMenuEvent() shows it.
     std::unique_ptr<QMenu> createContextMenu();
+
+    // How the character column reads the bytes: as characters in this codec, a character
+    // spanning several bytes drawn over its first byte (M11); or, without one, as ASCII with
+    // '.' for the rest, which is what binary files get.
+    void setCodec(const core::TextCodec* codec);
+    const core::TextCodec* codec() const { return m_codec ? &*m_codec : nullptr; }
+    // What the character column shows at each byte of a row: the character that starts
+    // there, nothing at the other bytes of one, '.' for what is not a character. For tests.
+    QStringList rowCharacters(std::uint64_t row) const;
 
     // Text for the selection in different formats; empty if the selection exceeds kMaxCopyBytes.
     QString selectionAsHex() const;
@@ -200,6 +211,18 @@ private:
     QList<QPointer<QAction>> m_contextActions;
     std::array<QString, 256> m_hexText;
     std::array<QString, 256> m_charText;
+    std::optional<core::TextCodec> m_codec;
+    // Characters by their bytes (up to four, packed), decoded once.
+    mutable QHash<quint64, QString> m_glyphs;
+    struct Glyph
+    {
+        int column;
+        int length;
+        QString text;
+    };
+    // The characters that start in the row, at their columns.
+    void rowGlyphs(std::uint64_t rowStart, int count, QList<Glyph>& out) const;
+    QString glyph(std::uint64_t offset, std::size_t length) const;
 };
 
 } // namespace aiedit::ui

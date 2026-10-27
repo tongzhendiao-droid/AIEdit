@@ -1,4 +1,6 @@
 #include "core/FileSource.h"
+#include "core/TextCodec.h"
+#include "ui/Codec.h"
 #include "ui/DataInspector.h"
 #include "ui/DocumentView.h"
 #include "ui/HexView.h"
@@ -51,6 +53,7 @@ class TestHexView : public QObject
     Q_OBJECT
 
 private slots:
+    void charactersInCodec();
     // Settings and backups go to a test location, away from the user's own.
     void initTestCase() { QStandardPaths::setTestModeEnabled(true); }
     void init();
@@ -360,6 +363,39 @@ void TestHexView::fieldMarks()
         QVERIFY(window.grab().save(QString::fromLocal8Bit(dir) + QStringLiteral("/fieldmarks.png")));
     view->clearFieldMarks();
     QVERIFY(view->fieldMarks().isEmpty());
+}
+
+void TestHexView::charactersInCodec()
+{
+    auto viewOf = [](const QByteArray& data, const aiedit::core::TextCodec* codec) {
+        auto view = std::make_unique<HexView>();
+        view->setSource(aiedit::core::FileSource::fromBytes(
+            "t.txt", std::make_shared<const std::vector<std::uint8_t>>(data.begin(), data.end())));
+        view->setBytesPerRow(8);
+        view->setCodec(codec);
+        return view;
+    };
+    // UTF-8: 中 is three bytes, drawn over the first; the next row starts inside 文 (bytes 7-9).
+    const QByteArray utf8 = QStringLiteral("a中bc文x").toUtf8();
+    auto view = viewOf(utf8, &aiedit::core::utf8Codec());
+    QCOMPARE(view->rowCharacters(0), QStringList({"a", "中", "", "", "b", "c", "文", ""}));
+    QCOMPARE(view->rowCharacters(1), QStringList({"", "x"}));
+
+    // Without a codec (binary files): ASCII and dots, as before.
+    view->setCodec(nullptr);
+    QCOMPARE(view->rowCharacters(0).value(1), QStringLiteral("."));
+
+    // GBK, two bytes a character, and a row that starts on the second byte of one.
+    const auto* gb18030 = aiedit::core::findCodec("GB18030");
+    const QByteArray gbk = *aiedit::ui::Codec(*gb18030).encode(QStringLiteral("x测试一二三四"));
+    auto gbkView = viewOf(gbk, gb18030);
+    QCOMPARE(gbkView->rowCharacters(0), QStringList({"x", "测", "", "试", "", "一", "", "二"}));
+    QCOMPARE(gbkView->rowCharacters(1), QStringList({"", "三", "", "四", ""}));
+
+    // UTF-16: a character every two bytes; a control character is a dot.
+    const auto* utf16 = aiedit::core::findCodec("UTF-16LE");
+    auto wide = viewOf(*aiedit::ui::Codec(*utf16).encode(QStringLiteral("A文\t")), utf16);
+    QCOMPARE(wide->rowCharacters(0), QStringList({"A", "", "文", "", ".", ""}));
 }
 
 QTEST_MAIN(TestHexView)
