@@ -2,9 +2,11 @@
 
 [![CI](https://github.com/tongzhendiao-droid/AIEdit/actions/workflows/ci.yml/badge.svg)](https://github.com/tongzhendiao-droid/AIEdit/actions/workflows/ci.yml)
 
-快速、带 AI 辅助的文本与二进制文件查看器。用 C++20 和 Qt 6 编写，以查看为主、编辑为辅。
+快速的文本与二进制文件查看器，用 C++20 和 Qt 6 编写。任意大小、任意编码的文件一打开就能看：行号、偏移、原始字节都看得清，搜索、过滤、对比都在本机对整个文件执行。
 
-> 当前进度：已完成 **M9**（Windows 版：安装包，右键菜单「用 AIEdit 打开」，打开方式和默认应用；带语法高亮和配色方案；测试在 Windows 上全部通过）。之前的 M8c 可以用 AI 修改：说一句要怎么改，在对比视图里逐处确认后才写入。计划见 [DESIGN.md](DESIGN.md)。
+可以顺手改小文件（16 MiB 以内）；AI 助手是可选的，不配置也完整可用。
+
+> 当前进度：已完成 **M9**（Windows 版：安装包，右键菜单「用 AIEdit 打开」，打开方式和默认应用；带语法高亮和配色方案；测试在 Windows 上全部通过）。接下来做格式适配（CSV/JSON 表格、提取 docx/xlsx/epub/pdf 的文字）和查看增强。计划见 [DESIGN.md](DESIGN.md)。
 
 ## 功能
 
