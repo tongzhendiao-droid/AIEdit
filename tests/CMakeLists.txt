@@ -21,6 +21,7 @@ aiedit_add_test(tst_aicore aiedit_core)
 aiedit_add_test(tst_editbuffer aiedit_core)
 aiedit_add_test(tst_diff aiedit_core)
 aiedit_add_test(tst_binary aiedit_core)
+aiedit_add_test(tst_zip aiedit_core)
 aiedit_add_test(tst_codec aiedit_ui)
 aiedit_add_test(tst_hexview aiedit_ui)
 # The translation test loads the .qm files built for the application.

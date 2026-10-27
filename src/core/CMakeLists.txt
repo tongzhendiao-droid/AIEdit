@@ -8,12 +8,14 @@ add_library(aiedit_core STATIC
     FileSource.cpp FileSource.h
     FileSummary.cpp FileSummary.h
     FileType.cpp FileType.h
+    Inflate.cpp Inflate.h
     LineIndex.cpp LineIndex.h
     MappingGuard.cpp MappingGuard.h
     Offset.cpp Offset.h
     Search.cpp Search.h
     Sse.cpp Sse.h
     TextCodec.cpp TextCodec.h
+    Zip.cpp Zip.h
 )
 target_include_directories(aiedit_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
 target_compile_features(aiedit_core PUBLIC cxx_std_20)
