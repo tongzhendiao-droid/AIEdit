@@ -12,6 +12,7 @@ add_library(aiedit_core STATIC
     LineIndex.cpp LineIndex.h
     MappingGuard.cpp MappingGuard.h
     Offset.cpp Offset.h
+    Pdf.cpp Pdf.h
     Search.cpp Search.h
     Sse.cpp Sse.h
     TextCodec.cpp TextCodec.h

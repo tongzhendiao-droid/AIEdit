@@ -5,7 +5,11 @@
 #include "ui/Extract.h"
 #include "ui/Paths.h"
 
+#include <QBuffer>
 #include <QFile>
+#include <QFontDatabase>
+#include <QPainter>
+#include <QPdfWriter>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -90,6 +94,7 @@ private slots:
     void cells();
     void brokenFiles();
     void documentShowsText();
+    void pdfWrittenByQt();
 };
 
 void TestExtract::detectsFormats()
@@ -281,6 +286,40 @@ void TestExtract::documentShowsText()
     QVERIFY(doc.showsExtractedText());
     QCOMPARE(shown(), QStringLiteral("报告正文\n").toUtf8());
     QCOMPARE(doc.viewMode(), DocumentView::ViewMode::Text);
+}
+
+void TestExtract::pdfWrittenByQt()
+{
+    // Qt embeds its fonts as CID fonts with ToUnicode maps, as most writers do.
+    const bool chinese = !QFontDatabase::families(QFontDatabase::SimplifiedChinese).isEmpty();
+    QBuffer buffer;
+    buffer.open(QIODevice::WriteOnly);
+    {
+        QPdfWriter writer(&buffer);
+        QPainter painter(&writer);
+        QFont font = painter.font();
+        font.setPointSize(12);
+        painter.setFont(font);
+        const int line = painter.fontMetrics().height() * 2;
+        painter.drawText(200, line, QStringLiteral("First line of text"));
+        painter.drawText(200, line * 2, QStringLiteral("Second line"));
+        if (chinese) {
+            QFont cjk(QFontDatabase::families(QFontDatabase::SimplifiedChinese).first());
+            cjk.setPointSize(12);
+            painter.setFont(cjk);
+            painter.drawText(200, line * 3, QStringLiteral("中文的一行"));
+        }
+        writer.newPage();
+        painter.setFont(font);
+        painter.drawText(200, line, QStringLiteral("Page two"));
+    }
+    const QByteArray pdf = buffer.data();
+    const auto data = std::span(reinterpret_cast<const std::uint8_t*>(pdf.constData()), static_cast<std::size_t>(pdf.size()));
+    QCOMPARE(extractableFormat(data), ExtractedFormat::Pdf);
+    const ExtractedText result = extractPdf(data);
+    QVERIFY2(result.note.isEmpty(), qPrintable(result.note));
+    QCOMPARE(result.text, chinese ? QStringLiteral("First line of text\nSecond line\n中文的一行\n\nPage two\n")
+                                  : QStringLiteral("First line of text\nSecond line\n\nPage two\n"));
 }
 
 QTEST_MAIN(TestExtract)

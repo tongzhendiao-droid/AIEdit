@@ -1,5 +1,6 @@
 #include "ui/Extract.h"
 
+#include "core/Pdf.h"
 #include "core/Zip.h"
 
 #include <QCoreApplication>
@@ -701,6 +702,33 @@ ExtractedText extractEpub(std::span<const std::uint8_t> bytes)
     return result;
 }
 
+ExtractedText extractPdf(std::span<const std::uint8_t> bytes)
+{
+    ExtractedText result;
+    const core::PdfText pdf = core::extractPdfText(bytes, static_cast<std::size_t>(kMaxText));
+    result.text = QString::fromUtf8(pdf.utf8.data(), static_cast<qsizetype>(pdf.utf8.size()));
+    switch (pdf.status) {
+    case core::PdfText::Status::Ok:
+        break;
+    case core::PdfText::Status::Truncated:
+        result.note = truncatedNote();
+        break;
+    case core::PdfText::Status::Encrypted:
+        result.note = QCoreApplication::translate("Extract", "This PDF is encrypted; its text cannot be read here.");
+        break;
+    case core::PdfText::Status::NoText:
+        result.note = QCoreApplication::translate(
+            "Extract", "This PDF has no text to read: its pages may be scanned images.");
+        break;
+    }
+    if (result.note.isEmpty() && pdf.unmappedGlyphs > 0)
+        result.note = QCoreApplication::translate(
+                          "Extract", "Some of the text (%L1 characters) is drawn in fonts that do not say which "
+                                     "characters they are, and is left out.")
+                          .arg(pdf.unmappedGlyphs);
+    return result;
+}
+
 ExtractedFormat extractableFormat(std::span<const std::uint8_t> bytes)
 {
     auto startsWith = [&](std::string_view magic) {
@@ -759,6 +787,7 @@ ExtractedText extractText(ExtractedFormat format, std::span<const std::uint8_t> 
     case ExtractedFormat::Epub:
         return extractEpub(bytes);
     case ExtractedFormat::Pdf:
+        return extractPdf(bytes);
     case ExtractedFormat::Epl:
     case ExtractedFormat::None:
         break;

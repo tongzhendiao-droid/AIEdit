@@ -63,6 +63,18 @@
         <translation>这本书有些章节缺失或损坏，没有显示。</translation>
     </message>
     <message>
+        <source>This PDF is encrypted; its text cannot be read here.</source>
+        <translation>这个 PDF 已加密，这里读不出其中的文字。</translation>
+    </message>
+    <message>
+        <source>This PDF has no text to read: its pages may be scanned images.</source>
+        <translation>这个 PDF 里没有可以读的文字：页面可能是扫描的图片。</translation>
+    </message>
+    <message>
+        <source>Some of the text (%L1 characters) is drawn in fonts that do not say which characters they are, and is left out.</source>
+        <translation>有一部分文字（%L1 个字）用的字体没有说明是哪些字符，没有显示。</translation>
+    </message>
+    <message>
         <source>Word document</source>
         <translation>Word 文档</translation>
     </message>
