@@ -131,11 +131,16 @@ int HexCompareView::rangeAt(std::uint64_t offset) const
 
 bool HexCompareView::differs(std::uint64_t offset) const
 {
-    const auto left = m_left->bytes();
-    const auto right = m_right->bytes();
-    if (offset >= left.size() || offset >= right.size())
-        return true;
-    return left[static_cast<std::size_t>(offset)] != right[static_cast<std::size_t>(offset)];
+    return !core::bytesAt(m_comparison, m_left->bytes(), m_right->bytes(), offset).same;
+}
+
+std::uint64_t HexCompareView::sideOffset(bool left, std::uint64_t position) const
+{
+    if (!hasComparison())
+        return position;
+    const core::ByteRange range = left ? core::sideRanges(m_comparison, {position, 1}).left
+                                       : core::sideRanges(m_comparison, {position, 1}).right;
+    return range.start;
 }
 
 // Geometry -----------------------------------------------------------------------------------------
@@ -144,7 +149,7 @@ std::uint64_t HexCompareView::size() const
 {
     if (!hasComparison())
         return 0;
-    return std::max(m_comparison.leftSize, m_comparison.rightSize);
+    return core::positionCount(m_comparison);
 }
 
 std::uint64_t HexCompareView::rowCount() const
@@ -175,7 +180,9 @@ qreal HexCompareView::sideWidth() const
 
 HexCompareView::Columns HexCompareView::columns(bool left) const
 {
-    const qreal start = offsetWidth() + (left ? 0 : sideWidth() + kDividerWidth);
+    // Lined up, the right side has offsets of its own before it.
+    const qreal start =
+        offsetWidth() + (left ? 0 : sideWidth() + kDividerWidth + (isLinedUp() ? offsetWidth() : 0));
     const qreal hex = start + kPadding * m_charWidth;
     return {hex, hex + (m_bytesPerRow * 3 + 1 + kPadding) * m_charWidth};
 }
@@ -230,12 +237,33 @@ void HexCompareView::paintEvent(QPaintEvent* event)
         if (row >= rows)
             break;
         const std::uint64_t rowOffset = row * static_cast<std::uint64_t>(m_bytesPerRow);
-        QString offset(m_offsetDigits, QLatin1Char('0'));
-        for (int i = 0; i < m_offsetDigits; ++i)
-            offset[m_offsetDigits - 1 - i] = QLatin1Char(hexDigit(static_cast<int>(rowOffset >> (4 * i))));
+        auto offsetText = [this](std::uint64_t value) {
+            QString text(m_offsetDigits, QLatin1Char('0'));
+            for (int i = 0; i < m_offsetDigits; ++i)
+                text[m_offsetDigits - 1 - i] = QLatin1Char(hexDigit(static_cast<int>(value >> (4 * i))));
+            return text;
+        };
         painter.setPen(m_colors.dim);
-        painter.drawText(QRectF(kPadding * m_charWidth, y, m_offsetDigits * m_charWidth, m_lineHeight),
-                         Qt::AlignLeft | Qt::AlignVCenter, offset);
+        if (!isLinedUp()) {
+            painter.drawText(QRectF(kPadding * m_charWidth, y, m_offsetDigits * m_charWidth, m_lineHeight),
+                             Qt::AlignLeft | Qt::AlignVCenter, offsetText(rowOffset));
+        } else {
+            // Each side's offset at its first byte in the row; none where it has none.
+            for (const bool left : {true, false}) {
+                std::optional<std::uint64_t> first;
+                for (int i = 0; i < m_bytesPerRow && !first; ++i) {
+                    const core::BytesAt at = core::bytesAt(m_comparison, m_left->bytes(), m_right->bytes(),
+                                                           rowOffset + static_cast<std::uint64_t>(i));
+                    first = left ? at.left : at.right;
+                }
+                const qreal x = left ? 0 : offsetWidth() + sideWidth() + kDividerWidth;
+                if (!left)
+                    painter.fillRect(QRectF(x, y, offsetWidth(), m_lineHeight), m_colors.gutter);
+                if (first)
+                    painter.drawText(QRectF(x + kPadding * m_charWidth, y, m_offsetDigits * m_charWidth, m_lineHeight),
+                                     Qt::AlignLeft | Qt::AlignVCenter, offsetText(*first));
+            }
+        }
         paintSide(painter, true, rowOffset, y);
         paintSide(painter, false, rowOffset, y);
     }
@@ -266,17 +294,22 @@ void HexCompareView::paintSide(QPainter& painter, bool left, std::uint64_t rowOf
     const core::ByteRange* current =
         m_range >= 0 ? &m_comparison.ranges[static_cast<std::size_t>(m_range)] : nullptr;
     for (int i = 0; i < m_bytesPerRow; ++i) {
-        const std::uint64_t offset = rowOffset + static_cast<std::uint64_t>(i);
-        if (offset >= bytes.size())
+        const std::uint64_t offset = rowOffset + static_cast<std::uint64_t>(i); // the position
+        if (offset >= size())
             break;
-        const std::uint8_t byte = bytes[static_cast<std::size_t>(offset)];
+        const core::BytesAt at = core::bytesAt(m_comparison, m_left->bytes(), m_right->bytes(), offset);
+        const std::optional<std::uint64_t> fileOffset = left ? at.left : at.right;
         const qreal hexX = c.hex + (i * 3 + (i >= m_bytesPerRow / 2 ? 1 : 0)) * m_charWidth;
         const qreal charX = c.chars + i * m_charWidth;
         const QRectF hexCell(hexX, y, 2 * m_charWidth, m_lineHeight);
         const QRectF charCell(charX, y, m_charWidth, m_lineHeight);
-        if (differs(offset)) {
-            painter.fillRect(hexCell.adjusted(-1, 0, 1, 0), marked);
-            painter.fillRect(charCell, marked);
+        if (!at.same) {
+            // Where this side has no byte (the other side's were inserted), a paler mark.
+            QColor tint = marked;
+            if (!fileOffset)
+                tint.setAlphaF(tint.alphaF() * 0.4f);
+            painter.fillRect(hexCell.adjusted(-1, 0, 1, 0), tint);
+            painter.fillRect(charCell, tint);
         }
         if (offset == m_cursor) {
             painter.setPen(left == m_leftActive ? m_colors.current : mix(m_colors.base, m_colors.current, 0.45f));
@@ -286,6 +319,9 @@ void HexCompareView::paintSide(QPainter& painter, bool left, std::uint64_t rowOf
             // The difference worked on: underlined.
             painter.fillRect(QRectF(hexX - 1, y + m_lineHeight - 2, 2 * m_charWidth + 2, 2), m_colors.current);
         }
+        if (!fileOffset)
+            continue;
+        const std::uint8_t byte = bytes[static_cast<std::size_t>(*fileOffset)];
         const char digits[] = {hexDigit(byte >> 4), hexDigit(byte), '\0'};
         painter.setPen(m_colors.text);
         painter.drawText(hexCell, Qt::AlignCenter, QString::fromLatin1(digits));
@@ -356,7 +392,7 @@ void HexCompareView::keyPressEvent(QKeyEvent* event)
         return;
     case Qt::Key_Return:
     case Qt::Key_Enter:
-        emit openRequested(m_leftActive, m_cursor);
+        emit openRequested(m_leftActive, sideOffset(m_leftActive, m_cursor));
         return;
     default:
         QAbstractScrollArea::keyPressEvent(event);
@@ -387,7 +423,7 @@ void HexCompareView::mouseDoubleClickEvent(QMouseEvent* event)
     if (const auto byte = byteAt(event->position().toPoint())) {
         m_leftActive = byte->second;
         setCursorOffset(byte->first);
-        emit openRequested(m_leftActive, m_cursor);
+        emit openRequested(m_leftActive, sideOffset(m_leftActive, m_cursor));
     }
 }
 
@@ -448,7 +484,9 @@ void HexCompareView::updateLayout()
     // Sixteen bytes a row when they fit side by side; eight in a narrow window.
     const std::uint64_t cursorRowStart = m_cursor;
     m_bytesPerRow = 16;
-    const auto needed = [this] { return offsetWidth() + 2 * sideWidth() + kDividerWidth + rulerWidth(); };
+    const auto needed = [this] {
+        return offsetWidth() * (isLinedUp() ? 2 : 1) + 2 * sideWidth() + kDividerWidth + rulerWidth();
+    };
     if (needed() > viewport()->width())
         m_bytesPerRow = 8;
     const std::uint64_t rows = rowCount();

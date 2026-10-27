@@ -748,6 +748,10 @@
         <translation>大小分别是 %1 和 %2 字节</translation>
     </message>
     <message>
+        <source>lined up again after bytes inserted or removed</source>
+        <translation>插入或删除了字节，之后已重新对齐</translation>
+    </message>
+    <message>
         <source>shifted by %1 bytes from %2</source>
         <translation>从 %2 起错开了 %1 字节</translation>
     </message>
@@ -793,6 +797,20 @@
         <source>, code</source>
         <translation>，是代码</translation>
     </message>
+    <message>
+        <source>none (at %1)</source>
+        <translation>没有（在 %1）</translation>
+    </message>
+    <message numerus="yes">
+        <source>%1–%2, %n byte(s)</source>
+        <translation>
+            <numerusform>%1–%2，%n 字节</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Difference %1 of %2: left %3; right %4</source>
+        <translation>第 %1 处差异，共 %2 处：左边 %3；右边 %4</translation>
+    </message>
     <message numerus="yes">
         <source>Difference %1 of %2: %3–%4, %n byte(s)</source>
         <translation>
@@ -800,8 +818,16 @@
         </translation>
     </message>
     <message>
+        <source>The same on both sides: left %1, right %2</source>
+        <translation>两边相同：左边 %1，右边 %2</translation>
+    </message>
+    <message>
         <source>Offset %1: the same on both sides</source>
         <translation>偏移 %1：两边相同</translation>
+    </message>
+    <message>
+        <source>Bytes were inserted or removed: the two sides are lined up again after them, each with its own offsets.</source>
+        <translation>插入或删除了字节：两边在那之后重新对齐，各自显示自己的偏移。</translation>
     </message>
     <message>
         <source>From %1 on, the right side is shifted by %2 bytes (bytes were inserted or removed): comparing at the same offsets means little here.</source>

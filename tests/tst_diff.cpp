@@ -82,6 +82,8 @@ private slots:
     void inlineMarksWholeLinesWithLittleInCommon();
     void bytes();
     void bytesShiftedByAnInsertion();
+    void bytesLinedUpAgain();
+    void largeFilesLinedUpByChunks();
 };
 
 void TestDiff::basics()
@@ -293,6 +295,94 @@ void TestDiff::bytesShiftedByAnInsertion()
     ByteComparison removed = compareBytes(right, left); // the other way round: removed
     QVERIFY(removed.shiftAt);
     QCOMPARE(removed.shift, -16);
+}
+
+void TestDiff::bytesLinedUpAgain()
+{
+    std::mt19937 random(5);
+    std::vector<std::uint8_t> left(20'000);
+    for (std::uint8_t& byte : left)
+        byte = static_cast<std::uint8_t>(random());
+    std::vector<std::uint8_t> right = left;
+    right.insert(right.begin() + 5'000, 16, 0x90); // inserted
+    right.erase(right.begin() + 12'016, right.begin() + 12'026); // 10 removed (12'000 on the left)
+    right[15'016] ^= 0xFF;                                      // one changed (15'010 on the left)
+
+    const ByteComparison c = compareBytes(left, right);
+    QVERIFY(c.shiftAt);
+    const std::vector<ByteSegment> expected = {
+        {0, 0, 5'000, 0, 5'000, true},
+        {5'000, 5'000, 0, 5'000, 16, false},
+        {5'016, 5'000, 7'000, 5'016, 7'000, true},
+        {12'016, 12'000, 10, 12'016, 0, false},
+        {12'026, 12'010, 3'000, 12'016, 3'000, true},
+        {15'026, 15'010, 1, 15'016, 1, false},
+        {15'027, 15'011, 4'989, 15'017, 4'989, true},
+    };
+    QCOMPARE(c.segments.size(), expected.size());
+    for (std::size_t i = 0; i < expected.size(); ++i)
+        QVERIFY2(c.segments[i] == expected[i], qPrintable(QString::number(i)));
+    // The differences are of positions now: three of them, 27 places.
+    QVERIFY((c.ranges == std::vector<ByteRange>{{5'000, 16}, {12'016, 10}, {15'026, 1}}));
+    QCOMPARE(c.differentBytes, 27u);
+    QCOMPARE(positionCount(c), 20'016u);
+
+    // Each position shows the byte of each side that has one.
+    BytesAt at = bytesAt(c, left, right, 5'003);
+    QVERIFY(!at.left);
+    QCOMPARE(*at.right, 5'003u);
+    at = bytesAt(c, left, right, 12'020);
+    QCOMPARE(*at.left, 12'004u);
+    QVERIFY(!at.right);
+    at = bytesAt(c, left, right, 20'015);
+    QCOMPARE(*at.left, 19'999u);
+    QCOMPARE(*at.right, 20'005u);
+    QVERIFY(at.same);
+
+    // Changes alone, at the same offsets, stay compared there.
+    std::vector<std::uint8_t> patched = left;
+    patched[100] ^= 1;
+    QVERIFY(compareBytes(left, patched).segments.empty());
+}
+
+void TestDiff::largeFilesLinedUpByChunks()
+{
+    std::mt19937 random(9);
+    std::vector<std::uint8_t> left(3'000'000);
+    for (std::uint8_t& byte : left)
+        byte = static_cast<std::uint8_t>(random());
+    std::vector<std::uint8_t> right = left;
+    right.insert(right.begin() + 1'000'000, 100, 0x00);
+    right.erase(right.begin() + 2'000'100, right.begin() + 2'000'300);
+    right[2'500'000] ^= 0x55;
+
+    QElapsedTimer timer;
+    timer.start();
+    const std::vector<ByteSegment> segments = alignBytes(left, right);
+    qInfo() << "lined up 3 MB in" << timer.elapsed() << "ms";
+    std::uint64_t changedLeft = 0;
+    std::uint64_t changedRight = 0;
+    std::uint64_t l = 0;
+    std::uint64_t r = 0;
+    for (const ByteSegment& s : segments) {
+        QCOMPARE(s.left, l); // contiguous on both sides
+        QCOMPARE(s.right, r);
+        if (s.same)
+            QVERIFY(std::equal(left.begin() + static_cast<std::ptrdiff_t>(s.left),
+                               left.begin() + static_cast<std::ptrdiff_t>(s.left + s.leftLength),
+                               right.begin() + static_cast<std::ptrdiff_t>(s.right)));
+        else {
+            changedLeft += s.leftLength;
+            changedRight += s.rightLength;
+        }
+        l += s.leftLength;
+        r += s.rightLength;
+    }
+    QCOMPARE(l, left.size());
+    QCOMPARE(r, right.size());
+    // Exactly what was done: 200 removed and 1 changed on the left, 100 inserted and 1 on the right.
+    QCOMPARE(changedLeft, 201u);
+    QCOMPARE(changedRight, 101u);
 }
 
 QTEST_APPLESS_MAIN(TestDiff)

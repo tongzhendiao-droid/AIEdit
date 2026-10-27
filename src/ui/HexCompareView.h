@@ -12,9 +12,12 @@
 
 namespace aiedit::ui {
 
-// Two binary files side by side in hex, at the same offsets, the bytes that differ marked.
-// Moving from difference to difference follows the ranges of a core::ByteComparison; a strip on
-// the right shows where they are. Only the rows on screen are drawn, so size does not matter.
+// Two binary files side by side in hex, the bytes that differ marked: at the same offsets, or,
+// where bytes were inserted or removed, lined up again after them, the side without those bytes
+// left blank and each side with its own offsets (M11). The cursor and the ranges are of
+// positions in that layout (offsets, when not lined up). Moving from difference to difference
+// follows the ranges of a core::ByteComparison; a strip on the right shows where they are. Only
+// the rows on screen are drawn, so size does not matter.
 class HexCompareView : public QAbstractScrollArea
 {
     Q_OBJECT
@@ -33,15 +36,18 @@ public:
     void setCurrentRange(int range);
     bool goToNextDifference();
     bool goToPreviousDifference();
-    // The byte the cursor is on, and the side worked on (clicked last).
+    // The position the cursor is on, and the side worked on (clicked last).
     std::uint64_t cursorOffset() const { return m_cursor; }
     void setCursorOffset(std::uint64_t offset);
+    // The offset in a side's file at a position: its byte there, or where its bytes resume.
+    std::uint64_t sideOffset(bool left, std::uint64_t position) const;
+    bool isLinedUp() const { return !m_comparison.segments.empty(); }
     bool isLeftActive() const { return m_leftActive; }
     int bytesPerRow() const { return m_bytesPerRow; }
 
 signals:
     void currentChanged();
-    // Enter or a double click: open that side's file at the byte.
+    // Enter or a double click: open that side's file at the byte (an offset in that file).
     void openRequested(bool left, std::uint64_t offset);
     void zoomRequested(int steps);
 

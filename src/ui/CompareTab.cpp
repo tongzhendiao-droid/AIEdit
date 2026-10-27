@@ -443,7 +443,9 @@ void CompareTab::updateStatus()
                          .arg(bytes(m_bytes.differentBytes));
         if (m_bytes.leftSize != m_bytes.rightSize)
             parts << tr("sizes %1 and %2 bytes").arg(bytes(m_bytes.leftSize), bytes(m_bytes.rightSize));
-        if (m_bytes.shiftAt)
+        if (!m_bytes.segments.empty())
+            parts << tr("lined up again after bytes inserted or removed");
+        else if (m_bytes.shiftAt)
             parts << tr("shifted by %1 bytes from %2").arg(QString::number(m_bytes.shift), hex(*m_bytes.shiftAt));
         if (m_leftLayout)
             parts << QStringLiteral("%1 %2").arg(QString::fromStdString(m_leftLayout->format),
@@ -501,23 +503,49 @@ void CompareTab::updateDetails()
         return;
     }
     const int index = m_hexView->currentRange();
-    const std::uint64_t offset = index >= 0 ? m_bytes.ranges[static_cast<std::size_t>(index)].start : m_hexView->cursorOffset();
+    const std::uint64_t position = index >= 0 ? m_bytes.ranges[static_cast<std::size_t>(index)].start : m_hexView->cursorOffset();
     const QLocale locale;
     const QString font = m_hexView->font().family().toHtmlEscaped();
     QString html = QStringLiteral("<style>pre { font-family: '%1'; margin: 0; } td { padding: 0 12px 0 0; vertical-align: top; }"
                                   " .changed { font-weight: bold; }</style>")
                        .arg(font);
-    if (index >= 0) {
+    const bool linedUp = !m_bytes.segments.empty();
+    // Each side's bytes in the difference, or at the cursor: lined up, they lie at offsets of
+    // their own.
+    const core::ByteRange positions =
+        index >= 0 ? m_bytes.ranges[static_cast<std::size_t>(index)] : core::ByteRange{position, 1};
+    const core::SideRanges sides = core::sideRanges(m_bytes, positions);
+    if (index >= 0 && linedUp) {
+        const auto describe = [&](const core::ByteRange& r) {
+            return r.length == 0 ? tr("none (at %1)").arg(hex(r.start))
+                                 : tr("%1–%2, %n byte(s)", "", static_cast<int>(std::min<std::uint64_t>(r.length, INT_MAX)))
+                                       .arg(hex(r.start), hex(r.end() - 1));
+        };
+        html += QStringLiteral("<p><b>%1</b></p>")
+                    .arg(tr("Difference %1 of %2: left %3; right %4")
+                             .arg(locale.toString(index + 1), locale.toString(static_cast<qulonglong>(m_bytes.ranges.size())),
+                                  describe(sides.left), describe(sides.right))
+                             .toHtmlEscaped());
+    } else if (index >= 0) {
         const core::ByteRange& range = m_bytes.ranges[static_cast<std::size_t>(index)];
         html += QStringLiteral("<p><b>%1</b></p>")
                     .arg(tr("Difference %1 of %2: %3–%4, %n byte(s)", "", static_cast<int>(std::min<std::uint64_t>(range.length, INT_MAX)))
                              .arg(locale.toString(index + 1), locale.toString(static_cast<qulonglong>(m_bytes.ranges.size())),
                                   hex(range.start), hex(range.end() - 1))
                              .toHtmlEscaped());
+    } else if (linedUp) {
+        html += QStringLiteral("<p><b>%1</b></p>")
+                    .arg(tr("The same on both sides: left %1, right %2").arg(hex(sides.left.start), hex(sides.right.start))
+                             .toHtmlEscaped());
     } else {
-        html += QStringLiteral("<p><b>%1</b></p>").arg(tr("Offset %1: the same on both sides").arg(hex(offset)).toHtmlEscaped());
+        html += QStringLiteral("<p><b>%1</b></p>").arg(tr("Offset %1: the same on both sides").arg(hex(position)).toHtmlEscaped());
     }
-    if (m_bytes.shiftAt && offset >= *m_bytes.shiftAt)
+    if (linedUp)
+        html += QStringLiteral("<p>%1</p>")
+                    .arg(tr("Bytes were inserted or removed: the two sides are lined up again after them, each with "
+                            "its own offsets.")
+                             .toHtmlEscaped());
+    else if (m_bytes.shiftAt && position >= *m_bytes.shiftAt)
         html += QStringLiteral("<p style=\"color:#c62828\">%1</p>")
                     .arg(tr("From %1 on, the right side is shifted by %2 bytes (bytes were inserted or removed): "
                             "comparing at the same offsets means little here.")
@@ -529,6 +557,8 @@ void CompareTab::updateDetails()
         const CompareSide& s = onLeft ? m_left : m_right;
         const std::optional<core::BinaryLayout>& layout = onLeft ? m_leftLayout : m_rightLayout;
         const auto bytes = s.source->bytes();
+        const core::ByteRange range = onLeft ? sides.left : sides.right;
+        const std::uint64_t offset = range.start;
         QString cell = QStringLiteral("<p><b>%1</b>").arg(s.label.toHtmlEscaped());
         if (const QString place = where(layout, offset); !place.isEmpty())
             cell += QStringLiteral("<br>%1").arg(place.toHtmlEscaped());
@@ -537,7 +567,6 @@ void CompareTab::updateDetails()
             return cell + QStringLiteral("<p>%1</p>").arg(tr("(past its end)").toHtmlEscaped());
         cell += QStringLiteral("<pre>%1</pre>").arg(hexBytes(bytes, offset, kDetailsBytes).toHtmlEscaped());
         if (layout) {
-            const core::ByteRange range = index >= 0 ? m_bytes.ranges[static_cast<std::size_t>(index)] : core::ByteRange{offset, 1};
             const std::vector<core::Instruction> code = core::disassembleAround(bytes, *layout, offset, kDetailsBefore, kDetailsAfter);
             QString lines;
             for (const core::Instruction& instruction : code) {

@@ -538,8 +538,13 @@ void TestCompare::notesBytesShiftedByAnInsertion()
     QSignalSpy compared(&tab, &ui::CompareTab::compared);
     QTRY_COMPARE(compared.count(), 1);
     QVERIFY(tab.isBinary());
-    QVERIFY(tab.statusText().contains(QStringLiteral("shifted by 8 bytes from 0x1770")));
-    QVERIFY(tab.detailsText().contains(QStringLiteral("shifted by 8 bytes")));
+    // Lined up again: one difference, the 8 bytes only on the right, and nothing after them.
+    QVERIFY(tab.statusText().contains(QStringLiteral("lined up again")));
+    QCOMPARE(tab.byteComparison().ranges.size(), 1u);
+    QCOMPARE(tab.byteComparison().differentBytes, 8u);
+    QVERIFY(tab.detailsText().contains(QStringLiteral("left none (at 0x1770)")));
+    QVERIFY(tab.detailsText().contains(QStringLiteral("right 0x1770–0x1777, 8 byte")));
+    QVERIFY(tab.detailsText().contains(QStringLiteral("90 90 90 90")));
 }
 
 void TestCompare::comparesTextAsBytesWhenAsked()

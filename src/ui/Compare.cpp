@@ -460,14 +460,17 @@ QString binaryReport(const CompareSide& left, const CompareSide& right, const co
         return text;
     };
     QStringList out;
-    out << QStringLiteral("Two binary files compared byte by byte, at the same offsets.");
+    const bool linedUp = !comparison.segments.empty();
+    out << (linedUp ? QStringLiteral("Two binary files compared byte by byte. Bytes were inserted or removed, so the files "
+                                     "were lined up again after them: each difference gives its offsets on each side.")
+                    : QStringLiteral("Two binary files compared byte by byte, at the same offsets."));
     out << QStringLiteral("Left %1.").arg(describe(left, comparison.leftSize, leftLayout));
     out << QStringLiteral("Right %1.").arg(describe(right, comparison.rightSize, rightLayout));
     out << QStringLiteral("%1 ranges differ, %2 bytes in all%3.")
                .arg(c.toString(static_cast<qulonglong>(comparison.ranges.size())),
                     c.toString(static_cast<qulonglong>(comparison.differentBytes)),
                     comparison.limited ? QStringLiteral(" (more ranges than were listed)") : QString());
-    if (comparison.shiftAt)
+    if (comparison.shiftAt && !linedUp)
         out << QStringLiteral("From offset 0x%1 on, the right file looks shifted by %2 bytes (%3), so comparing at the "
                               "same offsets means little after it.")
                    .arg(*comparison.shiftAt, 0, 16)
@@ -495,28 +498,43 @@ QString binaryReport(const CompareSide& left, const CompareSide& right, const co
     const int shown = std::min(maxRanges, static_cast<int>(comparison.ranges.size()));
     for (int i = 0; i < shown; ++i) {
         const core::ByteRange& range = comparison.ranges[static_cast<std::size_t>(i)];
-        const std::uint64_t count = std::min<std::uint64_t>(range.length, 32);
+        const core::SideRanges sides = core::sideRanges(comparison, range);
         out << QString();
-        out << QStringLiteral("Difference %1: offset 0x%2-0x%3 (%4 bytes)")
-                   .arg(i + 1)
-                   .arg(range.start, 0, 16)
-                   .arg(range.end() - 1, 0, 16)
-                   .arg(c.toString(static_cast<qulonglong>(range.length)));
-        if (const QString where = describeOffset(leftLayout, range.start); !where.isEmpty())
-            out << QStringLiteral("  %1").arg(where);
-        out << QStringLiteral("  left : %1").arg(range.start < leftBytes.size() ? hexBytes(leftBytes, range.start, count)
-                                                                                : QStringLiteral("(past its end)"));
-        out << QStringLiteral("  right: %1").arg(range.start < rightBytes.size() ? hexBytes(rightBytes, range.start, count)
-                                                                                 : QStringLiteral("(past its end)"));
-        if (leftLayout && range.start < leftBytes.size()) {
-            const auto instructions = core::disassembleAround(leftBytes, *leftLayout, range.start, 3, 3);
-            if (!instructions.empty())
-                out << QStringLiteral("  left code:") << code(instructions, range);
+        if (linedUp) {
+            const auto place = [&c](const core::ByteRange& r) {
+                return r.length == 0 ? QStringLiteral("nothing (at 0x%1)").arg(r.start, 0, 16)
+                                     : QStringLiteral("0x%1-0x%2 (%3 bytes)")
+                                           .arg(r.start, 0, 16)
+                                           .arg(r.end() - 1, 0, 16)
+                                           .arg(c.toString(static_cast<qulonglong>(r.length)));
+            };
+            out << QStringLiteral("Difference %1: left %2, right %3").arg(i + 1).arg(place(sides.left), place(sides.right));
+        } else {
+            out << QStringLiteral("Difference %1: offset 0x%2-0x%3 (%4 bytes)")
+                       .arg(i + 1)
+                       .arg(range.start, 0, 16)
+                       .arg(range.end() - 1, 0, 16)
+                       .arg(c.toString(static_cast<qulonglong>(range.length)));
         }
-        if (rightLayout && range.start < rightBytes.size()) {
-            const auto instructions = core::disassembleAround(rightBytes, *rightLayout, range.start, 3, 3);
+        if (const QString where = describeOffset(leftLayout, sides.left.start); !where.isEmpty())
+            out << QStringLiteral("  %1").arg(where);
+        const auto bytesText = [&](std::span<const std::uint8_t> bytes, const core::ByteRange& r) {
+            if (r.start >= bytes.size())
+                return QStringLiteral("(past its end)");
+            return linedUp && r.length == 0 ? QStringLiteral("(none)")
+                                            : hexBytes(bytes, r.start, std::min<std::uint64_t>(std::max<std::uint64_t>(r.length, 1), 32));
+        };
+        out << QStringLiteral("  left : %1").arg(bytesText(leftBytes, sides.left));
+        out << QStringLiteral("  right: %1").arg(bytesText(rightBytes, sides.right));
+        if (leftLayout && sides.left.start < leftBytes.size()) {
+            const auto instructions = core::disassembleAround(leftBytes, *leftLayout, sides.left.start, 3, 3);
             if (!instructions.empty())
-                out << QStringLiteral("  right code:") << code(instructions, range);
+                out << QStringLiteral("  left code:") << code(instructions, sides.left);
+        }
+        if (rightLayout && sides.right.start < rightBytes.size()) {
+            const auto instructions = core::disassembleAround(rightBytes, *rightLayout, sides.right.start, 3, 3);
+            if (!instructions.empty())
+                out << QStringLiteral("  right code:") << code(instructions, sides.right);
         }
         if (out.join(QLatin1Char('\n')).size() > maxChars)
             break;
