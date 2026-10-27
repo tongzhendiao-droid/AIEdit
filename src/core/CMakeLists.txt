@@ -5,6 +5,8 @@ add_library(aiedit_core STATIC
     Diff.cpp Diff.h
     Disassembler.cpp Disassembler.h
     EditBuffer.cpp EditBuffer.h
+    Epl.cpp Epl.h
+    EplLibraries.cpp EplLibraries.h
     FileSource.cpp FileSource.h
     FileSummary.cpp FileSummary.h
     FileType.cpp FileType.h

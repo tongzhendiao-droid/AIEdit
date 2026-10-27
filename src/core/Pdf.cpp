@@ -28,6 +28,12 @@ bool isWhite(std::uint8_t c)
     return c == ' ' || c == '\n' || c == '\r' || c == '\t' || c == '\f' || c == '\0';
 }
 
+// Whether `text` has `word` at `pos`; false past its end.
+bool hasAt(std::string_view text, std::size_t pos, std::string_view word)
+{
+    return pos <= text.size() && text.substr(pos).starts_with(word);
+}
+
 bool isDelimiter(std::uint8_t c)
 {
     return c == '(' || c == ')' || c == '<' || c == '>' || c == '[' || c == ']' || c == '{' || c == '}' || c == '/' ||
@@ -162,7 +168,8 @@ public:
             }
             if (high >= 0)
                 o.text += static_cast<char>(high * 16);
-            ++m_pos;
+            if (m_pos < m_data.size())
+                ++m_pos; // the '>'
             return o;
         }
         if (c == '[') {
@@ -667,7 +674,7 @@ private:
                 continue;
             const std::size_t afterObject = lexer.pos();
             lexer.skipWhite();
-            if (e.object.is(Object::Kind::Dictionary) && text.compare(lexer.pos(), 6, "stream") == 0) {
+            if (e.object.is(Object::Kind::Dictionary) && hasAt(text, lexer.pos(), "stream")) {
                 std::size_t start = lexer.pos() + 6;
                 if (start < m_data.size() && m_data[start] == '\r')
                     ++start;
@@ -679,7 +686,7 @@ private:
                     if (start + declared <= m_data.size()) {
                         Lexer check(m_data, start + declared);
                         check.skipWhite();
-                        if (text.compare(check.pos(), 9, "endstream") == 0)
+                        if (hasAt(text, check.pos(), "endstream"))
                             end = start + declared;
                     }
                 }

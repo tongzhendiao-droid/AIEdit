@@ -1,6 +1,9 @@
 #include "ui/Extract.h"
 
+#include "core/Epl.h"
 #include "core/Pdf.h"
+#include "core/TextCodec.h"
+#include "ui/Codec.h"
 #include "core/Zip.h"
 
 #include <QCoreApplication>
@@ -729,6 +732,42 @@ ExtractedText extractPdf(std::span<const std::uint8_t> bytes)
     return result;
 }
 
+ExtractedText extractEpl(std::span<const std::uint8_t> bytes)
+{
+    ExtractedText result;
+    const core::epl::Project project = core::epl::parse(bytes);
+    if (project.status == core::epl::Project::Status::Encrypted) {
+        result.note = QCoreApplication::translate("Extract", "This 易语言 file has a password; it cannot be read here.");
+        return result;
+    }
+    if (project.status == core::epl::Project::Status::NotEpl) {
+        result.note = QCoreApplication::translate("Extract", "This 易语言 file cannot be read: it is broken.");
+        return result;
+    }
+    // Names and text are in the code page of the language the file was written in.
+    const char* codecName = project.language == 3   ? "Big5"
+                            : project.language == 4 ? "Shift_JIS"
+                            : project.language == 2 ? "windows-1252"
+                                                    : "GB18030";
+    const core::TextCodec* codec = core::findCodec(codecName);
+    const Codec decoder(codec ? *codec : core::utf8Codec());
+    std::size_t unreadable = 0;
+    const std::string text = core::epl::toText(
+        project,
+        [&](std::string_view s) {
+            return decoder.decode(QByteArrayView(s.data(), static_cast<qsizetype>(s.size()))).toStdString();
+        },
+        &unreadable);
+    result.text = QString::fromStdString(text);
+    if (project.status == core::epl::Project::Status::Broken)
+        result.note =
+            QCoreApplication::translate("Extract", "Part of this 易语言 file is broken; what comes before it is shown.");
+    else if (unreadable > 0)
+        result.note = QCoreApplication::translate("Extract", "The code of %n subroutine(s) could not all be read.", nullptr,
+                                                  static_cast<int>(unreadable));
+    return result;
+}
+
 ExtractedFormat extractableFormat(std::span<const std::uint8_t> bytes)
 {
     auto startsWith = [&](std::string_view magic) {
@@ -789,6 +828,7 @@ ExtractedText extractText(ExtractedFormat format, std::span<const std::uint8_t> 
     case ExtractedFormat::Pdf:
         return extractPdf(bytes);
     case ExtractedFormat::Epl:
+        return extractEpl(bytes);
     case ExtractedFormat::None:
         break;
     }

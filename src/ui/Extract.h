@@ -43,6 +43,7 @@ ExtractedText extractWord(std::span<const std::uint8_t> bytes);
 ExtractedText extractExcel(std::span<const std::uint8_t> bytes);
 ExtractedText extractEpub(std::span<const std::uint8_t> bytes);
 ExtractedText extractPdf(std::span<const std::uint8_t> bytes);
+ExtractedText extractEpl(std::span<const std::uint8_t> bytes);
 // A cell of a Markdown table: '|' escaped, line breaks as <br>.
 QString markdownCell(QString text);
 

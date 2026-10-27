@@ -95,6 +95,7 @@ private slots:
     void brokenFiles();
     void documentShowsText();
     void pdfWrittenByQt();
+    void epl();
 };
 
 void TestExtract::detectsFormats()
@@ -320,6 +321,26 @@ void TestExtract::pdfWrittenByQt()
     QVERIFY2(result.note.isEmpty(), qPrintable(result.note));
     QCOMPARE(result.text, chinese ? QStringLiteral("First line of text\nSecond line\n中文的一行\n\nPage two\n")
                                   : QStringLiteral("First line of text\nSecond line\n\nPage two\n"));
+}
+
+void TestExtract::epl()
+{
+    auto bytesOf = [](const QByteArray& b) {
+        return std::span(reinterpret_cast<const std::uint8_t*>(b.constData()), static_cast<std::size_t>(b.size()));
+    };
+    const QByteArray locked = QByteArray("WTLE") + QByteArray(12, '\x01');
+    QCOMPARE(extractableFormat(bytesOf(locked)), ExtractedFormat::Epl);
+    const ExtractedText password = extractEpl(bytesOf(locked));
+    QVERIFY(password.text.isEmpty());
+    QVERIFY(!password.note.isEmpty());
+
+    // The smallest source file: its header and the section that ends it.
+    QByteArray empty = "CNWTEPRG";
+    const char section[] = "\x19\x73\x11\x15" "\0\0\0\0" "\x19\x73\x00\x07";
+    empty += QByteArray(section, 12) + QByteArray(30 + 2 + 4 + 4 + 4 + 4 + 40, '\0');
+    const ExtractedText text = extractEpl(bytesOf(empty));
+    QVERIFY2(text.note.isEmpty(), qPrintable(text.note));
+    QCOMPARE(text.text, QStringLiteral(".版本 2\n"));
 }
 
 QTEST_MAIN(TestExtract)

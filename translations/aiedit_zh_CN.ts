@@ -75,6 +75,24 @@
         <translation>有一部分文字（%L1 个字）用的字体没有说明是哪些字符，没有显示。</translation>
     </message>
     <message>
+        <source>This 易语言 file has a password; it cannot be read here.</source>
+        <translation>这个易语言文件设了密码，这里读不出来。</translation>
+    </message>
+    <message>
+        <source>This 易语言 file cannot be read: it is broken.</source>
+        <translation>无法读取这个易语言文件：文件已损坏。</translation>
+    </message>
+    <message>
+        <source>Part of this 易语言 file is broken; what comes before it is shown.</source>
+        <translation>这个易语言文件有一部分损坏，只显示了损坏之前的内容。</translation>
+    </message>
+    <message numerus="yes">
+        <source>The code of %n subroutine(s) could not all be read.</source>
+        <translation>
+            <numerusform>有 %n 个子程序的代码没能全部读出来。</numerusform>
+        </translation>
+    </message>
+    <message>
         <source>Word document</source>
         <translation>Word 文档</translation>
     </message>

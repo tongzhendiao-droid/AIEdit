@@ -119,6 +119,8 @@ void TestPdf::notPdf()
 {
     QCOMPARE(extract("just some text").status, PdfText::Status::NoText);
     QCOMPARE(extract(QByteArray()).status, PdfText::Status::NoText);
+    // A hex string left open at the end of the file once read one byte past it.
+    QCOMPARE(extract("%PDF-1.4\n1 0 obj <</Length 3>> <4142").status, PdfText::Status::NoText);
     // Cut in half: whatever can still be read, without crashing.
     const QByteArray pdf = bytes(kFonts);
     for (qsizetype size = 0; size < pdf.size(); size += 37)
