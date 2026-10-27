@@ -39,6 +39,7 @@ class FilterPanel;
 class FindBar;
 class HexView;
 class MarkdownView;
+class TableView;
 class TextDocument;
 class TextView;
 
@@ -61,6 +62,7 @@ public:
         Hex,
         Split,
         Preview, // the text, and the Markdown drawn beside it (Markdown documents only)
+        Table,   // CSV, TSV and JSON as a table (see TableView)
     };
 
     DocumentView(std::shared_ptr<const core::FileSource> source, const core::FileTypeInfo& fileType,
@@ -104,6 +106,11 @@ public:
     void setShowsOriginal(bool on);
     // What was left out of the extracted text, or why there is none; empty if all went well.
     QString extractionNote() const { return m_extractionNote; }
+
+    // CSV, TSV or JSON, by the file's name: what the table view shows.
+    bool isTabular() const;
+    // The table; made when first shown.
+    TableView* tableView() const { return m_tableView; }
 
     // Markdown, by the file's name or the syntax chosen for it.
     bool isMarkdown() const;
@@ -299,6 +306,9 @@ private:
     // The drawn Markdown is what the user works in: in reading mode, or clicked in the preview.
     bool isMarkdownActive() const;
     MarkdownView* ensureMarkdownView();
+    TableView* ensureTableView();
+    // Reads the table again from the bytes as they are now.
+    void loadTable();
     // The text changed: drawn again after a pause, if it is shown.
     void markdownChanged();
     void drawMarkdown();
@@ -389,6 +399,8 @@ private:
     bool m_showsOriginal = false;
     QString m_extractionNote;
     MarkdownView* m_markdownView = nullptr;
+    TableView* m_tableView = nullptr;
+    bool m_tableStale = true; // the bytes changed since the table was read
     QList<QAction*> m_textContextActions; // for the drawn Markdown too
     QFont m_markdownFont;
     QTimer m_markdownTimer;        // draws after a pause in typing

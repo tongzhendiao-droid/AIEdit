@@ -45,6 +45,7 @@ qt_add_library(aiedit_ui STATIC
     SearchJob.cpp SearchJob.h
     SingleInstance.cpp SingleInstance.h
     SyntaxHighlighting.cpp SyntaxHighlighting.h
+    TableView.cpp TableView.h
     TabWidget.cpp TabWidget.h
     TextDecoder.cpp TextDecoder.h
     TextDocument.cpp TextDocument.h

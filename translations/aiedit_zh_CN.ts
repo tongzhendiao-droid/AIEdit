@@ -171,6 +171,73 @@
     </message>
 </context>
 <context>
+    <name>TableView</name>
+    <message>
+        <source>boolean</source>
+        <translation>逻辑值</translation>
+    </message>
+    <message>
+        <source>number</source>
+        <translation>数值</translation>
+    </message>
+    <message>
+        <source>text</source>
+        <translation>文本</translation>
+    </message>
+    <message>
+        <source>array</source>
+        <translation>数组</translation>
+    </message>
+    <message>
+        <source>object</source>
+        <translation>对象</translation>
+    </message>
+    <message>
+        <source>Line %1 is not JSON: %2</source>
+        <translation>第 %1 行不是 JSON：%2</translation>
+    </message>
+    <message>
+        <source>This JSON has an error at character %1: %2</source>
+        <translation>这段 JSON 在第 %1 个字符处有错：%2</translation>
+    </message>
+    <message>
+        <source>Name</source>
+        <translation>名称</translation>
+    </message>
+    <message>
+        <source>Value</source>
+        <translation>值</translation>
+    </message>
+    <message>
+        <source>Type</source>
+        <translation>类型</translation>
+    </message>
+    <message>
+        <source>The first %L1 values</source>
+        <translation>前 %L1 个值</translation>
+    </message>
+    <message>
+        <source>%L1 values</source>
+        <translation>%L1 个值</translation>
+    </message>
+    <message>
+        <source>%L1 rows, %L2 columns</source>
+        <translation>%L1 行，%L2 列</translation>
+    </message>
+    <message>
+        <source>(only the first %L1 keys are columns)</source>
+        <translation>（只有前 %L1 个键作为列）</translation>
+    </message>
+    <message>
+        <source>(the rest of the file is left out)</source>
+        <translation>（文件后面的部分没有显示）</translation>
+    </message>
+    <message>
+        <source>Too large to show as a table</source>
+        <translation>太大了，不能显示成表格</translation>
+    </message>
+</context>
+<context>
     <name>aiedit::ui::AiEditBar</name>
     <message>
         <source>AI edit:</source>
@@ -2395,6 +2462,14 @@
         <translation>一边写 Markdown，一边在旁边看排好版的样子</translation>
     </message>
     <message>
+        <source>T&amp;able</source>
+        <translation>表格(&amp;A)</translation>
+    </message>
+    <message>
+        <source>CSV, TSV and JSON as a table: sort by a column, filter the rows</source>
+        <translation>把 CSV、TSV 和 JSON 显示成表格：按列排序，筛选行</translation>
+    </message>
+    <message>
         <source>Show &amp;Original File</source>
         <translation>显示原始文件(&amp;O)</translation>
     </message>
@@ -3222,6 +3297,17 @@
     <message>
         <source>Pinned: closing tabs together leaves it open. Click to unpin it.</source>
         <translation>已固定：批量关闭标签页时会保留它。单击取消固定。</translation>
+    </message>
+</context>
+<context>
+    <name>aiedit::ui::TableView</name>
+    <message>
+        <source>Filter rows</source>
+        <translation>筛选行</translation>
+    </message>
+    <message>
+        <source>Reading…</source>
+        <translation>正在读取…</translation>
     </message>
 </context>
 <context>

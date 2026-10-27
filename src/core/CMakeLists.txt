@@ -2,6 +2,7 @@
 add_library(aiedit_core STATIC
     BinaryLayout.cpp BinaryLayout.h
     ByteDiff.cpp ByteDiff.h
+    Csv.cpp Csv.h
     Diff.cpp Diff.h
     Disassembler.cpp Disassembler.h
     EditBuffer.cpp EditBuffer.h

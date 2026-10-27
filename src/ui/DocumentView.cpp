@@ -16,6 +16,7 @@
 #include "ui/Paths.h"
 #include "ui/Replace.h"
 #include "ui/SyntaxHighlighting.h"
+#include "ui/TableView.h"
 #include "ui/TextDocument.h"
 #include "ui/TextView.h"
 
@@ -25,6 +26,7 @@
 #include <QEvent>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QLineEdit>
 #include <QLocale>
 #include <QPointer>
 #include <QRegularExpression>
@@ -250,6 +252,18 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
     // Text files open as text, everything else as hex.
     m_viewMode = ViewMode::Split; // anything different from the target, so setViewMode() applies it
     setViewMode(m_fileType.kind == core::ContentKind::Binary ? ViewMode::Hex : ViewMode::Text);
+    // A CSV file is read as the table it is; JSON stays text, a key away from its table.
+    if (isTabular() && TableView::formatForName(filePath()) == TableView::Format::Csv)
+        setViewMode(ViewMode::Table);
+
+    // The table follows the bytes, once it has been shown.
+    for (auto signal : {&TextDocument::sourceChanged, &TextDocument::codecChanged}) {
+        connect(m_textDocument, signal, this, [this] {
+            m_tableStale = true;
+            if (m_tableView && m_viewMode == ViewMode::Table)
+                loadTable();
+        });
+    }
 }
 
 std::shared_ptr<const core::FileSource> DocumentView::shownSource(std::shared_ptr<const core::FileSource> file)
@@ -323,6 +337,8 @@ void DocumentView::setViewMode(ViewMode mode)
 {
     if (mode == ViewMode::Preview && !isMarkdown())
         mode = ViewMode::Text; // nothing to draw
+    if (mode == ViewMode::Table && !isTabular())
+        mode = ViewMode::Text;
     if (mode == m_viewMode)
         return;
     const bool hadFocus = isAncestorOf(QApplication::focusWidget());
@@ -348,9 +364,16 @@ void DocumentView::updateViews()
     const auto holds = [focus](const QWidget* view) {
         return view && focus && (focus == view || view->isAncestorOf(focus));
     };
-    const bool viewFocused = holds(m_textView) || holds(m_hexView) || holds(m_markdownView);
+    const bool viewFocused = holds(m_textView) || holds(m_hexView) || holds(m_markdownView) || holds(m_tableView);
     const bool drawn = showsDrawnMarkdown();
-    m_textView->setVisible(!drawn && m_viewMode != ViewMode::Hex);
+    m_textView->setVisible(!drawn && m_viewMode != ViewMode::Hex && m_viewMode != ViewMode::Table);
+    if (m_viewMode == ViewMode::Table) {
+        ensureTableView()->show();
+        if (m_tableStale)
+            loadTable();
+    } else if (m_tableView) {
+        m_tableView->hide();
+    }
     m_hexView->setVisible(m_viewMode == ViewMode::Hex || m_viewMode == ViewMode::Split);
     if (drawn || m_viewMode == ViewMode::Preview) {
         ensureMarkdownView()->show();
@@ -369,6 +392,8 @@ void DocumentView::updateViews()
 
 QWidget* DocumentView::activeView() const
 {
+    if (m_viewMode == ViewMode::Table && m_tableView)
+        return m_tableView;
     if (!isTextActive())
         return m_hexView;
     return isMarkdownActive() ? static_cast<QWidget*>(m_markdownView) : m_textView;
@@ -411,6 +436,7 @@ bool DocumentView::isTextActive() const
     switch (m_viewMode) {
     case ViewMode::Text:
     case ViewMode::Preview:
+    case ViewMode::Table:
         return true;
     case ViewMode::Hex:
         return false;
@@ -493,6 +519,12 @@ void DocumentView::restoreState(const State& state)
 
 void DocumentView::showFindBar(bool replace)
 {
+    if (m_viewMode == ViewMode::Table && m_tableView && !replace) {
+        // In a table, finding is keeping the rows that hold the text.
+        m_tableView->filterEdit()->setFocus();
+        m_tableView->filterEdit()->selectAll();
+        return;
+    }
     // Seed the query with a short selection, as text or as hex bytes.
     if (isTextActive() && m_textView->hasSelection()) {
         const QString selected = m_textView->selectedText();
@@ -1520,6 +1552,38 @@ void DocumentView::setMarkdownFont(const QFont& font)
     syncMarkdownFromText();
 }
 
+bool DocumentView::isTabular() const
+{
+    return !m_file && !isUntitled() && m_fileType.kind != core::ContentKind::Binary &&
+           TableView::formatForName(filePath()).has_value();
+}
+
+TableView* DocumentView::ensureTableView()
+{
+    if (m_tableView)
+        return m_tableView;
+    m_tableView = new TableView;
+    m_splitter->addWidget(m_tableView);
+    m_splitter->setStretchFactor(m_splitter->indexOf(m_tableView), 1);
+    // A double-clicked row is shown where it is in the text.
+    connect(m_tableView, &TableView::rowActivated, this, [this](std::uint64_t offset) {
+        setViewMode(ViewMode::Text);
+        m_textView->setCursorOffset(offset);
+        m_textView->scrollToOffset(offset);
+        m_textView->setFocus();
+    });
+    return m_tableView;
+}
+
+void DocumentView::loadTable()
+{
+    const auto format = TableView::formatForName(filePath());
+    if (!format)
+        return;
+    m_tableStale = false;
+    ensureTableView()->setSource(m_source, m_textDocument->codec(), *format);
+}
+
 MarkdownView* DocumentView::ensureMarkdownView()
 {
     if (m_markdownView)
@@ -1945,7 +2009,9 @@ void DocumentView::redo()
 
 void DocumentView::copy()
 {
-    if (isMarkdownActive())
+    if (m_viewMode == ViewMode::Table && m_tableView)
+        m_tableView->copy();
+    else if (isMarkdownActive())
         m_markdownView->copy();
     else if (isTextActive())
         m_textView->copy();

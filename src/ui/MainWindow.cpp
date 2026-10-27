@@ -789,6 +789,8 @@ void MainWindow::createActions()
     m_previewModeAction->setShortcuts(
         {QKeySequence(Qt::CTRL | Qt::Key_4), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V)});
     m_previewModeAction->setToolTip(tr("Write Markdown with it drawn beside, as it will read"));
+    m_tableModeAction = modeAction(tr("T&able"), Qt::Key_5, DocumentView::ViewMode::Table);
+    m_tableModeAction->setToolTip(tr("CSV, TSV and JSON as a table: sort by a column, filter the rows"));
     // Word, Excel, EPUB, PDF and 易语言 files show the text they hold; this shows their bytes.
     m_originalAction = new QAction(tr("Show &Original File"), this);
     m_originalAction->setCheckable(true);
@@ -2223,6 +2225,7 @@ void MainWindow::documentStateChanged(DocumentView* doc)
         m_hexModeAction->setChecked(mode == DocumentView::ViewMode::Hex);
         m_splitModeAction->setChecked(mode == DocumentView::ViewMode::Split);
         m_previewModeAction->setChecked(mode == DocumentView::ViewMode::Preview);
+        m_tableModeAction->setChecked(mode == DocumentView::ViewMode::Table);
         const QSignalBlocker blocker(m_followAction);
         m_followAction->setChecked(doc->isFollowing());
         m_readingAction->setChecked(doc->isReadingMode());
@@ -2231,6 +2234,7 @@ void MainWindow::documentStateChanged(DocumentView* doc)
     const bool markdown = doc && doc->isMarkdown();
     m_previewModeAction->setEnabled(markdown);
     m_originalAction->setEnabled(doc && doc->extractedFormat() != ExtractedFormat::None);
+    m_tableModeAction->setEnabled(doc && doc->isTabular());
     m_originalAction->setChecked(doc && doc->showsOriginal());
     m_exportHtmlAction->setEnabled(markdown);
     m_exportPdfAction->setEnabled(markdown);

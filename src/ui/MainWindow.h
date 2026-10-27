@@ -326,6 +326,7 @@ private:
     QAction* m_splitModeAction = nullptr;
     QAction* m_previewModeAction = nullptr;
     QAction* m_originalAction = nullptr;
+    QAction* m_tableModeAction = nullptr;
     QActionGroup* m_codecGroup = nullptr;
     QAction* m_zoomInAction = nullptr;
     QAction* m_zoomOutAction = nullptr;
