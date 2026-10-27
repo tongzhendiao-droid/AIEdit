@@ -789,6 +789,18 @@ void MainWindow::createActions()
     m_previewModeAction->setShortcuts(
         {QKeySequence(Qt::CTRL | Qt::Key_4), QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_V)});
     m_previewModeAction->setToolTip(tr("Write Markdown with it drawn beside, as it will read"));
+    // Word, Excel, EPUB, PDF and 易语言 files show the text they hold; this shows their bytes.
+    m_originalAction = new QAction(tr("Show &Original File"), this);
+    m_originalAction->setCheckable(true);
+    m_originalAction->setToolTip(tr("Show the file's own bytes rather than the text it holds"));
+    connect(m_originalAction, &QAction::triggered, this, [this](bool on) {
+        if (DocumentView* doc = currentDocument()) {
+            doc->setShowsOriginal(on);
+            if (!on && !doc->extractionNote().isEmpty())
+                statusBar()->showMessage(doc->extractionNote(), 10000);
+            updateFileStatus();
+        }
+    });
 
     // Ctrl+Tab, and Ctrl+PgDn and Ctrl+PgUp as in browsers and most editors. The Back and
     // Forward keys, which Qt gives these on some desktops, go back and forward instead.
@@ -996,6 +1008,7 @@ void MainWindow::createMenus()
     view->addAction(m_commandPaletteAction);
     view->addSeparator();
     view->addActions(m_viewModeGroup->actions());
+    view->addAction(m_originalAction);
     view->addSeparator();
     view->addAction(m_readingAction);
     QAction* showContents = m_contentsDock->toggleViewAction();
@@ -1377,6 +1390,8 @@ DocumentView* MainWindow::showFile(const QString& path, bool preview, QString* e
     const core::FileTypeInfo type = core::detectFileType(source->bytes());
     const core::TextCodec& codec = core::defaultCodec(type, source->bytes(), preferredLegacyCodec());
     auto* doc = new DocumentView(source, type, codec);
+    if (!doc->extractionNote().isEmpty())
+        statusBar()->showMessage(doc->extractionNote(), 10000);
     // A preview takes the place of the one before, unless that one was kept meanwhile.
     DocumentView* replaced = preview && m_previewDoc && !m_previewDoc->isModified() ? m_previewDoc.data() : nullptr;
     addDocument(doc, replaced ? m_tabs->indexOf(replaced) : -1, !preview);
@@ -2215,6 +2230,8 @@ void MainWindow::documentStateChanged(DocumentView* doc)
     // Markdown is drawn, and written out drawn.
     const bool markdown = doc && doc->isMarkdown();
     m_previewModeAction->setEnabled(markdown);
+    m_originalAction->setEnabled(doc && doc->extractedFormat() != ExtractedFormat::None);
+    m_originalAction->setChecked(doc && doc->showsOriginal());
     m_exportHtmlAction->setEnabled(markdown);
     m_exportPdfAction->setEnabled(markdown);
     updateEditActions(doc);
@@ -3187,7 +3204,8 @@ void MainWindow::updateFileStatus()
 
     const QLocale locale;
     const auto size = doc->source()->size();
-    m_typeLabel->setText(describeFileType(doc->fileType()));
+    m_typeLabel->setText(doc->showsExtractedText() ? tr("%1, shown as text").arg(formatName(doc->extractedFormat()))
+                                                   : describeFileType(doc->fileType()));
     const QString bytes = locale.toString(static_cast<qulonglong>(size));
     m_sizeLabel->setText(size < 1024 ? tr("%1 bytes").arg(bytes)
                                      : tr("%1 (%2 bytes)").arg(locale.formattedDataSize(static_cast<qint64>(size)), bytes));

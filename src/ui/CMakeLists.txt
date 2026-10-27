@@ -16,6 +16,7 @@ qt_add_library(aiedit_ui STATIC
     ContentsPanel.cpp ContentsPanel.h
     DataInspector.cpp DataInspector.h
     Desktop.cpp Desktop.h
+    Extract.cpp Extract.h
     DocumentView.cpp DocumentView.h
     FieldMark.h
     FileSearch.cpp FileSearch.h

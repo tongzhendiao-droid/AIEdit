@@ -145,9 +145,12 @@ std::uint64_t lineOfPlace(const QList<int>& headings, std::uint64_t lineCount, c
 
 DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const core::FileTypeInfo& fileType,
                            const core::TextCodec& codec, QWidget* parent)
-    : QWidget(parent), m_source(std::move(source)), m_fileType(fileType)
+    : QWidget(parent), m_fileType(fileType)
 {
-    m_textDocument = new TextDocument(m_source, codec, this);
+    m_source = shownSource(std::move(source));
+    if (m_file)
+        m_fileType = core::detectFileType(m_source->bytes());
+    m_textDocument = new TextDocument(m_source, m_file ? core::utf8Codec() : codec, this);
 
     m_textView = new TextView;
     m_textView->setFrameShape(QFrame::NoFrame);
@@ -166,7 +169,7 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
 
     m_findBar = new FindBar(this);
     m_findBar->hide();
-    m_findBar->setMode(fileType.kind == core::ContentKind::Binary ? SearchMode::Hex : SearchMode::Text);
+    m_findBar->setMode(m_fileType.kind == core::ContentKind::Binary ? SearchMode::Hex : SearchMode::Text);
     connect(m_findBar, &FindBar::searchRequested, this, &DocumentView::findNext);
     connect(m_findBar, &FindBar::matchFound, this, &DocumentView::selectMatch);
     connect(m_findBar, &FindBar::closeRequested, this, &DocumentView::closeFindBar);
@@ -201,8 +204,8 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
     connect(m_textDocument, &TextDocument::modificationChanged, this, &DocumentView::modificationChanged);
     updateEditable();
 
-    if (fileType.kind != core::ContentKind::Binary)
-        m_textView->setSyntax(syntaxForFileName(QFileInfo(filePath()).fileName()));
+    if (m_fileType.kind != core::ContentKind::Binary)
+        m_textView->setSyntax(shownSyntax());
     m_textView->setMarkdownEditing(isMarkdown());
 
     // The drawn Markdown follows the text as it is written and as it scrolls.
@@ -246,7 +249,41 @@ DocumentView::DocumentView(std::shared_ptr<const core::FileSource> source, const
 
     // Text files open as text, everything else as hex.
     m_viewMode = ViewMode::Split; // anything different from the target, so setViewMode() applies it
-    setViewMode(fileType.kind == core::ContentKind::Binary ? ViewMode::Hex : ViewMode::Text);
+    setViewMode(m_fileType.kind == core::ContentKind::Binary ? ViewMode::Hex : ViewMode::Text);
+}
+
+std::shared_ptr<const core::FileSource> DocumentView::shownSource(std::shared_ptr<const core::FileSource> file)
+{
+    m_extractedFormat = file->path().empty() ? ExtractedFormat::None : extractableFormat(file->bytes());
+    m_extractionNote.clear();
+    m_extractedMarkdown = false;
+    m_file.reset();
+    if (m_extractedFormat == ExtractedFormat::None || m_showsOriginal)
+        return file;
+    const ExtractedText extracted = extractText(m_extractedFormat, file->bytes());
+    m_extractionNote = extracted.note;
+    if (extracted.text.isEmpty() && !extracted.note.isEmpty())
+        return file; // nothing to read in it: its bytes, and the note says why
+    m_extractedMarkdown = extracted.markdown;
+    m_file = std::move(file);
+    const QByteArray utf8 = extracted.text.toUtf8();
+    return core::FileSource::fromBytes(m_file->path(),
+                                       std::make_shared<const std::vector<std::uint8_t>>(utf8.begin(), utf8.end()));
+}
+
+QString DocumentView::shownSyntax() const
+{
+    if (m_file)
+        return m_extractedMarkdown ? QStringLiteral("Markdown") : QString();
+    return syntaxForFileName(QFileInfo(filePath()).fileName());
+}
+
+void DocumentView::setShowsOriginal(bool on)
+{
+    if (on == m_showsOriginal || m_extractedFormat == ExtractedFormat::None)
+        return;
+    m_showsOriginal = on;
+    reload();
 }
 
 DocumentView::~DocumentView()
@@ -935,7 +972,7 @@ void DocumentView::fileChanged()
     }
     // A file that shrank (truncated, rotated) must be remapped at once: the old mapping now
     // reaches past its end. Growth can wait for the writer to finish its burst.
-    if (QFileInfo(filePath()).size() < static_cast<qint64>(m_source->size()))
+    if (QFileInfo(filePath()).size() < static_cast<qint64>((m_file ? m_file : m_source)->size()))
         reload();
     else
         m_reloadTimer.start();
@@ -975,12 +1012,22 @@ bool DocumentView::reload()
     m_diskState = seen;
     m_findBar->cancel();
     m_lastMatch.reset();
-    m_source = std::move(source);
+    const bool wasExtracted = m_file != nullptr;
+    const core::ContentKind wasKind = m_fileType.kind;
+    m_source = shownSource(std::move(source));
     m_fileType = core::detectFileType(m_source->bytes());
     {
         const QScopedValueRollback guard(m_syncing, true); // both views are updated directly
+        if (m_file)
+            m_textDocument->setCodec(core::utf8Codec());
         m_textDocument->setSource(m_source);
         m_hexView->replaceSource(m_source);
+    }
+    if (wasExtracted != (m_file != nullptr) || wasKind != m_fileType.kind) {
+        // The text and the bytes swapped places: shown as what it is now.
+        m_findBar->setMode(m_fileType.kind == core::ContentKind::Binary ? SearchMode::Hex : SearchMode::Text);
+        m_textView->setSyntax(m_fileType.kind == core::ContentKind::Binary ? QString() : shownSyntax());
+        setViewMode(m_fileType.kind == core::ContentKind::Binary ? ViewMode::Hex : ViewMode::Text);
     }
     updateEditable();
     updateMarkdownEditing(); // it may not be text any more
@@ -1232,7 +1279,9 @@ void DocumentView::updateEditable()
 {
     // Decided when the file is opened or reloaded; edits may then make it larger.
     QString reason;
-    if (m_fileType.kind == core::ContentKind::Binary)
+    if (m_file)
+        reason = tr("This %1 is shown as the text it holds, which can only be read").arg(formatName(m_extractedFormat));
+    else if (m_fileType.kind == core::ContentKind::Binary)
         reason = tr("Binary files can only be viewed here");
     else if (m_source->size() > core::EditBuffer::kMaxEditableSize)
         reason = tr("Files larger than %1 can only be viewed here")
@@ -1317,7 +1366,10 @@ bool DocumentView::saveAs(const QString& path, QString* error)
     m_watcher.addPath(path);
     m_findBar->cancel();
     m_lastMatch.reset();
-    m_source = std::move(source);
+    const bool wasExtracted = m_file != nullptr;
+    m_source = shownSource(std::move(source)); // the text saved from a document is plain text
+    if (wasExtracted)
+        m_fileType = core::detectFileType(m_source->bytes());
     m_diskState = diskState(); // of the file it shows now
     m_pollTimer.start();
     {
@@ -1326,7 +1378,7 @@ bool DocumentView::saveAs(const QString& path, QString* error)
         m_hexView->replaceSource(m_source);
     }
     if (m_fileType.kind != core::ContentKind::Binary)
-        m_textView->setSyntax(syntaxForFileName(QFileInfo(path).fileName()));
+        m_textView->setSyntax(shownSyntax());
     updateEditable();
     updateMarkdownEditing();
     emit pathChanged();
@@ -1350,17 +1402,19 @@ bool DocumentView::followMove(const QString& path)
     m_watcher.addPath(path);
     m_findBar->cancel();
     m_lastMatch.reset();
-    m_source = std::move(source);
+    m_source = shownSource(std::move(source));
     m_diskState = diskState(); // of the file it shows now
     m_pollTimer.start();
     m_fileType = core::detectFileType(m_source->bytes());
     {
         const QScopedValueRollback guard(m_syncing, true);
+        if (m_file)
+            m_textDocument->setCodec(core::utf8Codec());
         m_textDocument->setSource(m_source);
         m_hexView->replaceSource(m_source);
     }
     if (m_fileType.kind != core::ContentKind::Binary)
-        m_textView->setSyntax(syntaxForFileName(QFileInfo(path).fileName()));
+        m_textView->setSyntax(shownSyntax());
     updateEditable();
     updateMarkdownEditing();
     restoreState(kept);
@@ -1386,6 +1440,8 @@ bool DocumentView::convertLineEndings(const QString& terminator)
 DocumentView::Conversion DocumentView::saveWithCodec(const core::TextCodec& codec, bool replaceUnreadable,
                                                      QString* error)
 {
+    if (m_file)
+        return Conversion::Failed; // the text is the document's, not a file of its own
     // The text as it reads now (unsaved edits included), without its old byte order mark.
     const auto bytes = m_source->bytes().subspan(static_cast<std::size_t>(m_textDocument->textStart()));
     bool unreadable = false;
@@ -1435,6 +1491,8 @@ DocumentView::Conversion DocumentView::saveWithCodec(const core::TextCodec& code
 
 bool DocumentView::isMarkdown() const
 {
+    if (m_file)
+        return m_extractedMarkdown;
     return m_fileType.kind != core::ContentKind::Binary &&
            (syntax() == u"Markdown" || (!isUntitled() && markdown::isMarkdownFile(filePath())));
 }

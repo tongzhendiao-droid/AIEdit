@@ -2,6 +2,7 @@
 
 #include "core/FileType.h"
 #include "core/TextCodec.h"
+#include "ui/Extract.h"
 #include "ui/LineOperations.h"
 
 #include <QByteArray>
@@ -44,6 +45,8 @@ class TextView;
 // One open file: its bytes, what kind of file it is, and the text and hex views showing it.
 // Both views always share the caret and selection, so switching or splitting loses nothing.
 // Markdown is drawn too: beside the text as it is written, and in its place in reading mode.
+// Documents whose words are packed away (Word, Excel, EPUB, PDF, 易语言 sources) show the text
+// they hold instead of their bytes, read-only, unless the original is asked for (M10).
 //
 // Text files up to core::EditBuffer::kMaxEditableSize can be edited in the text view. With
 // unsaved edits, changes on disk no longer reload the file; saving writes over them.
@@ -91,6 +94,16 @@ public:
     void setShowsContents(bool on) { m_showsContents = on; }
     // Shows the text from `offset` on at the top, with the caret there: where a chapter starts.
     void showFromOffset(std::uint64_t offset);
+
+    // What the file can be read as besides its bytes (see Extract.h); None for most files.
+    ExtractedFormat extractedFormat() const { return m_extractedFormat; }
+    // Whether the views show the text extracted from the file rather than its bytes.
+    bool showsExtractedText() const { return m_file != nullptr; }
+    // Shows the file's own bytes instead of the text it holds, or the text again.
+    bool showsOriginal() const { return m_showsOriginal; }
+    void setShowsOriginal(bool on);
+    // What was left out of the extracted text, or why there is none; empty if all went well.
+    QString extractionNote() const { return m_extractionNote; }
 
     // Markdown, by the file's name or the syntax chosen for it.
     bool isMarkdown() const;
@@ -275,6 +288,11 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
 
 private:
+    // What to show for the file as read from disk: the text it holds, if it is shown so.
+    // Sets m_file and what is known of the extraction.
+    std::shared_ptr<const core::FileSource> shownSource(std::shared_ptr<const core::FileSource> file);
+    // The syntax the file is highlighted in when opened.
+    QString shownSyntax() const;
     // Shows the views the mode asks for, and focuses the one worked in.
     void updateViews();
     QWidget* activeView() const;
@@ -364,6 +382,12 @@ private:
     QFileSystemWatcher m_watcher;
     QTimer m_reloadTimer; // coalesces bursts of change notifications
     bool m_showsContents = false;
+    // The file as on disk, while the views show the text extracted from it (else null).
+    std::shared_ptr<const core::FileSource> m_file;
+    ExtractedFormat m_extractedFormat = ExtractedFormat::None;
+    bool m_extractedMarkdown = false;
+    bool m_showsOriginal = false;
+    QString m_extractionNote;
     MarkdownView* m_markdownView = nullptr;
     QList<QAction*> m_textContextActions; // for the drawn Markdown too
     QFont m_markdownFont;

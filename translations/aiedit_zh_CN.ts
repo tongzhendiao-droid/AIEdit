@@ -29,6 +29,61 @@
     </message>
 </context>
 <context>
+    <name>Extract</name>
+    <message>
+        <source>Only the start is shown: the document&apos;s text is longer than %L1 MiB.</source>
+        <translation>只显示了开头：文档的文字超过 %L1 MiB。</translation>
+    </message>
+    <message>
+        <source>This Word document cannot be read: it is broken or encrypted.</source>
+        <translation>无法读取这个 Word 文档：文件损坏或已加密。</translation>
+    </message>
+    <message>
+        <source>Part of this Word document is broken; the text before it is shown.</source>
+        <translation>这个 Word 文档有一部分损坏，只显示了损坏之前的文字。</translation>
+    </message>
+    <message>
+        <source>This Excel workbook cannot be read: it is broken or encrypted.</source>
+        <translation>无法读取这个 Excel 工作簿：文件损坏或已加密。</translation>
+    </message>
+    <message>
+        <source>(empty)</source>
+        <translation>（空）</translation>
+    </message>
+    <message>
+        <source>Only the first %L1 rows of each sheet are shown.</source>
+        <translation>每个工作表只显示前 %L1 行。</translation>
+    </message>
+    <message>
+        <source>This EPUB book cannot be read: it is broken.</source>
+        <translation>无法读取这本 EPUB 电子书：文件已损坏。</translation>
+    </message>
+    <message>
+        <source>Some chapters of this book are missing or broken and are left out.</source>
+        <translation>这本书有些章节缺失或损坏，没有显示。</translation>
+    </message>
+    <message>
+        <source>Word document</source>
+        <translation>Word 文档</translation>
+    </message>
+    <message>
+        <source>Excel workbook</source>
+        <translation>Excel 工作簿</translation>
+    </message>
+    <message>
+        <source>EPUB book</source>
+        <translation>EPUB 电子书</translation>
+    </message>
+    <message>
+        <source>PDF document</source>
+        <translation>PDF 文档</translation>
+    </message>
+    <message>
+        <source>易语言 source</source>
+        <translation>易语言源码</translation>
+    </message>
+</context>
+<context>
     <name>LogFilter</name>
     <message>
         <source>the regular expression is empty</source>
@@ -1064,6 +1119,10 @@
     <message>
         <source>%1 has no comments</source>
         <translation>%1 没有注释语法</translation>
+    </message>
+    <message>
+        <source>This %1 is shown as the text it holds, which can only be read</source>
+        <translation>这个%1显示的是其中的文字，只能查看</translation>
     </message>
     <message>
         <source>Binary files can only be viewed here</source>
@@ -2306,6 +2365,14 @@
         <translation>一边写 Markdown，一边在旁边看排好版的样子</translation>
     </message>
     <message>
+        <source>Show &amp;Original File</source>
+        <translation>显示原始文件(&amp;O)</translation>
+    </message>
+    <message>
+        <source>Show the file&apos;s own bytes rather than the text it holds</source>
+        <translation>显示文件本身的字节，而不是其中的文字</translation>
+    </message>
+    <message>
         <source>&amp;Next Tab</source>
         <translation>下一个标签页(&amp;N)</translation>
     </message>
@@ -3032,6 +3099,10 @@
     <message>
         <source>The file cannot be memory-mapped and is too large to read into memory.</source>
         <translation>该文件无法内存映射，而且太大，无法读入内存。</translation>
+    </message>
+    <message>
+        <source>%1, shown as text</source>
+        <translation>%1，显示文字</translation>
     </message>
     <message>
         <source>%1 bytes</source>
