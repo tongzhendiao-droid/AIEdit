@@ -93,6 +93,10 @@ public:
     void setLineNumbersVisible(bool on);
     int tabWidth() const { return m_tabWidth; }
     void setTabWidth(int spaces);
+    // Writing Markdown: Enter goes on with a list (and on an empty item, ends it); Tab in a list
+    // item indents it. Shift+Enter breaks the line only.
+    bool isMarkdownEditing() const { return m_markdownEditing; }
+    void setMarkdownEditing(bool on) { m_markdownEditing = on; }
     // A KSyntaxHighlighting definition name such as "C++"; empty for plain text.
     QString syntax() const { return m_syntax; }
     void setSyntax(const QString& name);
@@ -292,9 +296,12 @@ private:
     bool replaceRange(std::uint64_t start, std::uint64_t end, const QString& text, core::EditBuffer::Merge merge);
     void deleteBackward(bool word);
     void deleteForward(bool word);
-    void insertLineBreak();
+    // `plain`: without going on with a Markdown list.
+    void insertLineBreak(bool plain = false);
     // Tab and Shift+Tab on several lines: indents or unindents each.
     void indentLines(bool unindent);
+    // Markdown editing, with the caret in a list item's line.
+    bool isInListItem() const;
     // What Tab inserts: a tab, or the spaces the file indents with.
     QString indentUnit() const;
     void documentEdited(std::uint64_t offset, std::uint64_t removed);
@@ -326,6 +333,7 @@ private:
     bool m_wrapWanted = false; // the user's choice
     bool m_readingMode = false;
     bool m_lineNumbers = true;
+    bool m_markdownEditing = false;
     qreal m_wrapWidth = 0;           // the width wrapped layouts were made for
     std::uint64_t m_topOffset = 0;    // word wrap: where the first line on screen starts
     std::uint64_t m_maxTopOffset = 0; // word wrap: as far as m_topOffset can scroll

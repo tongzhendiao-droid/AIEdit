@@ -196,6 +196,10 @@ private:
     // Reading mode for the current document, with its contents beside it.
     void setReadingMode(bool on);
     QFont readingFont() const;
+    // What Markdown is drawn in: the interface's font, a size up from the editor's.
+    QFont markdownFont() const;
+    // The current Markdown document, drawn, to a file the user picks.
+    void exportMarkdown(DocumentView::ExportFormat format);
     // A chapter for the AI: summarized, translated or explained.
     void askAboutChapter(int action, const QString& title, const QString& text, bool cut);
     // Opens a result of Find in Files at its line.
@@ -308,6 +312,9 @@ private:
     QAction* m_selectLineAction = nullptr;
     QAction* m_commentAction = nullptr;
     QList<QAction*> m_caseActions; // upper, lower
+    QList<QAction*> m_markdownActions; // as DocumentView::MarkdownEdit has them
+    QAction* m_exportHtmlAction = nullptr;
+    QAction* m_exportPdfAction = nullptr;
     QAction* m_nextTabAction = nullptr;
     QAction* m_previousTabAction = nullptr;
     QAction* m_moveTabLeftAction = nullptr;
@@ -317,6 +324,7 @@ private:
     QAction* m_textModeAction = nullptr;
     QAction* m_hexModeAction = nullptr;
     QAction* m_splitModeAction = nullptr;
+    QAction* m_previewModeAction = nullptr;
     QActionGroup* m_codecGroup = nullptr;
     QAction* m_zoomInAction = nullptr;
     QAction* m_zoomOutAction = nullptr;

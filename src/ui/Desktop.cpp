@@ -4,6 +4,8 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QFontDatabase>
+#include <QFontInfo>
+#include <QLocale>
 #include <QProcess>
 #include <QUrl>
 
@@ -48,6 +50,57 @@ QFont fixedFont()
     }
     font.setPointSize(std::max(font.pointSize(), 10));
 #endif
+    return font;
+}
+
+QFont withCjkFallback(QFont font)
+{
+    static const QStringList fallback = [] {
+        const QStringList simplified{
+            QStringLiteral("Noto Sans CJK SC"),   QStringLiteral("Source Han Sans SC"),
+            QStringLiteral("Microsoft YaHei UI"), QStringLiteral("Microsoft YaHei"),
+            QStringLiteral("PingFang SC"),        QStringLiteral("Noto Sans SC"),
+            QStringLiteral("WenQuanYi Micro Hei")};
+        const QStringList traditional{
+            QStringLiteral("Noto Sans CJK TC"),      QStringLiteral("Source Han Sans TC"),
+            QStringLiteral("Microsoft JhengHei UI"), QStringLiteral("Microsoft JhengHei"),
+            QStringLiteral("PingFang TC"),           QStringLiteral("Noto Sans TC")};
+        const QStringList japanese{QStringLiteral("Noto Sans CJK JP"), QStringLiteral("Source Han Sans JP"),
+                                   QStringLiteral("Yu Gothic UI"),     QStringLiteral("Meiryo UI"),
+                                   QStringLiteral("Hiragino Sans"),    QStringLiteral("Noto Sans JP")};
+        const QStringList korean{QStringLiteral("Noto Sans CJK KR"), QStringLiteral("Source Han Sans KR"),
+                                 QStringLiteral("Malgun Gothic"),    QStringLiteral("Apple SD Gothic Neo"),
+                                 QStringLiteral("Noto Sans KR")};
+        const QLocale locale;
+        QList<QStringList> order;
+        if (locale.language() == QLocale::Japanese)
+            order = {japanese, simplified, traditional, korean};
+        else if (locale.language() == QLocale::Korean)
+            order = {korean, simplified, traditional, japanese};
+        else if (locale.script() == QLocale::TraditionalChineseScript)
+            order = {traditional, simplified, japanese, korean};
+        else
+            order = {simplified, traditional, japanese, korean};
+        for (const QStringList& families : std::as_const(order)) {
+            for (const QString& family : families) {
+                if (QFontDatabase::hasFamily(family))
+                    return QStringList{family};
+            }
+        }
+        return QStringList();
+    }();
+    // An alias such as Monospace is no family of its own: with another family after it, Qt would
+    // take that one instead. The family it stands for, then.
+    QStringList families{QFontInfo(font).family()};
+    for (const QString& family : font.families()) {
+        if (!families.contains(family) && QFontDatabase::hasFamily(family))
+            families << family;
+    }
+    for (const QString& family : fallback) {
+        if (!families.contains(family))
+            families << family;
+    }
+    font.setFamilies(families);
     return font;
 }
 

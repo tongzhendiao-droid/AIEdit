@@ -2,6 +2,7 @@
 
 #include "core/TextCodec.h"
 #include "ui/Desktop.h"
+#include "ui/Markdown.h"
 #include "ui/SyntaxHighlighting.h"
 #include "ui/TextDocument.h"
 
@@ -1118,10 +1119,11 @@ void TextView::deleteForward(bool word)
         replaceRange(caret, end, {}, core::EditBuffer::Merge::DeleteForward);
 }
 
-void TextView::insertLineBreak()
+void TextView::insertLineBreak(bool plain)
 {
     QString text = m_document->lineTerminator();
-    // The new line starts indented like the one it splits, up to the caret.
+    // The new line starts indented like the one it splits, up to the caret; in a Markdown list,
+    // with the next item's marker.
     if (rowCount() > 0) {
         const core::LineIndex& index = m_document->index();
         const std::uint64_t caret = hasSelection() ? selectionStart() : editOffset(m_cursor);
@@ -1130,10 +1132,30 @@ void TextView::insertLineBreak()
             const std::uint64_t end = std::min({caret, start.contentEnd, start.start + core::LineIndex::kMaxRowBytes});
             const QString before = m_document->decoder().decodePlain(
                 m_document->bytes().subspan(start.start, static_cast<std::size_t>(end - start.start)));
-            qsizetype indent = 0;
-            while (indent < before.size() && (before.at(indent) == u' ' || before.at(indent) == u'\t'))
-                ++indent;
-            text += before.left(indent);
+            std::optional<markdown::ListBreak> list =
+                m_markdownEditing && !plain && !hasSelection() ? markdown::listBreak(before) : std::nullopt;
+            if (list && list->remove > 0) {
+                // Enter on an item with nothing in it ends the list: the marker goes, the line stays.
+                const core::Row row = index.row(index.rowIndexAt(caret));
+                const std::uint64_t rest = row.contentEnd > caret ? row.contentEnd - caret : 0;
+                const QString after = m_document->decoder().decodePlain(
+                    m_document->bytes().subspan(caret, static_cast<std::size_t>(std::min<std::uint64_t>(rest, 64))));
+                const std::optional<QByteArray> kept = m_document->encode(before.left(before.size() - list->remove));
+                if (after.trimmed().isEmpty() && kept) {
+                    replaceRange(start.start + static_cast<std::uint64_t>(kept->size()), caret, {},
+                                 core::EditBuffer::Merge::Typing);
+                    return;
+                }
+                list = markdown::listBreak(before + QLatin1Char('x')); // its text follows: it goes on below
+            }
+            if (list && list->remove == 0) {
+                text += list->insert;
+            } else {
+                qsizetype indent = 0;
+                while (indent < before.size() && (before.at(indent) == u' ' || before.at(indent) == u'\t'))
+                    ++indent;
+                text += before.left(indent);
+            }
         }
     }
     // Past the last line break there is no line to type on: at the end of a file whose last line
@@ -1149,6 +1171,19 @@ void TextView::insertLineBreak()
     replaceSelection(text, core::EditBuffer::Merge::Typing);
     if (openEnd && terminator && m_cursor >= static_cast<std::uint64_t>(terminator->size()))
         setCursorOffset(m_cursor - static_cast<std::uint64_t>(terminator->size()));
+}
+
+bool TextView::isInListItem() const
+{
+    if (!m_markdownEditing || rowCount() == 0)
+        return false;
+    const core::LineIndex& index = m_document->index();
+    const auto first = index.rowIndexOfLine(index.row(index.rowIndexAt(editOffset(m_cursor))).line);
+    if (!first)
+        return false;
+    const core::Row row = index.row(*first);
+    const auto length = static_cast<std::size_t>(std::min<std::uint64_t>(row.contentEnd - row.start, 64));
+    return markdown::isListItem(m_document->decoder().decodePlain(m_document->bytes().subspan(row.start, length)));
 }
 
 QString TextView::indentUnit() const
@@ -1547,14 +1582,20 @@ void TextView::keyPressEvent(QKeyEvent* event)
         else if (event->key() == Qt::Key_Delete)
             deleteForward(ctrl);
         else if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter)
-            insertLineBreak();
+            insertLineBreak(extend);
         else if (event->key() == Qt::Key_Backtab)
             indentLines(true);
         else if (event->key() == Qt::Key_Tab && hasSelection() &&
                  m_document->index().row(m_document->index().rowIndexAt(selectionStart())).line !=
                      m_document->index().row(m_document->index().rowIndexAt(selectionEnd())).line)
             indentLines(false);
-        else if (event->key() == Qt::Key_Tab)
+        else if (event->key() == Qt::Key_Tab && !hasSelection() && isInListItem()) {
+            // The item moves in a level; the caret stays in its text.
+            const std::uint64_t size = m_document->bytes().size();
+            const std::uint64_t caret = m_cursor;
+            indentLines(false);
+            setCursorOffset(caret + (m_document->bytes().size() - size));
+        } else if (event->key() == Qt::Key_Tab)
             replaceSelection(indentUnit(), core::EditBuffer::Merge::Typing);
         else
             replaceSelection(event->text(), core::EditBuffer::Merge::Typing);

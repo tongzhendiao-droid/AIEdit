@@ -8,6 +8,8 @@
 #include <QStyle>
 #include <QToolButton>
 
+#include <algorithm>
+
 namespace aiedit::ui {
 
 AiEditBar::AiEditBar(QWidget* parent) : QWidget(parent)
@@ -54,11 +56,50 @@ AiEditBar::AiEditBar(QWidget* parent) : QWidget(parent)
     row->addWidget(m_stop);
     row->addWidget(m_preview);
     row->addWidget(m_close);
+    m_suggestionRow = new QWidget(this);
+    m_suggestionLayout = new QHBoxLayout(m_suggestionRow);
+    m_suggestionLayout->setContentsMargins(0, 0, 0, 0);
+    m_suggestionLayout->setSpacing(2);
+    m_suggestionRow->hide();
+
     auto* layout = new QVBoxLayout(this);
     layout->setContentsMargins(6, 4, 6, 4);
     layout->setSpacing(2);
     layout->addLayout(row);
+    layout->addWidget(m_suggestionRow);
     layout->addWidget(m_message);
+    updateButtons();
+}
+
+void AiEditBar::setSuggestions(const QList<Suggestion>& suggestions)
+{
+    if (suggestions.size() == m_suggestions.size() &&
+        std::equal(suggestions.begin(), suggestions.end(), m_suggestions.begin(), [](const auto& a, const auto& b) {
+            return a.label == b.label && a.instruction == b.instruction;
+        }))
+        return;
+    m_suggestions = suggestions;
+    while (QLayoutItem* item = m_suggestionLayout->takeAt(0)) {
+        delete item->widget();
+        delete item;
+    }
+    auto* title = new QLabel(tr("Try:"), m_suggestionRow);
+    title->setForegroundRole(QPalette::PlaceholderText);
+    m_suggestionLayout->addWidget(title);
+    for (const Suggestion& suggestion : suggestions) {
+        auto* b = new QToolButton(m_suggestionRow);
+        b->setText(suggestion.label);
+        b->setToolTip(suggestion.instruction);
+        b->setAutoRaise(true);
+        connect(b, &QToolButton::clicked, this, [this, instruction = suggestion.instruction] {
+            if (m_busy)
+                return;
+            m_input->setText(instruction); // to read what was asked, and ask it again changed
+            emit editRequested(instruction);
+        });
+        m_suggestionLayout->addWidget(b);
+    }
+    m_suggestionLayout->addStretch(1);
     updateButtons();
 }
 
@@ -114,6 +155,8 @@ void AiEditBar::updateButtons()
     m_send->setEnabled(typed);
     m_stop->setVisible(m_busy);
     m_preview->setEnabled(typed && !m_busy);
+    m_suggestionRow->setVisible(!m_suggestions.isEmpty());
+    m_suggestionRow->setEnabled(!m_busy);
 }
 
 bool AiEditBar::eventFilter(QObject* watched, QEvent* event)
