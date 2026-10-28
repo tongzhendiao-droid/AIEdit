@@ -53,6 +53,8 @@ public:
     void setSettingsProvider(SettingsProvider provider);
     // Updates the "will be attached" line, e.g. after the selection changed.
     void refreshContext();
+    // Shows or hides Explain, Translate and Summarize: they are for reading (reading mode).
+    void setReadingActionsVisible(bool visible);
     // Re-reads the settings, e.g. to drop the "not set up" hint after they were saved.
     void settingsChanged();
 

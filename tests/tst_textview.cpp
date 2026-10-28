@@ -645,11 +645,18 @@ void TestTextView::aiActionsInContextMenus()
     QVERIFY(!find(menu.get(), QStringLiteral("AI &Explain"))->isEnabled());
     QVERIFY(find(menu.get(), QStringLiteral("&Ask AI…"))->isEnabled());
 
-    // Selecting a sentence enables them, as a right-click on it would see.
+    // Explaining, translating and summarizing are for reading: hidden outside reading mode.
+    for (const QString& text : {QStringLiteral("AI &Explain"), QStringLiteral("AI &Translate"), QStringLiteral("AI &Summarize")})
+        QVERIFY(!find(menu.get(), text)->isVisible());
+
+    // In reading mode, selecting a sentence enables them, as a right-click on it would see.
+    doc->setReadingMode(true);
     doc->textView()->select(10, 40);
     menu = doc->textView()->createContextMenu();
+    QVERIFY(find(menu.get(), QStringLiteral("AI &Explain"))->isVisible());
     QVERIFY(find(menu.get(), QStringLiteral("AI &Explain"))->isEnabled());
     QVERIFY(find(menu.get(), QStringLiteral("AI &Translate"))->isEnabled());
+    doc->setReadingMode(false);
 
     // The hex view offers the byte-oriented set, including identifying the file.
     doc->setViewMode(ui::DocumentView::ViewMode::Hex);
@@ -657,7 +664,7 @@ void TestTextView::aiActionsInContextMenus()
     const QStringList hexTexts = actionTexts(menu.get());
     QVERIFY(hexTexts.contains(QStringLiteral("What Is This &File?")));
     QVERIFY(!hexTexts.contains(QStringLiteral("AI &Translate")));
-    QVERIFY(find(menu.get(), QStringLiteral("AI &Explain"))->isEnabled()); // the selection carried over
+    QVERIFY(!find(menu.get(), QStringLiteral("AI &Explain"))->isVisible()); // not reading
 }
 
 void TestTextView::wordWrapMenuAppliesToOpenDocuments()

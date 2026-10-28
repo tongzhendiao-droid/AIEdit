@@ -316,6 +316,7 @@ void MainWindow::createWidgets()
     addDockWidget(Qt::RightDockWidgetArea, m_inspectorDock);
 
     m_aiPanel = new AiPanel;
+    m_aiPanel->setReadingActionsVisible(false);
     m_aiPanel->setContextProvider([this]() -> std::optional<AiContext> {
         if (DocumentView* doc = currentDocument())
             return doc->aiContext();
@@ -892,6 +893,8 @@ void MainWindow::createActions()
     m_aiExplainAction = aiAction(tr("AI &Explain"), &AiPanel::explainSelection, QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_E));
     m_aiTranslateAction = aiAction(tr("AI &Translate"), &AiPanel::translateSelection);
     m_aiSummarizeAction = aiAction(tr("AI &Summarize"), &AiPanel::summarizeSelection);
+    for (QAction* action : {m_aiExplainAction, m_aiTranslateAction, m_aiSummarizeAction})
+        action->setVisible(false); // until a document is read in reading mode
     m_aiAskAction = aiAction(tr("&Ask AI…"), &AiPanel::focusInput);
     // Ctrl+I, as VS Code's chat in the editor.
     m_aiEditAction = new QAction(tr("Ed&it with AI…"), this);
@@ -2239,10 +2242,16 @@ void MainWindow::documentStateChanged(DocumentView* doc)
     m_exportHtmlAction->setEnabled(markdown);
     m_exportPdfAction->setEnabled(markdown);
     updateEditActions(doc);
-    // Explaining, translating and summarizing need a selection; asking and identifying do not.
+    // Explaining, translating and summarizing are for reading: shown in reading mode only, in
+    // the menus, the right-click menus and the AI panel; and they need a selection. Asking
+    // and identifying are always there.
     const bool selected = doc && doc->hasSelection();
-    for (QAction* action : {m_aiExplainAction, m_aiTranslateAction, m_aiSummarizeAction})
+    const bool reading = doc && doc->isReadingMode();
+    for (QAction* action : {m_aiExplainAction, m_aiTranslateAction, m_aiSummarizeAction}) {
+        action->setVisible(reading);
         action->setEnabled(selected);
+    }
+    m_aiPanel->setReadingActionsVisible(reading);
     updateCursorStatus();
     updateTextStatus();
     m_aiPanel->refreshContext();

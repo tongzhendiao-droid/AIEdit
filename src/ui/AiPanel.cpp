@@ -478,6 +478,12 @@ void AiPanel::changeEvent(QEvent* event)
         render();
 }
 
+void AiPanel::setReadingActionsVisible(bool visible)
+{
+    for (QToolButton* b : {m_explain, m_translate, m_summarize})
+        b->setVisible(visible);
+}
+
 void AiPanel::updateState()
 {
     const bool busy = isBusy();
