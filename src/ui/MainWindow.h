@@ -33,6 +33,7 @@ class CompareTab;
 class ContentsPanel;
 class DataInspector;
 class FindInFilesPanel;
+class RunPanel;
 class FolderPanel;
 class TabWidget;
 
@@ -204,6 +205,8 @@ private:
     void askAboutChapter(int action, const QString& title, const QString& text, bool cut);
     // Opens a result of Find in Files at its line.
     void openAtLine(const QString& path, std::uint64_t line, std::uint64_t offset);
+    // Runs the current document as a script (saving it first), in the run panel below.
+    void runCurrent();
     // Opens a file in the hex view at a byte.
     void openAtOffset(const QString& path, std::uint64_t offset);
     void showFindInFilesIn(const QString& folder);
@@ -243,6 +246,10 @@ private:
     AiPanel* m_aiPanel = nullptr;
     QDockWidget* m_findInFilesDock = nullptr;
     FindInFilesPanel* m_findInFiles = nullptr;
+    QDockWidget* m_runDock = nullptr;
+    RunPanel* m_runPanel = nullptr;
+    QAction* m_runAction = nullptr;
+    QAction* m_stopRunAction = nullptr;
     QDockWidget* m_contentsDock = nullptr;
     ContentsPanel* m_contents = nullptr;
     QDockWidget* m_folderDock = nullptr;

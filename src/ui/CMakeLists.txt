@@ -41,6 +41,7 @@ qt_add_library(aiedit_ui STATIC
     Paths.h
     QuickOpen.cpp QuickOpen.h
     RowScrollBar.cpp RowScrollBar.h
+    RunPanel.cpp RunPanel.h
     Replace.cpp Replace.h
     SearchJob.cpp SearchJob.h
     SingleInstance.cpp SingleInstance.h

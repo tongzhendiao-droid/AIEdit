@@ -41,6 +41,10 @@
 - 易语言源码（.e）和模块（.ec）打开就是 IDE「导出为文本」的样子：程序集、子程序、变量、流程控制、全局变量、自定义数据类型、DLL 命令和常量。支持库命令只写能确定的名字，其余写成 `〈krnln命令245〉` 这样的编号。
 - CSV、TSV 打开就是表格（`Ctrl+5`，`Ctrl+1` 回到文字），JSON 和 JSON Lines 也可以看成表格（对象数组）或树：点表头排序（数字按大小），上面的框筛选行，`Ctrl+C` 复制选中的单元格，双击一行跳到文字里的那一行。
 
+**运行脚本**（运行 →「运行」，`Ctrl+F5`）
+- Python、Shell、Node、Ruby、Perl、PHP、Lua、PowerShell、Go 等脚本直接运行，按第一行的 `#!` 或扩展名选解释器，先自动保存。
+- 下方的运行面板边运行边显示输出，错误标红，可以在输入框里给程序输入（`input()`），可以停止、重新运行；结束时显示退出码和用时。双击报错里的「文件、行号」跳到那一行。
+
 **十六进制视图**
 - 偏移、十六进制、字符三栏，按字节类别着色。
 - 字符栏按文件的编码显示：中文、日文等多字节字符画在它的第一个字节上（UTF-8、GBK、Big5、Shift-JIS、UTF-16 都行）；二进制文件只显示 ASCII。
@@ -146,6 +150,7 @@ AIEDIT_API_KEY=你的key ./build/src/aiedit
 | Markdown 链接 | `Ctrl+K` |
 | 查找 / 下一个 / 上一个 | `Ctrl+F` / `F3` / `Shift+F3` |
 | 替换 / 过滤行 | `Ctrl+H` / `Ctrl+Shift+L` |
+| 运行 / 停止运行 | `Ctrl+F5` / `Ctrl+Shift+F5` |
 | 上移、下移行 / 复制行 | `Alt+↑`、`Alt+↓` / `Ctrl+D` |
 | 注释 / 选中行 / 删除行 / 合并行 | `Ctrl+/` / `Ctrl+L` / `Ctrl+Shift+K` / `Ctrl+J` |
 | 向上、向下复制行 / 在下方、上方插入行 | `Shift+Alt+↑`、`Shift+Alt+↓` / `Ctrl+Enter`、`Ctrl+Shift+Enter` |

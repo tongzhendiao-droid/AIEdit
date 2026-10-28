@@ -17,6 +17,7 @@
 #include "ui/FolderPanel.h"
 #include "ui/HexView.h"
 #include "ui/Paths.h"
+#include "ui/RunPanel.h"
 #include "ui/SyntaxHighlighting.h"
 #include "ui/TabWidget.h"
 #include "ui/TextDocument.h"
@@ -413,6 +414,15 @@ void MainWindow::createWidgets()
     m_findInFilesDock->setWidget(m_findInFiles);
     addDockWidget(Qt::BottomDockWidgetArea, m_findInFilesDock);
     m_findInFilesDock->hide();
+
+    m_runPanel = new RunPanel;
+    connect(m_runPanel, &RunPanel::openRequested, this, &MainWindow::openAtLine);
+    m_runDock = new QDockWidget(tr("Run"), this);
+    m_runDock->setObjectName(QStringLiteral("runDock"));
+    m_runDock->setWidget(m_runPanel);
+    addDockWidget(Qt::BottomDockWidgetArea, m_runDock);
+    tabifyDockWidget(m_findInFilesDock, m_runDock);
+    m_runDock->hide();
 
     m_typeLabel = new QLabel;
     m_sizeLabel = new QLabel;
@@ -970,6 +980,24 @@ void MainWindow::createMenus()
     file->addAction(m_reopenTabAction);
     file->addSeparator();
     file->addAction(m_quitAction);
+
+    // Running a script: Ctrl+F5, as VS Code runs without debugging.
+    m_runAction = new QAction(tr("&Run"), this);
+    m_runAction->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_F5));
+    m_runAction->setToolTip(tr("Run this file as a script (Python, shell, Node, ...), saving it first"));
+    connect(m_runAction, &QAction::triggered, this, &MainWindow::runCurrent);
+    m_stopRunAction = new QAction(tr("&Stop Running"), this);
+    m_stopRunAction->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_F5));
+    m_stopRunAction->setEnabled(false);
+    connect(m_stopRunAction, &QAction::triggered, m_runPanel, &RunPanel::stop);
+    connect(m_runPanel, &RunPanel::runningChanged, m_stopRunAction, &QAction::setEnabled);
+    QMenu* run = menuBar()->addMenu(tr("&Run"));
+    run->addAction(m_runAction);
+    run->addAction(m_stopRunAction);
+    run->addSeparator();
+    QAction* showRun = m_runDock->toggleViewAction();
+    showRun->setText(tr("Run &Panel"));
+    run->addAction(showRun);
 
     QMenu* edit = menuBar()->addMenu(tr("&Edit"));
     edit->addAction(m_undoAction);
@@ -2238,6 +2266,7 @@ void MainWindow::documentStateChanged(DocumentView* doc)
     m_previewModeAction->setEnabled(markdown);
     m_originalAction->setEnabled(doc && doc->extractedFormat() != ExtractedFormat::None);
     m_tableModeAction->setEnabled(doc && doc->isTabular());
+    m_runAction->setEnabled(doc && !doc->showsExtractedText());
     m_originalAction->setChecked(doc && doc->showsOriginal());
     m_exportHtmlAction->setEnabled(markdown);
     m_exportPdfAction->setEnabled(markdown);
@@ -2893,6 +2922,33 @@ void MainWindow::openAtLine(const QString& path, std::uint64_t line, std::uint64
         doc->restoreState(state);
     }
     doc->textView()->setFocus();
+}
+
+void MainWindow::runCurrent()
+{
+    DocumentView* doc = currentDocument();
+    if (!doc)
+        return;
+    if (doc->isUntitled() || doc->showsExtractedText()) {
+        statusBar()->showMessage(doc->isUntitled() ? tr("Save the file first: a script is run from its file")
+                                                   : tr("This is not a script"),
+                                 5000);
+        return;
+    }
+    if (doc->isModified()) {
+        QString error;
+        if (!doc->save(&error)) {
+            QMessageBox::warning(this, tr("Run"), tr("Could not save %1:\n%2").arg(doc->title(), error));
+            return;
+        }
+    }
+    const auto bytes = doc->source()->bytes();
+    QByteArray firstLine(reinterpret_cast<const char*>(bytes.data()),
+                         static_cast<qsizetype>(std::min<std::size_t>(bytes.size(), 256)));
+    firstLine = firstLine.left(firstLine.indexOf('\n')).trimmed();
+    m_runDock->show();
+    m_runDock->raise();
+    m_runPanel->run(doc->filePath(), firstLine);
 }
 
 void MainWindow::openAtOffset(const QString& path, std::uint64_t offset)

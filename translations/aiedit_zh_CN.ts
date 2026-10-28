@@ -2136,6 +2136,10 @@
         <translation>跟随文件末尾(&amp;F)</translation>
     </message>
     <message>
+        <source>Run</source>
+        <translation>运行</translation>
+    </message>
+    <message>
         <source>Close every tab but the pinned ones</source>
         <translation>关闭除固定标签页以外的所有标签页</translation>
     </message>
@@ -2652,6 +2656,22 @@
         <translation>比较(&amp;M)</translation>
     </message>
     <message>
+        <source>&amp;Run</source>
+        <translation>运行(&amp;R)</translation>
+    </message>
+    <message>
+        <source>Run this file as a script (Python, shell, Node, ...), saving it first</source>
+        <translation>把这个文件当作脚本运行（Python、Shell、Node……），先保存</translation>
+    </message>
+    <message>
+        <source>&amp;Stop Running</source>
+        <translation>停止运行(&amp;S)</translation>
+    </message>
+    <message>
+        <source>Run &amp;Panel</source>
+        <translation>运行面板(&amp;P)</translation>
+    </message>
+    <message>
         <source>&amp;Edit</source>
         <translation>编辑(&amp;E)</translation>
     </message>
@@ -3148,6 +3168,20 @@
         <translation>%1（%2 字）</translation>
     </message>
     <message>
+        <source>Save the file first: a script is run from its file</source>
+        <translation>请先保存：脚本要从文件运行</translation>
+    </message>
+    <message>
+        <source>This is not a script</source>
+        <translation>这不是脚本</translation>
+    </message>
+    <message>
+        <source>Could not save %1:
+%2</source>
+        <translation>无法保存 %1：
+%2</translation>
+    </message>
+    <message>
         <source>%1 was moved, but cannot be opened where it is now</source>
         <translation>%1 已经移动，但在新的位置打不开</translation>
     </message>
@@ -3316,6 +3350,59 @@
     <message>
         <source>Go to %1</source>
         <translation>转到 %1</translation>
+    </message>
+</context>
+<context>
+    <name>aiedit::ui::RunPanel</name>
+    <message>
+        <source>Run Again</source>
+        <translation>重新运行</translation>
+    </message>
+    <message>
+        <source>Stop</source>
+        <translation>停止</translation>
+    </message>
+    <message>
+        <source>Clear</source>
+        <translation>清空</translation>
+    </message>
+    <message>
+        <source>Double-click a line that names a file and a line to open it there</source>
+        <translation>双击写着文件和行号的一行，打开到那一行</translation>
+    </message>
+    <message>
+        <source>Input for the program: Enter sends the line</source>
+        <translation>给程序的输入：回车发送这一行</translation>
+    </message>
+    <message>
+        <source>Do not know how to run %1: no program is known for files like it.
+</source>
+        <translation>不知道怎么运行 %1：不认得这种文件。
+</translation>
+    </message>
+    <message>
+        <source>%1 is needed to run %2, and it is not installed (or not on PATH).
+</source>
+        <translation>运行 %2 需要 %1，但没有装（或者不在 PATH 里）。
+</translation>
+    </message>
+    <message>
+        <source>Could not start it: %1
+</source>
+        <translation>启动失败：%1
+</translation>
+    </message>
+    <message>
+        <source>Stopped after %1 s</source>
+        <translation>%1 秒后停止</translation>
+    </message>
+    <message>
+        <source>Ended abnormally after %1 s</source>
+        <translation>%1 秒后异常结束</translation>
+    </message>
+    <message>
+        <source>Finished with exit code %1 in %2 s</source>
+        <translation>运行结束，退出码 %1，用时 %2 秒</translation>
     </message>
 </context>
 <context>
