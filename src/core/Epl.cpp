@@ -17,6 +17,7 @@ constexpr std::uint32_t kSectionMagic = 0x15117319;
 constexpr std::int32_t kSystemInfoSection = 0x02007319;
 constexpr std::int32_t kCodeSection = 0x03007319;
 constexpr std::int32_t kResourceSection = 0x04007319;
+constexpr std::int32_t kLosableSection = 0x05007319;
 constexpr std::int32_t kEndOfFileSection = 0x07007319;
 constexpr std::int32_t kClassPublicitySection = 0x0B007319;
 
@@ -413,6 +414,21 @@ Project parse(std::span<const std::uint8_t> data)
             readCodeSection(section, p);
         } else if (key == kResourceSection) {
             readResourceSection(section, p);
+        } else if (key == kLosableSection) {
+            section.lengthPrefixed(); // the file last compiled to
+            const std::int32_t n = section.count(12);
+            const std::int32_t size = section.count();
+            const std::size_t end = section.pos() + static_cast<std::size_t>(size);
+            const std::vector<std::int32_t> ids = section.int32s(static_cast<std::size_t>(n));
+            section.int32s(static_cast<std::size_t>(n)); // a checksum of each name
+            const std::vector<std::int32_t> offsets = section.int32s(static_cast<std::size_t>(n));
+            const std::size_t start = section.pos();
+            for (std::size_t i = 0; i < ids.size() && !section.failed(); ++i) {
+                section.seek(start + static_cast<std::size_t>(std::max(0, offsets[i])));
+                p.removedNames.emplace_back(ids[i], section.cString());
+            }
+            if (!section.failed())
+                section.seek(end);
         } else if (key == kClassPublicitySection) {
             // Which classes are public, kept apart from the classes themselves.
             while (section.remaining() >= 8) {
@@ -578,6 +594,9 @@ public:
             for (const FormElement& e : f.elements)
                 add(e.id, e.name);
         }
+        // Last: a name in use wins over one removed with the same id.
+        for (const auto& [id, name] : p.removedNames)
+            add(id, name);
     }
 
     std::string text(std::size_t* unreadable)

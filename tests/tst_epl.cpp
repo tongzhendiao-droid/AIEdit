@@ -246,6 +246,7 @@ private slots:
     void writesText();
     void encrypted();
     void brokenFiles();
+    void removedNames();
 };
 
 void TestEpl::parsesDeclarations()
@@ -324,6 +325,30 @@ void TestEpl::brokenFiles()
     }
     const Project cut = parse(span(file.substr(0, file.size() / 2)));
     QCOMPARE(cut.status, Project::Status::Broken);
+}
+
+void TestEpl::removedNames()
+{
+    // Code that still refers to a control removed and made anew: the IDE keeps its old name in
+    // the section of things removed, and so does the text.
+    std::string file = sampleFile();
+    const std::string end = file.substr(file.size() - (3 * 4 + 30 + 2 + 3 * 4 + 4 + 40)); // the last section, which is empty
+    file.resize(file.size() - end.size());
+    Builder losable;
+    losable.lengthPrefixed("out.exe");
+    Builder names;
+    names.cString("old_name");
+    losable.i32(1).i32(static_cast<std::int64_t>(12 + names.bytes.size())).i32(kLocalI).i32(0).i32(0).raw(names.bytes);
+    Builder withSection;
+    withSection.raw(file);
+    section(withSection, 0x05007319, losable.bytes);
+    withSection.raw(end);
+    const Project p = parse(span(withSection.bytes));
+    QCOMPARE(p.status, Project::Status::Ok);
+    QCOMPARE(p.removedNames.size(), 1u);
+    QCOMPARE(p.removedNames[0].second, std::string("old_name"));
+    // A name still in use wins: i keeps its name.
+    QVERIFY(toText(p, decodeGbkForTest).find("old_name") == std::string::npos);
 }
 
 QTEST_GUILESS_MAIN(TestEpl)

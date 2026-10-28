@@ -291,8 +291,11 @@ std::shared_ptr<const core::FileSource> DocumentView::shownSource(std::shared_pt
 
 QString DocumentView::shownSyntax() const
 {
-    if (m_file)
-        return m_extractedMarkdown ? QStringLiteral("Markdown") : QString();
+    if (m_file) {
+        if (m_extractedMarkdown)
+            return QStringLiteral("Markdown");
+        return m_extractedFormat == ExtractedFormat::Epl ? QStringLiteral("易语言") : QString();
+    }
     return syntaxForFileName(QFileInfo(filePath()).fileName());
 }
 

@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE language>
+<!--
+  易语言 code as the IDE exports it as text, which is how AIEdit shows .e and .ec files (M10):
+  .版本 2, .程序集, .子程序, flow control such as .如果真 and .计次循环首, “strings”, #constants,
+  full-width operators, comments after ', and 〈krnln命令245〉 where a library name is unknown.
+-->
+<language name="易语言" section="Sources" version="1" kateversion="5.0" extensions="*.e.txt" mimetype="" author="AIEdit" license="MIT">
+  <highlighting>
+    <list name="types">
+      <item>字节型</item>
+      <item>短整数型</item>
+      <item>整数型</item>
+      <item>长整数型</item>
+      <item>小数型</item>
+      <item>双精度小数型</item>
+      <item>逻辑型</item>
+      <item>日期时间型</item>
+      <item>文本型</item>
+      <item>字节集</item>
+      <item>子程序指针</item>
+      <item>通用型</item>
+      <item>条件语句型</item>
+    </list>
+    <list name="flags">
+      <item>公开</item>
+      <item>静态</item>
+      <item>参考</item>
+      <item>可空</item>
+      <item>数组</item>
+      <item>传址</item>
+    </list>
+    <list name="literals">
+      <item>真</item>
+      <item>假</item>
+    </list>
+    <list name="operators">
+      <item>且</item>
+      <item>或</item>
+    </list>
+    <contexts>
+      <context name="Code" attribute="Normal Text" lineEndContext="#stay">
+        <!-- A whole line commented out, or the rest of a line after ' -->
+        <DetectChar char="'" attribute="Comment" context="Comment"/>
+        <!-- Declarations, at the start of a line: up to the end of the line, names and types -->
+        <RegExpr attribute="Declaration" context="Declaration" String="^\s*\.(版本|支持库|程序集变量|程序集|子程序|参数|局部变量|全局变量|常量|数据类型|成员|DLL命令|图片|声音)(?=\s|$)"/>
+        <!-- Flow control commented out (.' 如果 (...)) is a comment, as the IDE greys it -->
+        <RegExpr attribute="Comment" context="#stay" String="^\s*\.'.*$"/>
+        <!-- Flow control -->
+        <RegExpr attribute="Control Flow" context="#stay" String="^\s*\.(如果真结束|如果真|如果结束|如果|否则|判断开始|判断结束|判断循环首|判断循环尾|判断|默认|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾)(?=\s|$|\()"/>
+        <RegExpr attribute="Control Flow" context="#stay" String="(返回|结束|到循环尾|跳出循环)(?=\s*\()"/>
+        <DetectChar char="“" attribute="String" context="String"/>
+        <DetectChar char="〈" attribute="Unknown" context="Unknown"/>
+        <RegExpr attribute="Constant" context="#stay" String="#[^\s,，()（）\[\]{}＝＋－×÷≠＜＞≤≥.]+(\.[^\s,，()（）\[\]{}＝＋－×÷≠＜＞≤≥]+)?"/>
+        <RegExpr attribute="Date" context="#stay" String="\[\d{4}年\d{1,2}月\d{1,2}日(\d{1,2}时\d{1,2}分\d{1,2}秒)?\]"/>
+        <Float attribute="Float" context="#stay"/>
+        <Int attribute="Decimal" context="#stay"/>
+        <keyword attribute="Literal" context="#stay" String="literals"/>
+        <keyword attribute="Operator" context="#stay" String="operators"/>
+        <AnyChar attribute="Operator" context="#stay" String="＝＋－×÷≠＜＞≤≥≈%\&amp;"/>
+        <!-- A call: a name, a space, then its parameters -->
+        <RegExpr attribute="Function" context="#stay" String="[^\s.,，()（）\[\]{}＝＋－×÷≠＜＞≤≥“”#'〈〉&amp;]+(?=\s\()"/>
+      </context>
+      <context name="Declaration" attribute="Normal Text" lineEndContext="#pop">
+        <keyword attribute="Data Type" context="#stay" String="types"/>
+        <keyword attribute="Flag" context="#stay" String="flags"/>
+        <DetectChar char="〈" attribute="Unknown" context="Unknown"/>
+        <DetectChar char="&quot;" attribute="String" context="QuotedValue"/>
+        <!-- The first item: what is declared -->
+        <RegExpr attribute="Name" context="AfterName" String="\s*[^,\s]+" firstNonSpace="false"/>
+      </context>
+      <context name="AfterName" attribute="Normal Text" lineEndContext="#pop#pop">
+        <keyword attribute="Data Type" context="#stay" String="types"/>
+        <keyword attribute="Flag" context="#stay" String="flags"/>
+        <DetectChar char="〈" attribute="Unknown" context="Unknown"/>
+        <DetectChar char="&quot;" attribute="String" context="QuotedValue"/>
+      </context>
+      <context name="QuotedValue" attribute="String" lineEndContext="#pop">
+        <DetectChar char="&quot;" attribute="String" context="#pop"/>
+      </context>
+      <context name="String" attribute="String" lineEndContext="#pop">
+        <DetectChar char="”" attribute="String" context="#pop"/>
+      </context>
+      <context name="Unknown" attribute="Unknown" lineEndContext="#pop">
+        <DetectChar char="〉" attribute="Unknown" context="#pop"/>
+      </context>
+      <context name="Comment" attribute="Comment" lineEndContext="#pop"/>
+    </contexts>
+    <itemDatas>
+      <itemData name="Normal Text" defStyleNum="dsNormal"/>
+      <itemData name="Declaration" defStyleNum="dsKeyword"/>
+      <itemData name="Control Flow" defStyleNum="dsControlFlow"/>
+      <itemData name="Name" defStyleNum="dsFunction" bold="1"/>
+      <itemData name="Data Type" defStyleNum="dsDataType"/>
+      <itemData name="Flag" defStyleNum="dsAttribute"/>
+      <itemData name="Function" defStyleNum="dsFunction"/>
+      <itemData name="String" defStyleNum="dsString"/>
+      <itemData name="Constant" defStyleNum="dsConstant"/>
+      <itemData name="Literal" defStyleNum="dsConstant"/>
+      <itemData name="Date" defStyleNum="dsSpecialString"/>
+      <itemData name="Decimal" defStyleNum="dsDecVal"/>
+      <itemData name="Float" defStyleNum="dsFloat"/>
+      <itemData name="Operator" defStyleNum="dsOperator"/>
+      <itemData name="Unknown" defStyleNum="dsWarning"/>
+      <itemData name="Comment" defStyleNum="dsComment"/>
+    </itemDatas>
+  </highlighting>
+  <general>
+    <comments>
+      <comment name="singleLine" start="'"/>
+    </comments>
+    <keywords casesensitive="1" weakDeliminator="."/>
+  </general>
+</language>

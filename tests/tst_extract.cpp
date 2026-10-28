@@ -341,6 +341,22 @@ void TestExtract::epl()
     const ExtractedText text = extractEpl(bytesOf(empty));
     QVERIFY2(text.note.isEmpty(), qPrintable(text.note));
     QCOMPARE(text.text, QStringLiteral(".版本 2\n"));
+
+    // Opened, it is shown as text in 易语言's highlighting.
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("demo.e"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(empty);
+    file.close();
+    std::error_code ec;
+    std::shared_ptr<const aiedit::core::FileSource> source = aiedit::core::FileSource::open(toPath(path), ec);
+    QVERIFY(source);
+    DocumentView doc(source, aiedit::core::detectFileType(source->bytes()), aiedit::core::utf8Codec());
+    QVERIFY(doc.showsExtractedText());
+#ifdef AIEDIT_HAVE_KSYNTAXHIGHLIGHTING
+    QCOMPARE(doc.syntax(), QStringLiteral("易语言"));
+#endif
 }
 
 QTEST_MAIN(TestExtract)

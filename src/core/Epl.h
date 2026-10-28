@@ -139,6 +139,9 @@ struct Project
     std::vector<Dll> dlls;
     std::vector<Constant> constants;
     std::vector<Form> forms;
+    // Names of things removed (or made anew) whose ids code may still refer to: the IDE keeps
+    // them, and shows code with them.
+    std::vector<std::pair<std::int32_t, Bytes>> removedNames;
     std::int32_t mainMethod = 0;
 };
 

@@ -63,4 +63,9 @@ if(KF6SyntaxHighlighting_FOUND)
         PREFIX "/org.kde.syntax-highlighting/themes-addons"
         BASE "${CMAKE_CURRENT_SOURCE_DIR}/themes"
         FILES themes/aiedit-paper.theme themes/aiedit-eye-care.theme themes/aiedit-night.theme)
+    # Languages of AIEdit's own: 易语言, as its sources are shown (M10).
+    qt_add_resources(aiedit_ui "syntax"
+        PREFIX "/org.kde.syntax-highlighting/syntax-addons"
+        BASE "${CMAKE_CURRENT_SOURCE_DIR}/syntax"
+        FILES syntax/epl.xml)
 endif()
